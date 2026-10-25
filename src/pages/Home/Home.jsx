@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/feedback/Modal';
 import { useAuth } from '@/hooks/useAuth';
+import { chatService, chatError } from '@/services/chatService';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ROUTES } from '@/constants/routes';
 import { CourseCard } from '@/components/courses/CourseCard';
@@ -28,7 +29,7 @@ import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { useMasterData } from '@/hooks/useMasterData';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
 import { AdministrativePicker } from '@/components/forms/AdministrativePicker';
-import { createConversationId, createNotification, getCourseRating, getCourses, getProviderTrustCount, hasProviderTrust, saveConversation, toggleProviderTrust, trackProviderAffinity } from '@/features/learning/marketplace';
+import { createNotification, getCourseRating, getCourses, getProviderTrustCount, hasProviderTrust, toggleProviderTrust, trackProviderAffinity } from '@/features/learning/marketplace';
 import toast from 'react-hot-toast';
 import heroImage from '@/assets/tutoring-hero.webp';
 import heroImageMobile from '@/assets/tutoring-hero-720.webp';
@@ -200,6 +201,7 @@ export const Home = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const chatOpening = useRef(false);
   const query = params.get('q') || '';
   const needQuery = params.get('need') || '';
   const courseQuery = params.get('course-query') || '';
@@ -451,29 +453,16 @@ const profileCourses = profile
     : filteredTutors.slice(0, 8);
   const { administrativeProvinces, wardOptions, error: areaError } = useAdministrativeOptions(filters.province);
   const { administrativeProvinces: courseProvinces, wardOptions: courseWardOptions, error: courseAreaError } = useAdministrativeOptions(courseFilters.province);
-  const registerForTutor = (tutor) => {
-    if (!isAuthenticated) {
-      toast.error('Vui lòng đăng nhập để đăng ký học.');
+  const registerForTutor = async (tutor) => {
+    if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để đăng ký học.'); setProfile(null); navigate(ROUTES.LOGIN); return; }
+    if (chatOpening.current) return;
+    chatOpening.current = true;
+    try {
+      const conversation = await chatService.startDirect(tutor.id, 'Chào thầy/cô, em muốn trao đổi thêm để đăng ký học và sắp xếp lịch phù hợp ạ.');
       setProfile(null);
-      navigate(ROUTES.LOGIN);
-      return;
-    }
-    saveConversation({
-      id: createConversationId('conversation'),
-      courseId: tutor.courseId,
-      teacherId: tutor.id,
-      teacherName: [tutor.title, tutor.name].filter(Boolean).join(' '),
-      teacherAvatar: tutor.image || '',
-      studentId: user.id,
-      studentName: user.name || 'Học viên EduMatch',
-      studentAvatar: user.avatar || '',
-      senderId: user.id,
-      text: 'Chào thầy/cô, em muốn trao đổi thêm để đăng ký học và sắp xếp lịch phù hợp ạ.',
-      createdAt: 'Vừa xong',
-    });
-    setProfile(null);
-    toast.success('Đã gửi yêu cầu đăng ký học.');
-    navigate(ROUTES.MESSAGES);
+      navigate(`${ROUTES.MESSAGES}?conversation=${conversation.id}`);
+    } catch (error) { toast.error(chatError(error)); }
+    finally { chatOpening.current = false; }
   };
   const updateFilter = (event) => {
     const { name, value } = event.target;

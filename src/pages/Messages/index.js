@@ -1,1 +1,1 @@
-export { MessagesPage } from './MessagesPage';
+export { MessengerWorkspace as MessagesPage } from './MessengerWorkspace';

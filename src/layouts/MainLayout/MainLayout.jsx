@@ -4,9 +4,11 @@ import { Header } from '@/components/navigation/Header';
 import { Footer } from '@/components/navigation/Footer';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { FloatingChat } from '@/components/messages/FloatingChat';
+import { ROUTES } from '@/constants/routes';
 
 export const MainLayout = () => {
   const { pathname, hash } = useLocation();
+  const isMessaging = pathname.replace(/\/$/, '') === ROUTES.MESSAGES;
   const [theme, setTheme] = useLocalStorage('edumatch:theme', 'system');
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -30,15 +32,17 @@ export const MainLayout = () => {
   const resolvedTheme = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
   return (
     <div className="edu-site min-h-dvh flex flex-col" data-theme={resolvedTheme}>
-      <Header
-        theme={resolvedTheme}
-        onToggleTheme={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-      />
+      {!isMessaging && (
+        <Header
+          theme={resolvedTheme}
+          onToggleTheme={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+        />
+      )}
       <main className="flex-1">
-        <Outlet />
+        <Outlet context={{ theme: resolvedTheme }} />
       </main>
-      <Footer />
-      <FloatingChat />
+      {!isMessaging && <Footer />}
+      {!isMessaging && <FloatingChat />}
     </div>
   );
 };

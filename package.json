@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test:google": "node --test tests/googleIdentity.test.js",
     "test:auth": "node --test tests/auth.test.js",
     "test:phase2": "node --test tests/phase2.test.js",
     "dev": "vite",

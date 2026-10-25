@@ -22,7 +22,7 @@ export function sharedGet(url, params = {}, { ttlMs = 0 } = {}) {
 
   if (!pendingReads.has(key)) {
     const request = api
-      .get(url, { params })
+      .get(url, { params, headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((response) => {
         if (ttlMs > 0) {
           cacheReads.set(key, { data: response, expiresAt: Date.now() + ttlMs });

@@ -1,206 +1,155 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { acquirePusherChannel } from '@/services/pusherService';
 import { chatService, chatError } from '@/services/chatService';
-import { applyReaction, mergeChatMessages } from '@/utils/chatState';
 
-/** Event-driven history catch-up. No interval, polling or local message store. */
+const lastForeignId = (messages, userId) => {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (typeof message.id === 'number' && Number(message.sender_user_id) !== Number(userId)) return message.id;
+  }
+  return 0;
+};
+
+/**
+ * View over the cached, websocket-driven conversation in the chat thread store.
+ * Opening a conversation that is already cached costs zero HTTP requests; focus/visibility never refetch.
+ * The only requests made here are user actions: send, react, read receipt (when there is something unread),
+ * older history, and explicit refresh.
+ */
 export function useRealtimeChat(conversationId) {
   const { user, token } = useAuth();
-  const { upsert, conversations } = useChat();
-  const [messages, setMessages] = useState([]);
-  const [detail, setDetail] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [hasOlder, setHasOlder] = useState(false);
+  const userId = user?.id;
+  const { threads, conversations } = useChat();
+  const subscribe = useCallback((notify) => threads.subscribe(conversationId, notify), [threads, conversationId]);
+  const read = useCallback(() => threads.snapshot(conversationId), [threads, conversationId]);
+  const snap = useSyncExternalStore(subscribe, read, read);
   const [typingIds, setTypingIds] = useState([]);
-  const [receipts, setReceipts] = useState({});
-  const latestId = useRef(0);
-  const oldestId = useRef(null);
-  const reactionPatches = useRef(new Map());
-  const retries = useRef(new Map());
   const channelRef = useRef(null);
-  const resyncRef = useRef(null);
-  const readRef = useRef(null);
   const activeRef = useRef(false);
   const clientTyping = useRef(false);
   const typingSentAt = useRef(0);
   const typingTimers = useRef(new Map());
-  const atEnd = useRef(true);
   const memberIds = useRef(new Set());
+  const atEnd = useRef(true);
+  const readState = useRef({ flight: false, requested: 0, completed: 0 });
+  const fresh = useRef({ foreignId: 0, ownRead: 0 });
 
-  const ingest = useCallback((incoming) => {
-    const patched = incoming.map((message) => {
-      const value = reactionPatches.current.has(message.id) ? applyReaction(message, reactionPatches.current.get(message.id)) : message;
-      return typeof value.id === 'number' ? { ...value, pending: false, failed: false } : value;
-    });
-    for (const message of patched) {
-      if (typeof message.id === 'number') {
-        latestId.current = Math.max(latestId.current, message.id);
-        oldestId.current = oldestId.current ? Math.min(oldestId.current, message.id) : message.id;
-        if (message.client_id) retries.current.delete(message.client_id);
+  const currentReceipts = { ...snap.receipts };
+  conversations.find((item) => Number(item.id) === Number(conversationId))?.read_receipts?.forEach((item) => {
+    currentReceipts[item.user_id] = Math.max(currentReceipts[item.user_id] || 0, Number(item.last_read_message_id));
+  });
+  const foreignId = lastForeignId(snap.messages, user?.id);
+  const ownRead = Math.max(currentReceipts[user?.id] || 0, Number(snap.detail?.last_read_message_id || 0));
+
+  useEffect(() => {
+    fresh.current = { foreignId, ownRead };
+    memberIds.current = new Set((snap.detail?.participants || []).map((member) => Number(member.id)));
+  });
+
+  /** Read receipt: one request per new message from someone else, only while the user is actually looking. */
+  const markRead = useCallback(async () => {
+    const state = readState.current;
+    if (state.flight) return;
+    state.flight = true;
+    try {
+      // Loop (rather than recurse) so a message that lands while a receipt is in flight is acknowledged right after.
+      while (activeRef.current && atEnd.current && document.visibilityState === 'visible' && document.hasFocus()) {
+        state.completed = Math.max(state.completed, fresh.current.ownRead);
+        state.requested = Math.max(state.requested, fresh.current.foreignId);
+        if (state.requested <= state.completed) break;
+        const target = state.requested;
+        const response = await chatService.read(conversationId, target);
+        state.completed = Math.max(state.completed, target, Number(response.last_read_message_id) || 0);
+        threads.mergeReceipts(conversationId, [{ user_id: userId, last_read_message_id: state.completed }]);
       }
+    } catch (failure) {
+      threads.setError(conversationId, chatError(failure));
+    } finally {
+      state.flight = false;
     }
-    setMessages((current) => mergeChatMessages(current, patched));
-  }, []);
-  const mergeReceipts = useCallback((items) => setReceipts((current) => {
-    const next = { ...current };
-    items.forEach((item) => { next[item.user_id] = Math.max(next[item.user_id] || 0, Number(item.last_read_message_id)); });
-    return next;
-  }), []);
+  }, [threads, conversationId, userId]);
 
+  // Keep the cached conversation (and its websocket channel) alive while this view is mounted.
+  useEffect(() => {
+    if (!conversationId || !user?.id || !token) return;
+    activeRef.current = true;
+    readState.current = { flight: false, requested: 0, completed: 0 };
+    const release = threads.retain(conversationId);
+    return () => { activeRef.current = false; release(); };
+  }, [threads, conversationId, user?.id, token]);
+
+  useEffect(() => { void markRead(); }, [markRead, foreignId, ownRead, snap.loading]);
+
+  // Returning to the tab only re-sends a read receipt if something unread is on screen. It never refetches.
+  useEffect(() => {
+    const visible = () => { void markRead(); };
+    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('focus', visible);
+    return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', visible); };
+  }, [markRead]);
+
+  // Typing indicator is the only thing this view needs from the channel directly.
   useEffect(() => {
     if (!conversationId || !user?.id || !token) return;
     let active = true;
-    activeRef.current = true;
-    let readFlight = false;
-    let readRequested = 0;
-    let readCompleted = 0;
-    const markRead = async () => {
-      if (!active || !atEnd.current || document.visibilityState !== 'visible' || !document.hasFocus()) return;
-      readRequested = Math.max(readRequested, latestId.current);
-      if (readFlight || readRequested <= readCompleted) return;
-      readFlight = true;
-      const target = readRequested;
-      try {
-        const response = await chatService.read(conversationId, target);
-        if (!active) return;
-        readCompleted = Math.max(readCompleted, response.last_read_message_id);
-        mergeReceipts([{ user_id: user.id, last_read_message_id: readCompleted }]);
-      } catch (failure) {
-        if (active) setError(chatError(failure));
-      } finally {
-        readFlight = false;
-        if (active && readRequested > target) void markRead();
-      }
-    };
-    readRef.current = markRead;
-    let syncFlight = null;
-    let syncAgain = false;
-    const resync = () => {
-      if (!active) return Promise.resolve();
-      if (syncFlight) { syncAgain = true; return syncFlight; }
-      syncFlight = (async () => {
-        try {
-          const data = (await chatService.conversation(conversationId)).data;
-          if (!active) return;
-          setDetail(data); upsert(data); mergeReceipts(data.read_receipts || []);
-          memberIds.current = new Set((data.participants || []).map((member) => Number(member.id)));
-          readCompleted = Math.max(readCompleted, data.last_read_message_id || 0);
-          const target = data.last_message_id || 0;
-          let cursor = latestId.current;
-          do {
-            const response = await chatService.messages(conversationId, cursor ? { after_id: cursor } : {});
-            if (!active) return;
-            ingest(response.data);
-            if (!cursor) setHasOlder(response.meta.has_more);
-            cursor = response.meta.latest_id || cursor;
-            if (!response.meta.has_more || cursor >= target) break;
-          } while (active);
-          if (active) { setError(''); void markRead(); }
-        } catch (failure) {
-          if (active) setError(chatError(failure));
-        } finally {
-          if (active) setLoading(false);
-        }
-      })().finally(() => {
-        syncFlight = null;
-        if (active && syncAgain) { syncAgain = false; void resync(); }
-      });
-      return syncFlight;
-    };
-    resyncRef.current = resync;
-    void resync();
+    const timers = typingTimers.current;
     void chatService.config().then((config) => { if (active) clientTyping.current = config.client_typing; }).catch(() => {});
     const lease = acquirePusherChannel(`private-chat.conversation.${conversationId}`);
-    const received = async (event) => {
-      if (!active || Number(event.conversation_id) !== Number(conversationId)) return;
-      try {
-        const message = event.requires_fetch ? await chatService.message(event.id) : event;
-        if (!active) return;
-        ingest([message]);
-        if (message.sender_user_id !== user.id) void markRead();
-      } catch (failure) { if (active) setError(chatError(failure)); }
-    };
-    const read = (event) => {
-      if (Number(event.conversation_id) === Number(conversationId)) mergeReceipts([{ user_id: event.read_by_user_id, last_read_message_id: event.last_read_message_id }]);
-    };
-    const reacted = (event) => {
-      if (Number(event.conversation_id) !== Number(conversationId)) return;
-      const previous = reactionPatches.current.get(event.message_id);
-      if (previous && previous.revision > event.revision) return;
-      reactionPatches.current.set(event.message_id, event);
-      setMessages((current) => current.map((message) => applyReaction(message, event)));
-    };
+    channelRef.current = lease?.channel || null;
     const typing = (event) => {
       const id = Number(event.user_id);
       if (!id || id === Number(user.id) || !active || !memberIds.current.has(id)) return;
-      clearTimeout(typingTimers.current.get(id));
+      clearTimeout(timers.get(id));
       setTypingIds((current) => [...new Set([...current, id])]);
-      typingTimers.current.set(id, setTimeout(() => { if (active) setTypingIds((current) => current.filter((value) => value !== id)); }, 5000));
+      timers.set(id, setTimeout(() => { if (active) setTypingIds((current) => current.filter((value) => value !== id)); }, 5000));
     };
-    channelRef.current = lease?.channel || null;
-    const handlers = { 'message.sent': received, 'message.read': read, 'message.reacted': reacted,
-      'message.typing': typing, 'client-typing': typing, 'pusher:subscription_succeeded': resync };
+    const handlers = { 'message.typing': typing, 'client-typing': typing };
     Object.entries(handlers).forEach(([name, handler]) => lease?.channel.bind(name, handler));
-    const focus = () => { if (document.visibilityState === 'visible') { void resync(); void markRead(); } };
-    document.addEventListener('visibilitychange', focus);
-    window.addEventListener('focus', focus);
-    const timers = typingTimers.current;
     return () => {
-      active = false; activeRef.current = false;
+      active = false;
       Object.entries(handlers).forEach(([name, handler]) => lease?.channel.unbind(name, handler));
       lease?.release(); channelRef.current = null;
       timers.forEach(clearTimeout); timers.clear();
-      document.removeEventListener('visibilitychange', focus);
-      window.removeEventListener('focus', focus);
     };
-  }, [conversationId, user?.id, token, ingest, mergeReceipts, upsert]);
+  }, [conversationId, user?.id, token]);
+
+  // Shared-media cache lives in the store so the details panel never refetches what it already has.
+  const getMedia = useCallback((type) => threads.getMedia(conversationId, type), [threads, conversationId]);
+  const setMedia = useCallback((type, data, version) => threads.setMedia(conversationId, type, data, version), [threads, conversationId]);
+  const invalidateMedia = useCallback(() => threads.invalidateMedia(conversationId), [threads, conversationId]);
 
   const send = async (payload, clientId = crypto.randomUUID()) => {
     const optimistic = { id: `local:${clientId}`, client_id: clientId, conversation_id: conversationId, sender_user_id: user.id,
       sender: { id: user.id, name: user.name, avatar_url: user.avatar }, body: payload.body || '', metadata: payload.metadata || {},
       attachments: [], reactions: [], revision: 0, sent_at: new Date().toISOString(), pending: true };
-    retries.current.set(clientId, payload);
-    ingest([optimistic]);
+    threads.rememberRetry(conversationId, clientId, payload);
+    threads.ingest(conversationId, [optimistic]);
     try {
       const response = await chatService.send(conversationId, { ...payload, client_id: clientId });
-      if (activeRef.current) { ingest([{ ...response.data, pending: false, failed: false }]); void readRef.current?.(); }
+      threads.ingest(conversationId, [{ ...response.data, pending: false, failed: false }]);
+      threads.setError(conversationId, '');
       return response;
     } catch (failure) {
-      if (activeRef.current) {
-        setMessages((current) => current.map((message) => message.client_id === clientId && typeof message.id !== 'number' ? { ...message, pending: false, failed: true } : message));
-        setError(chatError(failure));
-      }
+      threads.markFailed(conversationId, clientId);
+      threads.setError(conversationId, chatError(failure));
       throw failure;
     }
   };
 
-  const currentReceipts = { ...receipts };
-  conversations.find((item) => Number(item.id) === Number(conversationId))?.read_receipts?.forEach((item) => {
-    currentReceipts[item.user_id] = Math.max(currentReceipts[item.user_id] || 0, Number(item.last_read_message_id));
-  });
-  return { messages, detail, loading, error, hasOlder, typingIds, receipts: currentReceipts,
-    setAtEnd: (value) => { atEnd.current = value; if (value) void readRef.current?.(); },
+  return { messages: snap.messages, detail: snap.detail, loading: snap.loading, error: snap.error, hasOlder: snap.hasOlder, typingIds, receipts: currentReceipts,
+    mediaVersion: snap.mediaVersion, getMedia, setMedia, invalidateMedia,
+    getNotes: (fallback) => threads.getNotes(conversationId, fallback),
+    setNotes: (notes) => threads.setNotes(conversationId, notes),
+    setAtEnd: (value) => { atEnd.current = value; if (value) void markRead(); },
     send,
-    retryMessage: (message) => { const payload = retries.current.get(message.client_id); return payload ? send(payload, message.client_id) : Promise.resolve(); },
-    refresh: () => resyncRef.current?.(),
-    loadOlder: async () => {
-      if (!oldestId.current) return;
-      try {
-        const response = await chatService.messages(conversationId, { before_id: oldestId.current });
-        if (activeRef.current) { ingest(response.data); setHasOlder(response.meta.has_more); }
-      } catch (failure) { if (activeRef.current) setError(chatError(failure)); }
-    },
+    retryMessage: (message) => { const payload = threads.getRetry(conversationId, message.client_id); return payload ? send(payload, message.client_id) : Promise.resolve(); },
+    refresh: () => threads.refresh(conversationId),
+    loadOlder: () => threads.loadOlder(conversationId),
     react: async (message, emoji) => {
-      try {
-        const event = await chatService.react(message.id, emoji);
-        if (activeRef.current) {
-          reactionPatches.current.set(event.message_id, event);
-          setMessages((current) => current.map((item) => applyReaction(item, event)));
-        }
-      } catch (failure) { if (activeRef.current) setError(chatError(failure)); }
+      try { threads.reacted(conversationId, await chatService.react(message.id, emoji)); }
+      catch (failure) { threads.setError(conversationId, chatError(failure)); }
     },
     sendTyping: () => {
       if (Date.now() - typingSentAt.current < 2100) return;

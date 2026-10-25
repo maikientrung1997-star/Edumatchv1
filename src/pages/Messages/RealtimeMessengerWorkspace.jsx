@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, FileText, Info, ListFilter, MailOpen, MapPin, Plus, RefreshCw, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, FileText, Info, ListFilter, MailOpen, MapPin, Plus, Search, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
@@ -49,29 +49,37 @@ function GroupDialog({ onClose, onCreated }) {
   </Modal>;
 }
 
-function SharedMedia({ conversationId, onPreview, refreshKey }) {
+/**
+ * Shared images/files. Mounted only while the details panel is visible, and served from the thread store's
+ * cache until a new attachment arrives (`version` changes) or the user presses refresh.
+ */
+function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia }) {
   const [type, setType] = useState('image');
-  const [result, setResult] = useState({ type: '', items: [], more: false, before: null });
   const [error, setError] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
+  const [, rerender] = useReducer((count) => count + 1, 0);
+  const data = getMedia(type);
   useEffect(() => {
+    if (getMedia(type)) return;
     let active = true;
     chatService.media(conversationId, { type }).then((response) => {
-      if (active) setResult({ type, items: response.data, more: response.meta.has_more, before: response.meta.before_id });
+      setMedia(type, { items: response.data, more: response.meta.has_more, before: response.meta.before_id }, version);
+      if (active) rerender();
     }).catch((failure) => { if (active) setError(chatError(failure)); });
     return () => { active = false; };
-  }, [conversationId, type, refreshKey]);
+  }, [conversationId, type, version, getMedia, setMedia]);
   const more = async () => {
-    if (loadingMore) return;
+    if (loadingMore || !data) return;
     setLoadingMore(true);
     try {
-      const response = await chatService.media(conversationId, { type, before_id: result.before });
-      setResult((current) => ({ type, items: [...current.items, ...response.data], more: response.meta.has_more, before: response.meta.before_id }));
+      const response = await chatService.media(conversationId, { type, before_id: data.before });
+      setMedia(type, { items: [...data.items, ...response.data], more: response.meta.has_more, before: response.meta.before_id }, version);
+      rerender();
     } catch (failure) { setError(chatError(failure)); }
     finally { setLoadingMore(false); }
   };
   return <section className="em-detail-section"><h3>Ảnh & tệp đã chia sẻ</h3><div className="em-tabs"><button type="button" className={type === 'image' ? 'is-active' : ''} onClick={() => setType('image')}>Ảnh</button><button type="button" className={type === 'file' ? 'is-active' : ''} onClick={() => setType('file')}>File</button></div>
-    {result.type === type ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{result.items.map((item) => <ChatAttachmentView key={item.id} attachment={item} compact onPreview={onPreview}/>)}</div>{!result.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{result.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <p className="em-muted">Đang tải...</p>}
+    {data ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{data.items.map((item) => <ChatAttachmentView key={item.id} attachment={item} compact onPreview={onPreview}/>)}</div>{!data.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{data.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <p className="em-muted">Đang tải...</p>}
     {error && <p className="em-error" role="alert">{error}</p>}
   </section>;
 }
@@ -84,13 +92,25 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo }) {
   const partner = detail?.partner;
   const onlineNow = partner && presenceReady && online.has(String(partner.id));
   const onlineText = !presenceReady ? 'Chưa rõ trạng thái' : onlineNow ? 'Đang hoạt động' : 'Ngoại tuyến';
-  const [mediaVersion, setMediaVersion] = useState(0);
-  const lastAttachment = thread.messages.filter((message) => message.attachments?.length).at(-1)?.id;
   return <>
     <section className="em-chat" aria-label={`Trò chuyện với ${detail?.name || 'người dùng'}`}>
       <div className="em-chat__head"><ChatIcon label="Quay lại danh sách hội thoại" onClick={onBack}><ChevronLeft size={23}/></ChatIcon><ChatAvatar person={partner} group={detail?.type === 'group'}/>
         <button type="button" className="em-chat__identity" onClick={onInfo}><h2>{detail?.name || 'Đang tải hội thoại...'}</h2><span>{detail?.type === 'group' ? `${detail.member_count} thành viên` : onlineText}</span></button>
-        <div className="em-chat__actions"><ChatIcon label="Thông tin hội thoại" aria-expanded={infoOpen} onClick={onInfo}><Info size={20}/></ChatIcon><ChatIcon label="Làm mới hội thoại" onClick={() => void thread.refresh()}><RefreshCw size={17}/></ChatIcon></div>
+        <div className="em-chat__actions">
+          <button
+            type="button"
+            className={`em-icon em-zalo-panel-btn ${infoOpen ? 'is-active' : ''}`}
+            aria-label={infoOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại'}
+            title={infoOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại'}
+            aria-expanded={infoOpen}
+            onClick={onInfo}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M15 3v18" />
+            </svg>
+          </button>
+        </div>
       </div>
       {thread.loading && <p className="em-thread-status" role="status">Đang tải lịch sử...</p>}
       {thread.error && <p className="em-error em-thread-status" role="alert">{thread.error}</p>}
@@ -100,7 +120,7 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo }) {
     {infoOpen && <button type="button" className="em-info-scrim" aria-label="Đóng thông tin hội thoại" onClick={onInfo}/>}
     <aside className="em-details" aria-label="Thông tin người học">
       <div className="em-details__top"><span>Thông tin hội thoại</span><ChatIcon label="Đóng thông tin" onClick={onInfo}><X size={20}/></ChatIcon></div>
-      {detail && <>
+      {detail && infoOpen && <>
         <div className="em-profile"><ChatAvatar person={partner} group={detail.type === 'group'} large/><div><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span></div></div>
         {partner && <><dl className="em-profile-facts"><div><Users size={19}/><dt className="sr-only">Vai trò</dt><dd>{chatRole(partner.role)}</dd></div>
           {partner.location && <div><MapPin size={19}/><dt className="sr-only">Khu vực</dt><dd>{partner.location}</dd></div>}
@@ -109,9 +129,8 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo }) {
           {partner.interests?.length > 0 && <div><dt>Mối quan tâm</dt><dd>{partner.interests.map((item) => [item.subject, item.level, item.goals].filter(Boolean).join(' · ')).join('; ')}</dd></div>}
         </dl>{partner.bio && <p className="em-real-bio">{partner.bio}</p>}{partner.profile_url && <div className="em-profile-actions"><Link to={partner.profile_url}>Xem hồ sơ</Link></div>}</>}
         {detail.type === 'group' && <section className="em-detail-section"><h3>Thành viên</h3><ul className="em-members">{detail.participants.map((member) => <li key={member.id}><ChatAvatar person={member}/><span>{member.name}<small>{chatRole(member.role)}{member.participant_role === 'admin' ? ' · Quản trị nhóm' : ''}</small></span></li>)}</ul></section>}
-        <button type="button" className="em-load-more" onClick={() => setMediaVersion((value) => value + 1)}>Làm mới tệp chia sẻ</button>
-        <SharedMedia conversationId={conversationId} refreshKey={`${lastAttachment}:${mediaVersion}`} onPreview={setPreview}/>
-        <PrivateChatNote conversationId={conversationId} initialNotes={detail.notes}/>
+        <SharedMedia conversationId={conversationId} version={thread.mediaVersion} getMedia={thread.getMedia} setMedia={thread.setMedia} onPreview={setPreview}/>
+        <PrivateChatNote conversationId={conversationId} initialNotes={thread.getNotes(detail.notes)} onSaved={thread.setNotes}/>
       </>}
     </aside>
     <ChatLightbox image={preview} onClose={() => setPreview(null)}/>
@@ -131,29 +150,25 @@ export function MessengerWorkspace() {
   const [filter, setFilter] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
-  const [result, setResult] = useState({ key: '', ids: [], page: 1, lastPage: 1 });
   const [people, setPeople] = useState({ query: '', items: [] });
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const key = `${q}:${unread}:${filter}`;
   const subscribeSize = useCallback((onChange) => {
     const media = window.matchMedia('(min-width: 768px)'); media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, []);
   const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
-  const { ingest, upsert } = chat;
+  const { upsert } = chat;
+  // The inbox is loaded once by ChatProvider and kept current by websocket events.
+  // Tabs, type filter and name search run on that in-memory list (no request); only looking up *new* people hits the API.
   useEffect(() => {
+    if (q.length < 2) return;
     let active = true;
-    const filters = { q, unread: unread ? 1 : undefined, type: filter || undefined };
-    chatService.conversations(filters).then((response) => {
-      if (!active) return;
-      ingest(response);
-      setResult({ key, ids: response.data.map((item) => item.id), page: response.meta.page, lastPage: response.meta.last_page });
-    }).catch((failure) => { if (active) setError(chatError(failure)); });
-    if (q.length >= 2) chatService.searchUsers(q).then((items) => { if (active) setPeople({ query: q, items }); }).catch((failure) => { if (active) setError(chatError(failure)); });
+    chatService.searchUsers(q).then((items) => { if (active) setPeople({ query: q, items }); }).catch((failure) => { if (active) setError(chatError(failure)); });
     return () => { active = false; };
-  }, [q, unread, filter, key, ingest, user?.id]);
+  }, [q]);
   const open = (conversation) => {
     upsert(conversation); setParams({ conversation: conversation.id }); setMobileView('chat'); setInfoOpen(false);
   };
@@ -165,17 +180,20 @@ export function MessengerWorkspace() {
     finally { setOpening(false); }
   };
   const more = async () => {
-    try {
-      const response = await chatService.conversations({ q, unread: unread ? 1 : undefined, type: filter || undefined, page: result.page + 1 });
-      ingest(response);
-      setResult((current) => ({ key, ids: [...current.ids, ...response.data.map((item) => item.id)], page: response.meta.page, lastPage: response.meta.last_page }));
-    } catch (failure) { setError(chatError(failure)); }
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try { await chat.loadMore(); }
+    catch (failure) { setError(chatError(failure)); }
+    finally { setLoadingMore(false); }
   };
+  const needle = q.toLocaleLowerCase('vi');
   const visible = chat.conversations.filter((item) => (!unread || item.unread_count > 0) && (!filter || item.type === filter)
-    && (!q || item.name.toLocaleLowerCase('vi').includes(q.toLocaleLowerCase('vi')) || (result.key === key && result.ids.includes(item.id))));
+    && (!needle || item.name?.toLocaleLowerCase('vi').includes(needle) || item.partner?.phone?.includes(q)));
   return <section className={`em-messenger ${mobileView === 'chat' ? 'em-messenger--chat' : ''} ${infoOpen ? 'em-messenger--info' : ''}`} aria-label="Tin nhắn EduMatch">
     <aside className="em-inbox" aria-label="Danh sách hội thoại">
-      <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div><span className="em-eyebrow">EDUMATCH CHAT</span><h1>Tin nhắn</h1></div><span className="em-count">{chat.counts.total}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
+      <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div>
+        {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
+        <h1>Tin nhắn</h1></div><span className="em-count">{chat.counts.total}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
       <div className="em-search-row"><label className="em-search"><Search size={17}/><input aria-label="Tìm kiếm người dùng" placeholder="Tên, email hoặc số điện thoại..." value={query} onChange={(event) => setQuery(event.target.value)} maxLength={150}/></label>
         <div className="em-filter"><button type="button" aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}><ListFilter size={17}/><span>Lọc theo</span></button>{filterOpen && <div className="em-filter__menu">{[['','Tất cả hội thoại'],['direct','Cá nhân'],['group','Nhóm học tập']].map(([value,label]) => <button type="button" key={value} aria-pressed={filter===value} onClick={() => { setFilter(value); setFilterOpen(false); }}>{label}</button>)}</div>}</div>
       </div>
@@ -185,11 +203,11 @@ export function MessengerWorkspace() {
       <div className="em-contacts">
         {q.length >= 2 && people.query === q && people.items.length > 0 && <section className="em-search-people"><h3>Người dùng hệ thống</h3>{people.items.map((person) => <button type="button" className="em-contact" key={person.id} disabled={opening} onClick={() => void openPerson(person)}><ChatAvatar person={person}/><span className="em-contact__copy"><strong>{person.name}</strong><span>{person.phone || chatRole(person.role)}</span><small>{person.conversation_id ? 'Mở lại hội thoại' : 'Bắt đầu trò chuyện'}</small></span><Plus size={16}/></button>)}</section>}
         {visible.map((conversation) => <button type="button" key={conversation.id} className={`em-contact ${selectedId === conversation.id ? 'is-selected' : ''}`} aria-pressed={selectedId === conversation.id} onClick={() => open(conversation)}><ChatAvatar person={conversation.partner} group={conversation.type === 'group'}/><span className="em-contact__copy"><strong>{conversation.name}</strong><span>{conversation.preview}</span></span><span className="em-contact__meta"><time>{chatTime(conversation.last_message_at)}</time>{conversation.unread_count > 0 && <b>{conversation.unread_count}</b>}</span></button>)}
-        {!visible.length && <div className="em-empty"><Search size={27}/><h3>{result.key === key ? 'Chưa có hội thoại phù hợp' : 'Đang tải hội thoại...'}</h3><p>Tìm người dùng theo tên hoặc số điện thoại để bắt đầu.</p></div>}
-        {result.key === key && result.page < result.lastPage && <button className="em-load-more" type="button" onClick={() => void more()}>Tải thêm hội thoại</button>}
+        {!visible.length && <div className="em-empty"><Search size={27}/><h3>{chat.loaded ? 'Chưa có hội thoại phù hợp' : 'Đang tải hội thoại...'}</h3><p>Tìm người dùng theo tên hoặc số điện thoại để bắt đầu.</p></div>}
+        {chat.page < chat.lastPage && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Tải thêm hội thoại</button>}
       </div>
     </aside>
     {selectedId && (wide || mobileView === 'chat') ? <ActiveThread key={`${user?.id}:${selectedId}`} conversationId={selectedId} theme={theme} onBack={() => setMobileView('list')} infoOpen={infoOpen} onInfo={() => setInfoOpen((value) => !value)}/> : <><section className="em-chat em-no-selection"><Users size={42}/><h2>Chọn một hội thoại</h2><p>Tìm kiếm và kết nối với người dùng EduMatch.</p></section><aside className="em-details em-no-selection"><Info size={30}/><p>Thông tin hội thoại sẽ xuất hiện tại đây.</p></aside></>}
-    {groupOpen && <GroupDialog onClose={() => setGroupOpen(false)} onCreated={(conversation) => { setGroupOpen(false); open(conversation); }}/ >}
+    {groupOpen && <GroupDialog onClose={() => setGroupOpen(false)} onCreated={(conversation) => { setGroupOpen(false); open(conversation); }}/>}
   </section>;
 }

@@ -9,7 +9,8 @@ const attachments = new Map();
 const sessionConfig = () => ({ headers: { Authorization: `Bearer ${storage.get(STORAGE_KEYS.ACCESS_TOKEN) || ''}` } });
 
 export const chatService = {
-  config: () => sharedGet('/chat/config', {}, { ttlMs: 60000 }),
+  // Server limits/feature flags rarely change: fetch once per session (cache is keyed by token).
+  config: () => sharedGet('/chat/config', {}, { ttlMs: 3600000 }),
   conversations: (params) => sharedGet('/chat/conversations', parameters(params)),
   conversation: (id) => sharedGet(`/chat/conversations/${id}`),
   openDirect: async (recipientId) => (await api.post('/chat/conversations', { recipient_id: Number(recipientId) }, sessionConfig())).data,

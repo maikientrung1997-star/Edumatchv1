@@ -1,14 +1,26 @@
 import { Fragment, lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Check, CheckCheck, Clock3, Download, FileText, Image, Paperclip, Send, Smile, Sigma, Users, X } from 'lucide-react';
+import { Check, CheckCheck, Clock3, Download, FileText, Image, Paperclip, Send, Smile, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { chatService, chatError, CHAT_FILE_ACCEPT, CHAT_REACTIONS } from '@/services/chatService';
 import { chatDay, chatTime } from '@/utils/chatState';
+import { STICKER_PACKS } from '@/constants/stickers';
 import { Modal } from '@/components/feedback/Modal';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
-const MathFormula = lazy(() => import('./MathFormula'));
+
+export function ZaloStickerIcon({ size = 20, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect width="18" height="18" x="3" y="3" rx="3.5" />
+      <circle cx="8.5" cy="9.5" r="1.2" fill="currentColor" />
+      <circle cx="15.5" cy="9.5" r="1.2" fill="currentColor" />
+      <path d="M8.5 14.2c.9 1.1 2.2 1.8 3.5 1.8s2.6-.7 3.5-1.8" />
+      <path d="M12 16c0 1.2.9 2 2 2s2-.8 2-2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
@@ -104,8 +116,17 @@ export function ChatHistory({ thread, onPreview, compact = false }) {
           <div className="em-message__body">
             {detail?.type === 'group' && !own && <small>{message.sender?.name}</small>}
             {message.metadata?.reply_to_id && <small>Trả lời tin nhắn #{message.metadata.reply_to_id}</small>}
-            {message.body && <div className="em-bubble">{message.body}</div>}
-            {message.metadata?.formula && <Suspense fallback={<pre>{message.metadata.formula}</pre>}><MathFormula formula={message.metadata.formula}/></Suspense>}
+            {message.metadata?.sticker ? (
+              <div className="em-sticker-msg" aria-label={`Nhãn dán: ${message.metadata.sticker.name}`}>
+                <div className="em-sticker-art">
+                  <span className="em-sticker-art__emoji">{message.metadata.sticker.emoji}</span>
+                  <span className="em-sticker-art__text">{message.metadata.sticker.text || message.metadata.sticker.name}</span>
+                </div>
+              </div>
+            ) : (
+              message.body && <div className="em-bubble">{message.body}</div>
+            )}
+            {message.metadata?.formula && <pre className="em-formula">{message.metadata.formula}</pre>}
             {message.attachments?.map((attachment) => <ChatAttachmentView key={attachment.id} attachment={attachment} onPreview={onPreview}/>)}
             <div className="em-message__foot">
               {message.reactions?.map((reaction) => <button type="button" key={reaction.emoji} className={`em-reaction ${reaction.user_ids.includes(Number(user.id)) ? 'is-active' : ''}`} aria-label={`Cảm xúc ${reaction.emoji}, ${reaction.count} người`} onClick={() => void react(message, reaction.emoji)}>{reaction.emoji} <span>{reaction.count}</span></button>)}
@@ -138,8 +159,8 @@ export function ChatComposer({ thread, theme = 'light' }) {
   const [body, setBody] = useState('');
   const [files, setFiles] = useState([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [formulaOpen, setFormulaOpen] = useState(false);
-  const [formula, setFormula] = useState('');
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [activePack, setActivePack] = useState('cute');
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const inputRef = useRef(null);
@@ -150,36 +171,101 @@ export function ChatComposer({ thread, theme = 'light' }) {
     if (selected.some((file) => file.size > 10485760)) { toast.error('Mỗi tệp tối đa 10 MB.'); return; }
     setFiles((current) => [...current, ...selected]);
   };
+
   const submit = async (event) => {
     event.preventDefault();
-    if (sendingRef.current || (!body.trim() && !files.length && !formula.trim())) return;
-    const payload = { body: body.trim(), files, metadata: formula.trim() ? { math: true, formula: formula.trim() } : undefined };
+    if (sendingRef.current || (!body.trim() && !files.length)) return;
+    const payload = { body: body.trim(), files };
     sendingRef.current = true; setSending(true);
-    setBody(''); setFiles([]); setFormula(''); setFormulaOpen(false); setEmojiOpen(false);
+    setBody(''); setFiles([]); setEmojiOpen(false); setStickerOpen(false);
     try {
       const response = await thread.send(payload);
       if (response.realtime_published === false) toast('Tin nhắn đã lưu. Realtime đang gián đoạn; đối phương có thể cần mở lại hội thoại.');
     } catch { /* The failed optimistic message retains a retry action. */ }
     finally { sendingRef.current = false; setSending(false); }
   };
+
+  const submitSticker = async (sticker) => {
+    setStickerOpen(false);
+    if (sendingRef.current) return;
+    const payload = {
+      body: `[Nhãn dán: ${sticker.name}]`,
+      metadata: {
+        sticker: {
+          id: sticker.id,
+          name: sticker.name,
+          emoji: sticker.emoji,
+          text: sticker.text,
+          category: activePack,
+        },
+      },
+    };
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      const response = await thread.send(payload);
+      if (response?.realtime_published === false) {
+        toast('Nhãn dán đã lưu. Realtime đang gián đoạn; đối phương có thể cần mở lại hội thoại.');
+      }
+    } catch { /* Retries preserved */ }
+    finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
+
   return <form className="em-composer" onSubmit={submit}>
     {files.map((file, index) => <PendingFile key={`${file.name}:${file.lastModified}:${index}`} file={file} remove={() => setFiles((current) => current.filter((_, position) => position !== index))}/>)}
-    {formulaOpen && <label className="em-formula-input">Công thức LaTeX<textarea aria-label="Công thức LaTeX" value={formula} onChange={(event) => setFormula(event.target.value)} maxLength={4000} placeholder={'Ví dụ: \\int x^2 dx = \\frac{x^3}{3} + C'}/></label>}
     <div className="em-composer__row"><div className="em-composer__field">
-      <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((value) => !value)}><Smile size={21}/></ChatIcon>
+      <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
         {emojiOpen && <div className="em-emoji-panel"><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme={theme} searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></div>}
       </div>
       <textarea ref={inputRef} aria-label="Nhập tin nhắn" placeholder="Nhập tin nhắn của bạn..." rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
+      <div className="em-sticker-anchor">
+        <ChatIcon label="Gửi nhãn dán" aria-expanded={stickerOpen} onClick={() => { setStickerOpen((value) => !value); setEmojiOpen(false); }}>
+          <ZaloStickerIcon size={20}/>
+        </ChatIcon>
+        {stickerOpen && (
+          <div className="em-sticker-panel">
+            <div className="em-sticker-tabs">
+              {STICKER_PACKS.map((pack) => (
+                <button
+                  type="button"
+                  key={pack.id}
+                  className={`em-sticker-tab ${activePack === pack.id ? 'is-active' : ''}`}
+                  onClick={() => setActivePack(pack.id)}
+                >
+                  <span>{pack.icon}</span> {pack.name}
+                </button>
+              ))}
+            </div>
+            <div className="em-sticker-grid">
+              {STICKER_PACKS.find((p) => p.id === activePack)?.stickers.map((sticker) => (
+                <button
+                  type="button"
+                  key={sticker.id}
+                  className="em-sticker-item"
+                  onClick={() => void submitSticker(sticker)}
+                  title={sticker.name}
+                >
+                  <span className="em-sticker-item__emoji">{sticker.emoji}</span>
+                  <span className="em-sticker-item__name">{sticker.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       <ChatIcon label="Chọn ảnh" onClick={() => { fileRef.current.accept = '.jpg,.jpeg,.png,.webp,.gif'; fileRef.current.click(); }}><Image size={20}/></ChatIcon>
       <ChatIcon label="Đính kèm tệp" onClick={() => { fileRef.current.accept = CHAT_FILE_ACCEPT; fileRef.current.click(); }}><Paperclip size={20}/></ChatIcon>
-      <ChatIcon label="Soạn công thức" aria-expanded={formulaOpen} onClick={() => setFormulaOpen((value) => !value)}><Sigma size={19}/></ChatIcon>
       <input type="file" hidden ref={fileRef} multiple accept={CHAT_FILE_ACCEPT} onChange={chooseFiles}/>
-    </div><button className="em-send" type="submit" disabled={sending || (!body.trim() && !files.length && !formula.trim())} aria-label="Gửi tin nhắn"><Send size={20}/></button></div>
-    {/* <p className="em-composer__hint">Enter để gửi · Shift+Enter xuống dòng · Tối đa 3 tệp, mỗi tệp 10 MB</p> */}
+    </div><button className="em-send" type="submit" disabled={sending || (!body.trim() && !files.length)} aria-label="Gửi tin nhắn"><Send size={20}/></button></div>
   </form>;
 }
 
-export function PrivateChatNote({ conversationId, initialNotes = '' }) {
+export function PrivateChatNote({ conversationId, initialNotes = '', onSaved }) {
+  const savedCallback = useRef(onSaved);
+  useEffect(() => { savedCallback.current = onSaved; });
   const { token } = useAuth();
   const noteSession = useRef(token);
   const [notes, setNotes] = useState(initialNotes);
@@ -190,7 +276,7 @@ export function PrivateChatNote({ conversationId, initialNotes = '' }) {
   const retrySave = async () => {
     const value = latest.current;
     submitted.current = value; setStatus('saving');
-    try { await chatService.saveNote(conversationId, value, noteSession.current); saved.current = value; if (latest.current === value) setStatus('saved'); }
+    try { await chatService.saveNote(conversationId, value, noteSession.current); saved.current = value; savedCallback.current?.(value); if (latest.current === value) setStatus('saved'); }
     catch { setStatus('error'); }
   };
   useEffect(() => {
@@ -200,13 +286,13 @@ export function PrivateChatNote({ conversationId, initialNotes = '' }) {
     const timer = setTimeout(() => {
       submitted.current = notes;
       setStatus('saving');
-      chatService.saveNote(conversationId, notes, noteSession.current).then(() => { saved.current = notes; if (active) setStatus('saved'); })
+      chatService.saveNote(conversationId, notes, noteSession.current).then(() => { saved.current = notes; savedCallback.current?.(notes); if (active) setStatus('saved'); })
         .catch(() => { if (active) setStatus('error'); });
     }, 800);
     return () => { active = false; clearTimeout(timer); };
   }, [notes, conversationId]);
   useEffect(() => () => {
-    if (latest.current !== saved.current && latest.current !== submitted.current) void chatService.saveNote(conversationId, latest.current, noteSession.current).catch(() => {});
+    if (latest.current !== saved.current && latest.current !== submitted.current) { savedCallback.current?.(latest.current); void chatService.saveNote(conversationId, latest.current, noteSession.current).catch(() => {}); }
   }, [conversationId]);
   return <section className="em-detail-section em-notes"><h3>Ghi chú cá nhân</h3><label><FileText size={18}/><textarea aria-label="Ghi chú về người học" placeholder="Chỉ bạn xem được ghi chú này..." rows={3} maxLength={10000} value={notes} onChange={(event) => { setNotes(event.target.value); setStatus('dirty'); }}/></label>
     <small role="status">{({saved:'Đã lưu · Chỉ mình bạn',saving:'Đang lưu...',dirty:'Đang chờ lưu...',error:'Chưa lưu được ghi chú.'})[status]}</small>{status === 'error' && <button type="button" onClick={() => void retrySave()}>Thử lưu lại</button>}

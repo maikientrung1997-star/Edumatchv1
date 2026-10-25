@@ -10,7 +10,11 @@ const authEndpoint = import.meta.env.VITE_PUSHER_AUTH_ENDPOINT || `${apiBaseUrl.
 
 let client = null;
 let clientToken = null;
-const channelPool = createPusherChannelPool(() => getPusherClient());
+// Conversation channels stay subscribed briefly after being left, so flipping between chats does not re-authorize them.
+const CONVERSATION_CHANNEL_GRACE_MS = 30000;
+const channelPool = createPusherChannelPool(() => getPusherClient(), {
+  graceMs: (name) => (name.startsWith('private-chat.conversation.') ? CONVERSATION_CHANNEL_GRACE_MS : 0),
+});
 const enabledTransports = ['ws', 'wss'];
 
 export const pusherConfiguration = () => ({ appKey, cluster, authEndpoint, enabledTransports });

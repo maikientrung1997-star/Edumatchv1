@@ -6,6 +6,7 @@ import { ROUTES } from "@/constants/routes";
 import { useAuth } from "@/hooks/useAuth";
 import { Modal } from "@/components/feedback/Modal";
 import { RegistrationOtpModal } from "@/components/auth/RegistrationOtpModal";
+import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { authService } from "@/services/authService";
 import { requestError } from "@/utils/formErrors";
 import {
@@ -130,6 +131,8 @@ export function Register() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const busy = loading || socialLoading;
   const [otpSession, setOtpSession] = useState(null);
   const requestInProgress = useRef(false);
   const [showTeacherTerms, setShowTeacherTerms] = useState(false);
@@ -180,7 +183,7 @@ export function Register() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (loading) return;
+    if (busy) return;
     const nextErrors = validateRegistration(form, role);
     setErrors(nextErrors);
     setFormError("");
@@ -265,7 +268,7 @@ export function Register() {
             <p>{content.description}</p>
           </div>
 
-          <fieldset className="register-roles" disabled={loading}>
+          <fieldset className="register-roles" disabled={busy}>
             <legend className="register-sr-only">Vai trò tài khoản</legend>
             {registrationRoles.map(
               ({ value, label, accessibleLabel, icon: Icon }) => (
@@ -293,9 +296,9 @@ export function Register() {
             onSubmit={handleSubmit}
             className="register-form"
             noValidate
-            aria-busy={loading}
+            aria-busy={busy}
           >
-            <fieldset className="register-fields" disabled={loading}>
+            <fieldset className="register-fields" disabled={busy}>
               <legend className="register-sr-only">Thông tin tài khoản</legend>
               {fields.map(
                 ({
@@ -401,7 +404,7 @@ export function Register() {
             {(role === "teacher" || role === "center") && (
               <fieldset
                 className="register-fields"
-                disabled={loading}
+                disabled={busy}
               >
                 <legend className="register-sr-only">
                   {role === "teacher"
@@ -431,11 +434,18 @@ export function Register() {
             <button
               type="submit"
               className="register-submit"
-              disabled={loading}
+              disabled={busy}
             >
               {loading ? "Đang xử lý..." : "Đăng ký"}
             </button>
           </form>
+          <SocialAuthButtons
+            mode="register"
+            role={role}
+            disabled={loading || Boolean(otpSession) || showTeacherTerms}
+            onBusyChange={setSocialLoading}
+            onSuccess={(result) => navigate(result.data?.is_new_user && result.user.role === 'student' ? ROUTES.STUDENT_WELCOME : ROUTES.HOME, { replace: true })}
+          />
           <p className="register-login-copy">
             Đã có tài khoản? <Link to={ROUTES.LOGIN}>Đăng nhập ngay</Link>
           </p>

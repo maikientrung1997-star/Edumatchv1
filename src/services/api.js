@@ -47,7 +47,7 @@ api.interceptors.response.use(
       const { status } = error.response;
 
       // 401: Unauthorized - Token hết hạn hoặc không hợp lệ
-      const isSignIn = /\/auth\/(login|register)$/.test(error.config?.url || '');
+      const isSignIn = /\/auth\/(login|register|google)(?:\/challenge)?$/.test(error.config?.url || '');
       const currentToken = storage.get(STORAGE_KEYS.ACCESS_TOKEN);
       const isCurrentSession = currentToken && error.config?.headers?.Authorization === `Bearer ${currentToken}`;
       if (status === 401 && !isSignIn && isCurrentSession) {

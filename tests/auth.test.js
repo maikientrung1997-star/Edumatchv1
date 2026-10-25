@@ -97,6 +97,28 @@ test('registration persists the server session before welcome navigation', async
   assert.equal(JSON.parse(values.get('access_token')), '2|registered-token');
 });
 
+test('Google exchanges credential nonce and selected role and persists only the EduMatch session', async () => {
+  respond({ token: '4|google-session', user: { id: 4, role: 'teacher', avatar_url: 'https://lh3.googleusercontent.com/me.jpg' }, is_new_user: true }, (config) => {
+    assert.equal(config.url, '/auth/google');
+    assert.deepEqual(JSON.parse(config.data), { credential: 'signed-google-jwt', nonce: 'single-use-nonce', role: 'teacher' });
+  });
+  const result = await authService.googleLogin({ credential: 'signed-google-jwt', nonce: 'single-use-nonce', role: 'teacher' });
+  assert.equal(result.is_new_user, true);
+  assert.equal(result.user.avatar, 'https://lh3.googleusercontent.com/me.jpg');
+  assert.equal(JSON.parse(values.get('access_token')), '4|google-session');
+  assert.equal([...values.values()].some((value) => value.includes('signed-google-jwt')), false);
+});
+
+test('invalid Google credential does not clear another current session or create a fake one', async () => {
+  reject(401, { message: 'Google credential rejected' });
+  await assert.rejects(authService.googleLogin({ credential: 'invalid' }));
+  assert.equal(values.size, 0);
+  values.set('access_token', JSON.stringify('existing-session'));
+  values.set('user_info', JSON.stringify({ id: 9 }));
+  await assert.rejects(authService.googleLogin({ credential: 'invalid' }));
+  assert.equal(JSON.parse(values.get('access_token')), 'existing-session');
+});
+
 test('401, 403, 422 and network errors are propagated without a mock session', async () => {
   for (const status of [401, 403, 422, null]) {
     reject(status, { errors: { phone: ['Trùng'] } });

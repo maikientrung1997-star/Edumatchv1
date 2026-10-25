@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolveChatAvatarUrl } from '../src/utils/chatAvatar.js';
 import { after, before, beforeEach, test } from 'node:test';
 import { createServer } from 'vite';
 
@@ -153,4 +154,15 @@ test('history reads are coalesced and use server cursors', async () => {
   api.defaults.adapter = async (config) => { calls++; assert.deepEqual(config.params, { before_id: 50 }); return response(config, { data: [], meta: { has_more: false } }); };
   await Promise.all([chatService.messages(8, { before_id: 50 }), chatService.messages(8, { before_id: 50 })]);
   assert.equal(calls, 1);
+});
+
+test('chat avatars use a CORS-enabled public endpoint while external and private image URLs are untouched', () => {
+  const base = 'http://127.0.0.1:8000/api';
+  assert.equal(resolveChatAvatarUrl('http://127.0.0.1:8000/storage/avatars/photo.png', base), `${base}/media/avatars/photo.png`);
+  assert.equal(resolveChatAvatarUrl('http://localhost:8000/storage/avatars/photo.png?v=2', base), `${base}/media/avatars/photo.png?v=2`);
+  assert.equal(resolveChatAvatarUrl('/storage/avatars/photo.png', base), `${base}/media/avatars/photo.png`);
+  for (const source of ['https://lh3.googleusercontent.com/a/photo', 'https://other.example/storage/avatars/photo.png', 'http://127.0.0.1:8017/storage/avatars/photo.png', '/storage/chat_attachments/private.png', 'data:image/png;base64,AA==', 'blob:http://localhost/id']) {
+    assert.equal(resolveChatAvatarUrl(source, base), source);
+  }
+  assert.equal(resolveChatAvatarUrl('', base), '');
 });

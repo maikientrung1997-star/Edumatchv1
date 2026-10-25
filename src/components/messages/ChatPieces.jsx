@@ -3,9 +3,10 @@ import { Check, CheckCheck, Clock3, Download, FileText, Image, Paperclip, Send, 
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
-import { chatService, chatError, CHAT_FILE_ACCEPT, CHAT_REACTIONS } from '@/services/chatService';
+import { chatService, chatError, chatAvatarUrl, CHAT_FILE_ACCEPT, CHAT_REACTIONS } from '@/services/chatService';
 import { chatDay, chatTime } from '@/utils/chatState';
 import { STICKER_PACKS } from '@/constants/stickers';
+import { ChatLoading } from './ChatLoading';
 import { Modal } from '@/components/feedback/Modal';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
@@ -24,8 +25,10 @@ export function ZaloStickerIcon({ size = 20, className = '' }) {
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
+  const source = chatAvatarUrl(person?.avatar_url || person?.avatar);
+  const [failedSource, setFailedSource] = useState(null);
   return <span className={`em-avatar ${large ? 'em-avatar--large' : ''} ${group ? 'em-avatar--group' : ''}`}>
-    {group ? <Users size={25}/> : person?.avatar_url ? <img src={person.avatar_url} alt={`Ảnh ${person.name}`} loading="lazy"/> : <span className="em-avatar__initial">{person?.name?.slice(0, 1)?.toUpperCase() || '?'}</span>}
+    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person.name}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <span className="em-avatar__initial">{person?.name?.slice(0, 1)?.toUpperCase() || '?'}</span>}
     {!group && presenceReady && online.has(String(person?.id)) && <i aria-label="Đang hoạt động"/>}
   </span>;
 }
@@ -65,7 +68,7 @@ export function ChatAttachmentView({ attachment, compact = false, onPreview }) {
     } catch (failure) { toast.error(chatError(failure)); }
   };
   if (image) return <button type="button" ref={containerRef} className={`em-real-image ${compact ? 'is-compact' : ''}`} onClick={() => url && onPreview?.({ url, name: attachment.file_name })} aria-label={`Xem ảnh ${attachment.file_name}`}>
-    {url ? <img src={url} alt={attachment.file_name}/> : <span>{error ? 'Không tải được ảnh' : 'Đang tải ảnh...'}</span>}
+    {url ? <img src={url} alt={attachment.file_name}/> : <span className={`em-image-placeholder ${error ? 'is-error' : 'em-skeleton'}`}><Image size={20}/><span className={error ? '' : 'sr-only'}>{error ? 'Không tải được ảnh' : 'Đang tải ảnh...'}</span></span>}
   </button>;
   return <button type="button" className="em-file" onClick={download}><FileText size={23}/><span><strong>{attachment.file_name}</strong><small>{Math.max(1, Math.ceil(attachment.file_size / 1024))} KB</small></span><Download size={17}/></button>;
 }
@@ -100,8 +103,9 @@ export function ChatHistory({ thread, onPreview, compact = false }) {
     requestAnimationFrame(() => { if (element?.isConnected) element.scrollTop += element.scrollHeight - previousHeight; });
     setLoadingOlder(false);
   };
-  return <div className={`em-history ${compact ? 'em-history--compact' : ''}`} ref={historyRef} role="log" aria-label="Nội dung trò chuyện" onScroll={(event) => { const el = event.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; thread.setAtEnd(pinned.current); }}>
+  return <div className={`em-history ${compact ? 'em-history--compact' : ''}`} ref={historyRef} role="log" aria-label="Nội dung trò chuyện" aria-busy={thread.loading} onScroll={(event) => { const el = event.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; thread.setAtEnd(pinned.current); }}>
     <div className="em-history__content" ref={contentRef}>
+    {thread.loading && !messages.length && <ChatLoading variant="messages"/>}
     {hasOlder && <button type="button" className="em-load-more" onClick={older} disabled={loadingOlder}>{loadingOlder ? 'Đang tải...' : 'Tải tin nhắn trước'}</button>}
     {!messages.length && !thread.loading && <div className="em-empty"><h3>Bắt đầu cuộc trò chuyện</h3><p>Gửi một lời chào hoặc chia sẻ tài liệu học tập.</p></div>}
     {messages.map((message, index) => {

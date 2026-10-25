@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, FileText, Info, ListFilter, MailOpen, MapPin, Plus, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ChevronLeft, FileText, Image as ImageIcon, ListFilter, MailOpen, MapPin, MessageCircle, PanelRight, Phone, Plus, Search, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +11,7 @@ import { chatService, chatError, chatRole } from '@/services/chatService';
 import { chatTime } from '@/utils/chatState';
 import { Modal } from '@/components/feedback/Modal';
 import { ChatAttachmentView, ChatAvatar, ChatComposer, ChatHistory, ChatIcon, ChatLightbox, PrivateChatNote } from '@/components/messages/ChatPieces';
+import { ChatHeaderLoading, ChatLoading } from '@/components/messages/ChatLoading';
 import './messenger-workspace.css';
 import './realtime-chat.css';
 
@@ -78,8 +79,8 @@ function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia })
     } catch (failure) { setError(chatError(failure)); }
     finally { setLoadingMore(false); }
   };
-  return <section className="em-detail-section"><h3>Ảnh & tệp đã chia sẻ</h3><div className="em-tabs"><button type="button" className={type === 'image' ? 'is-active' : ''} onClick={() => setType('image')}>Ảnh</button><button type="button" className={type === 'file' ? 'is-active' : ''} onClick={() => setType('file')}>File</button></div>
-    {data ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{data.items.map((item) => <ChatAttachmentView key={item.id} attachment={item} compact onPreview={onPreview}/>)}</div>{!data.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{data.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <p className="em-muted">Đang tải...</p>}
+  return <section className="em-detail-section em-shared-section"><h3><ImageIcon size={18}/>Ảnh & tệp đã chia sẻ</h3><div className="em-tabs"><button type="button" className={type === 'image' ? 'is-active' : ''} onClick={() => setType('image')}>Ảnh</button><button type="button" className={type === 'file' ? 'is-active' : ''} onClick={() => setType('file')}>File</button></div>
+    {data ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{data.items.map((item) => <ChatAttachmentView key={item.id} attachment={item} compact onPreview={onPreview}/>)}</div>{!data.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{data.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <ChatLoading variant={type === 'image' ? 'media' : 'files'}/>}
     {error && <p className="em-error" role="alert">{error}</p>}
   </section>;
 }
@@ -94,8 +95,7 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo }) {
   const onlineText = !presenceReady ? 'Chưa rõ trạng thái' : onlineNow ? 'Đang hoạt động' : 'Ngoại tuyến';
   return <>
     <section className="em-chat" aria-label={`Trò chuyện với ${detail?.name || 'người dùng'}`}>
-      <div className="em-chat__head"><ChatIcon label="Quay lại danh sách hội thoại" onClick={onBack}><ChevronLeft size={23}/></ChatIcon><ChatAvatar person={partner} group={detail?.type === 'group'}/>
-        <button type="button" className="em-chat__identity" onClick={onInfo}><h2>{detail?.name || 'Đang tải hội thoại...'}</h2><span>{detail?.type === 'group' ? `${detail.member_count} thành viên` : onlineText}</span></button>
+      <div className="em-chat__head"><ChatIcon label="Quay lại danh sách hội thoại" onClick={onBack}><ChevronLeft size={23}/></ChatIcon>{detail ? <><ChatAvatar person={partner} group={detail.type === 'group'}/><button type="button" className="em-chat__identity" onClick={onInfo}><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : onlineText}</span></button></> : <ChatHeaderLoading/>}
         <div className="em-chat__actions">
           <button
             type="button"
@@ -105,33 +105,35 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo }) {
             aria-expanded={infoOpen}
             onClick={onInfo}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect width="18" height="18" x="3" y="3" rx="2" />
-              <path d="M15 3v18" />
-            </svg>
+            <PanelRight size={20}/>
           </button>
         </div>
       </div>
-      {thread.loading && <p className="em-thread-status" role="status">Đang tải lịch sử...</p>}
       {thread.error && <p className="em-error em-thread-status" role="alert">{thread.error}</p>}
       <ChatHistory thread={thread} onPreview={setPreview}/>
       {detail && <ChatComposer thread={thread} theme={theme}/>}
     </section>
     {infoOpen && <button type="button" className="em-info-scrim" aria-label="Đóng thông tin hội thoại" onClick={onInfo}/>}
     <aside className="em-details" aria-label="Thông tin người học">
-      <div className="em-details__top"><span>Thông tin hội thoại</span><ChatIcon label="Đóng thông tin" onClick={onInfo}><X size={20}/></ChatIcon></div>
-      {detail && infoOpen && <>
-        <div className="em-profile"><ChatAvatar person={partner} group={detail.type === 'group'} large/><div><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span></div></div>
-        {partner && <><dl className="em-profile-facts"><div><Users size={19}/><dt className="sr-only">Vai trò</dt><dd>{chatRole(partner.role)}</dd></div>
-          {partner.location && <div><MapPin size={19}/><dt className="sr-only">Khu vực</dt><dd>{partner.location}</dd></div>}
-          {partner.headline && <div><FileText size={19}/><dt className="sr-only">Giới thiệu chuyên môn</dt><dd>{partner.headline}</dd></div>}
-          {partner.phone && <div><dt>Số điện thoại</dt><dd><a href={`tel:${partner.phone}`}>{partner.phone}</a></dd></div>}
-          {partner.interests?.length > 0 && <div><dt>Mối quan tâm</dt><dd>{partner.interests.map((item) => [item.subject, item.level, item.goals].filter(Boolean).join(' · ')).join('; ')}</dd></div>}
-        </dl>{partner.bio && <p className="em-real-bio">{partner.bio}</p>}{partner.profile_url && <div className="em-profile-actions"><Link to={partner.profile_url}>Xem hồ sơ</Link></div>}</>}
+      <div className="em-details__top"><h2>Thông tin hội thoại</h2><ChatIcon label="Đóng thông tin" onClick={onInfo}><X size={20}/></ChatIcon></div>
+      {infoOpen && !detail && <div className="em-details__content"><ChatLoading variant="details"/></div>}
+      {detail && infoOpen && <div className="em-details__content">
+        <div className="em-profile"><ChatAvatar person={partner} group={detail.type === 'group'} large/><div className="em-profile__identity"><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span></div></div>
+        {partner && <>
+          <dl className="em-profile-facts">
+            <div><Users size={18}/><dt>Vai trò</dt><dd>{chatRole(partner.role)}</dd></div>
+            {partner.location && <div><MapPin size={18}/><dt>Khu vực</dt><dd>{partner.location}</dd></div>}
+            {partner.headline && <div><FileText size={18}/><dt>Chuyên môn</dt><dd>{partner.headline}</dd></div>}
+            {partner.phone && <div><Phone size={18}/><dt>Số điện thoại</dt><dd><a href={`tel:${partner.phone}`}>{partner.phone}</a></dd></div>}
+            {partner.interests?.length > 0 && <div><MessageCircle size={18}/><dt>Mối quan tâm</dt><dd>{partner.interests.map((item) => [item.subject, item.level, item.goals].filter(Boolean).join(' · ')).join('; ')}</dd></div>}
+          </dl>
+          {partner.bio && <div className="em-profile-bio"><h3>Giới thiệu</h3><p className="em-real-bio">{partner.bio}</p></div>}
+          {partner.profile_url && <div className="em-profile-actions"><Link to={partner.profile_url}>Xem hồ sơ<ArrowUpRight size={17}/></Link></div>}
+        </>}
         {detail.type === 'group' && <section className="em-detail-section"><h3>Thành viên</h3><ul className="em-members">{detail.participants.map((member) => <li key={member.id}><ChatAvatar person={member}/><span>{member.name}<small>{chatRole(member.role)}{member.participant_role === 'admin' ? ' · Quản trị nhóm' : ''}</small></span></li>)}</ul></section>}
         <SharedMedia conversationId={conversationId} version={thread.mediaVersion} getMedia={thread.getMedia} setMedia={thread.setMedia} onPreview={setPreview}/>
         <PrivateChatNote conversationId={conversationId} initialNotes={thread.getNotes(detail.notes)} onSaved={thread.setNotes}/>
-      </>}
+      </div>}
     </aside>
     <ChatLightbox image={preview} onClose={() => setPreview(null)}/>
   </>;
@@ -193,21 +195,22 @@ export function MessengerWorkspace() {
     <aside className="em-inbox" aria-label="Danh sách hội thoại">
       <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div>
         {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
-        <h1>Tin nhắn</h1></div><span className="em-count">{chat.counts.total}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
+        <h1>Tin nhắn</h1></div><span className="em-count">{chat.loaded ? chat.counts.total : <span className="em-count-loading" aria-label="Đang tải số hội thoại"/>}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
       <div className="em-search-row"><label className="em-search"><Search size={17}/><input aria-label="Tìm kiếm người dùng" placeholder="Tên, email hoặc số điện thoại..." value={query} onChange={(event) => setQuery(event.target.value)} maxLength={150}/></label>
         <div className="em-filter"><button type="button" aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}><ListFilter size={17}/><span>Lọc theo</span></button>{filterOpen && <div className="em-filter__menu">{[['','Tất cả hội thoại'],['direct','Cá nhân'],['group','Nhóm học tập']].map(([value,label]) => <button type="button" key={value} aria-pressed={filter===value} onClick={() => { setFilter(value); setFilterOpen(false); }}>{label}</button>)}</div>}</div>
       </div>
-      <div className="em-tabs"><button type="button" className={!unread?'is-active':''} onClick={() => setUnread(false)}>Tất cả ({chat.counts.total})</button><button type="button" className={unread?'is-active':''} onClick={() => setUnread(true)}><MailOpen size={16}/>Chưa đọc ({chat.counts.unread})</button></div>
-      {chat.connection !== 'connected' && <p className="em-connection" role="status">{chat.connection === 'connecting' ? 'Đang kết nối realtime...' : 'Realtime chưa kết nối.'} <button type="button" onClick={() => void chat.refresh().catch((failure) => toast.error(chatError(failure)))}>Làm mới</button></p>}
+      <div className="em-tabs"><button type="button" className={!unread?'is-active':''} onClick={() => setUnread(false)}>{chat.loaded ? `Tất cả (${chat.counts.total})` : 'Tất cả'}</button><button type="button" className={unread?'is-active':''} onClick={() => setUnread(true)}><MailOpen size={16}/>{chat.loaded ? `Chưa đọc (${chat.counts.unread})` : 'Chưa đọc'}</button></div>
+      {chat.loaded && chat.connection !== 'connected' && <p className="em-connection" role="status">{chat.connection === 'connecting' ? 'Đang kết nối realtime...' : 'Realtime chưa kết nối.'} <button type="button" onClick={() => void chat.refresh().catch((failure) => toast.error(chatError(failure)))}>Làm mới</button></p>}
       {(error || chat.error) && <p className="em-error" role="alert">{error || chat.error}</p>}
-      <div className="em-contacts">
+      <div className="em-contacts" aria-busy={!chat.loaded}>
+        {!chat.loaded && !chat.conversations.length && !chat.error && <ChatLoading variant="inbox"/>}
         {q.length >= 2 && people.query === q && people.items.length > 0 && <section className="em-search-people"><h3>Người dùng hệ thống</h3>{people.items.map((person) => <button type="button" className="em-contact" key={person.id} disabled={opening} onClick={() => void openPerson(person)}><ChatAvatar person={person}/><span className="em-contact__copy"><strong>{person.name}</strong><span>{person.phone || chatRole(person.role)}</span><small>{person.conversation_id ? 'Mở lại hội thoại' : 'Bắt đầu trò chuyện'}</small></span><Plus size={16}/></button>)}</section>}
         {visible.map((conversation) => <button type="button" key={conversation.id} className={`em-contact ${selectedId === conversation.id ? 'is-selected' : ''}`} aria-pressed={selectedId === conversation.id} onClick={() => open(conversation)}><ChatAvatar person={conversation.partner} group={conversation.type === 'group'}/><span className="em-contact__copy"><strong>{conversation.name}</strong><span>{conversation.preview}</span></span><span className="em-contact__meta"><time>{chatTime(conversation.last_message_at)}</time>{conversation.unread_count > 0 && <b>{conversation.unread_count}</b>}</span></button>)}
-        {!visible.length && <div className="em-empty"><Search size={27}/><h3>{chat.loaded ? 'Chưa có hội thoại phù hợp' : 'Đang tải hội thoại...'}</h3><p>Tìm người dùng theo tên hoặc số điện thoại để bắt đầu.</p></div>}
+        {chat.loaded && !visible.length && <div className="em-empty"><Search size={27}/><h3>Chưa có hội thoại phù hợp</h3><p>Tìm người dùng theo tên hoặc số điện thoại để bắt đầu.</p></div>}
         {chat.page < chat.lastPage && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Tải thêm hội thoại</button>}
       </div>
     </aside>
-    {selectedId && (wide || mobileView === 'chat') ? <ActiveThread key={`${user?.id}:${selectedId}`} conversationId={selectedId} theme={theme} onBack={() => setMobileView('list')} infoOpen={infoOpen} onInfo={() => setInfoOpen((value) => !value)}/> : <><section className="em-chat em-no-selection"><Users size={42}/><h2>Chọn một hội thoại</h2><p>Tìm kiếm và kết nối với người dùng EduMatch.</p></section><aside className="em-details em-no-selection"><Info size={30}/><p>Thông tin hội thoại sẽ xuất hiện tại đây.</p></aside></>}
+    {selectedId && (wide || mobileView === 'chat') ? <ActiveThread key={`${user?.id}:${selectedId}`} conversationId={selectedId} theme={theme} onBack={() => setMobileView('list')} infoOpen={infoOpen} onInfo={() => setInfoOpen((value) => !value)}/> : <section className="em-chat em-no-selection em-welcome"><div className="em-welcome__mark" aria-hidden="true"><MessageCircle size={38} strokeWidth={1.5}/></div><h2>Cuộc trò chuyện của bạn</h2><p>Chọn một hội thoại hoặc tìm người dùng<br/>để bắt đầu kết nối trên EduMatch.</p><span className="em-welcome__hint"><Search size={14}/>Tìm kiếm theo tên, email hoặc số điện thoại</span></section>}
     {groupOpen && <GroupDialog onClose={() => setGroupOpen(false)} onCreated={(conversation) => { setGroupOpen(false); open(conversation); }}/>}
   </section>;
 }

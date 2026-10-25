@@ -1,4 +1,5 @@
 import api from './api';
+import { resolveChatAvatarUrl } from '@/utils/chatAvatar';
 import { sharedGet } from './sharedGet';
 import { storage } from '@/utils/storage';
 import { STORAGE_KEYS } from '@/constants/storageKeys';
@@ -73,3 +74,5 @@ export const CHAT_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '😡']
 export const CHAT_FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt';
 export const chatRole = (role) => ({ student: 'Học viên', teacher: 'Giáo viên', center: 'Trung tâm', admin: 'Quản trị viên', super_admin: 'Quản trị viên' }[role] || 'Người dùng');
 export const chatError = (error) => error.response?.status === 413 ? 'Tổng dung lượng tệp vượt giới hạn máy chủ.' : error.response?.data?.message || (error.chatMessage ? error.message : 'Chưa thể kết nối. Vui lòng thử lại.');
+
+export const chatAvatarUrl = (source) => resolveChatAvatarUrl(source, api.defaults.baseURL);

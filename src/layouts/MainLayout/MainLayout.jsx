@@ -31,7 +31,7 @@ export const MainLayout = () => {
   }, [pathname, hash]);
   const resolvedTheme = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
   return (
-    <div className="edu-site min-h-dvh flex flex-col" data-theme={resolvedTheme}>
+    <div className={`edu-site min-h-dvh flex flex-col${isMessaging ? ' edu-site--messaging' : ''}`} data-theme={resolvedTheme}>
       {!isMessaging && (
         <Header
           theme={resolvedTheme}

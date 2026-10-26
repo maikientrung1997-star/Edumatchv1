@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ROUTES } from '@/constants/routes';
 import { accountNotificationService } from '@/services/accountNotificationService';
 import { subscribeUserNotifications } from '@/services/pusherService';
@@ -272,9 +273,7 @@ export const Header = ({ theme, onToggleTheme }) => {
                         onError={() => setFailedAvatarKey(avatarKey)}
                       />
                     ) : (
-                      <span className="account-menu__avatar-fallback">
-                        {user?.name?.trim().slice(0, 1) || 'U'}
-                      </span>
+                      <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} size={16} /></span>
                     )}
                   </span>
                   <span className="account-menu__name">{user?.name}</span>
@@ -365,9 +364,7 @@ export const Header = ({ theme, onToggleTheme }) => {
                     onError={() => setFailedAvatarKey(avatarKey)}
                   />
                 ) : (
-                  <span className="account-menu__avatar-fallback">
-                    {user?.name?.trim().slice(0, 1) || 'U'}
-                  </span>
+                  <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} size={16} /></span>
                 )}
               </span>
               <span>Trang cá nhân ({user?.name})</span>

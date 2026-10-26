@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { storage } from '@/utils/storage';
 import { authService } from '@/services/authService';
 import { disconnectPusher } from '@/services/pusherService';
+import { syncPostAuthorProfile } from '@/features/learning/marketplace';
 
 export const AuthContext = createContext(null);
 
@@ -11,33 +12,55 @@ const withImageVersion = (source, version) => {
   return `${source}${String(source).includes('?') ? '&' : '?'}edumatch_image=${encodeURIComponent(version)}`;
 };
 
-// Ảnh bìa hiện được lưu ở phía giao diện, trong khi API hồ sơ có thể chưa trả
-// về trường này. Giữ lại ảnh cục bộ của đúng tài khoản khi làm mới phiên, thay
-// vì để phản hồi /auth/me vô tình xóa ảnh bìa người dùng vừa chọn.
+const getPersistedProfileVisuals = (userId) => {
+  if (userId == null) return {};
+  return storage.get(STORAGE_KEYS.PROFILE_VISUALS, {})?.[String(userId)] || {};
+};
+
+const persistProfileVisuals = (user) => {
+  if (user?.id == null) return;
+  const visualsByUser = storage.get(STORAGE_KEYS.PROFILE_VISUALS, {});
+  storage.set(STORAGE_KEYS.PROFILE_VISUALS, {
+    ...visualsByUser,
+    [String(user.id)]: {
+      avatar: user.avatar || '',
+      coverImage: user.coverImage || '',
+      avatarVersion: user.avatarVersion || undefined,
+    },
+  });
+};
+
+// API hồ sơ có thể chưa trả về ảnh bìa. Giữ một bản ảnh theo từng tài khoản để
+// việc đăng xuất không làm mất các ảnh người dùng đã chọn trên thiết bị này.
 const mergePersistedProfileVisuals = (remoteUser) => {
   const cachedUser = storage.get(STORAGE_KEYS.USER_INFO);
-  if (!cachedUser || String(cachedUser.id) !== String(remoteUser?.id)) return remoteUser;
+  if (!remoteUser?.id) return remoteUser;
 
-  const preferredAvatar =
-    (cachedUser.avatar && (!remoteUser?.avatar || cachedUser.avatar.startsWith('data:image/') || cachedUser.avatarVersion))
-      ? (cachedUser.avatarVersion && !cachedUser.avatar.startsWith('data:image/') && !cachedUser.avatar.startsWith('blob:')
-          ? withImageVersion(cachedUser.avatar, cachedUser.avatarVersion)
-          : cachedUser.avatar)
-      : (remoteUser?.avatar
-          ? (cachedUser.avatarVersion && !remoteUser.avatar.startsWith('data:image/') && !remoteUser.avatar.startsWith('blob:')
-              ? withImageVersion(remoteUser.avatar, cachedUser.avatarVersion)
-              : remoteUser.avatar)
-          : (cachedUser.avatar || ''));
+  const cachedVisuals = cachedUser && String(cachedUser.id) === String(remoteUser.id)
+    ? cachedUser
+    : {};
+  const persistedVisuals = getPersistedProfileVisuals(remoteUser.id);
+  const savedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const savedAvatarVersion = persistedVisuals.avatarVersion || cachedVisuals.avatarVersion;
+  const hasLocalAvatar = Boolean(savedAvatar) && (
+    savedAvatar.startsWith('data:image/') || savedAvatar.startsWith('blob:') || savedAvatarVersion
+  );
 
-  const preferredCoverImage = cachedUser.coverImage || remoteUser?.coverImage || '';
+  const preferredAvatar = hasLocalAvatar
+    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/') && !savedAvatar.startsWith('blob:')
+        ? withImageVersion(savedAvatar, savedAvatarVersion)
+        : savedAvatar)
+    : (remoteUser.avatar || savedAvatar);
+
+  const preferredCoverImage = persistedVisuals.coverImage || cachedVisuals.coverImage || remoteUser.coverImage || '';
 
   return {
     ...remoteUser,
     avatar: preferredAvatar,
     coverImage: preferredCoverImage,
-    avatarVersion: cachedUser.avatarVersion || remoteUser?.avatarVersion || undefined,
-    ...(!remoteUser?.phoneVisibilityProvided && typeof cachedUser.isPhonePublic === 'boolean'
-      ? { isPhonePublic: cachedUser.isPhonePublic }
+    avatarVersion: savedAvatarVersion || remoteUser.avatarVersion || undefined,
+    ...(!remoteUser.phoneVisibilityProvided && typeof cachedVisuals.isPhonePublic === 'boolean'
+      ? { isPhonePublic: cachedVisuals.isPhonePublic }
       : {}),
   };
 };
@@ -84,6 +107,7 @@ export const AuthProvider = ({ children }) => {
           const hydratedUser = mergePersistedProfileVisuals(response.user);
           setUser(hydratedUser);
           storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);
+          persistProfileVisuals(hydratedUser);
         }
       } catch {
         if (active && storage.get(STORAGE_KEYS.ACCESS_TOKEN) === savedToken) clearSession();
@@ -137,9 +161,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService[method](data);
+      const hydratedUser = mergePersistedProfileVisuals(response.user);
       setToken(response.token);
-      setUser(response.user);
-      return { success: true, user: response.user, data: response };
+      setUser(hydratedUser);
+      storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);
+      persistProfileVisuals(hydratedUser);
+      return { success: true, user: hydratedUser, data: response };
     } catch (error) {
       return authFailure(error, method === 'login' ? 'Đăng nhập không thành công.' : 'Không thể đăng ký tài khoản.');
     } finally {
@@ -194,6 +221,13 @@ export const AuthProvider = ({ children }) => {
         ...(nextAvatarVersion ? { avatarVersion: nextAvatarVersion } : {}),
       };
       storage.set(STORAGE_KEYS.USER_INFO, nextUser);
+      persistProfileVisuals(nextUser);
+      if (Object.prototype.hasOwnProperty.call(updates, 'avatar') || Object.prototype.hasOwnProperty.call(updates, 'name')) {
+        syncPostAuthorProfile(nextUser.id, {
+          ...(Object.prototype.hasOwnProperty.call(updates, 'avatar') ? { avatar: nextUser.avatar } : {}),
+          ...(Object.prototype.hasOwnProperty.call(updates, 'name') ? { name: nextUser.name } : {}),
+        });
+      }
       window.dispatchEvent(new CustomEvent('edumatch:user-updated', { detail: nextUser }));
       return nextUser;
     });

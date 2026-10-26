@@ -54,6 +54,20 @@ export function normalizeAuthUser(user) {
     user.student_profile?.avatar ||
     user.student_profile?.avatar_url ||
     '';
+  const rawCoverImage =
+    user.coverImage ||
+    user.cover_image ||
+    user.cover_url ||
+    user.banner ||
+    user.banner_url ||
+    profile.coverImage ||
+    profile.cover_image ||
+    profile.cover_url ||
+    user.center?.cover_image ||
+    user.center?.cover_url ||
+    user.teacher_profile?.cover_image ||
+    user.teacher_profile?.cover_url ||
+    '';
 
   return {
     ...user,
@@ -61,6 +75,7 @@ export function normalizeAuthUser(user) {
     dob: profile.date_of_birth?.slice(0, 10) || user.dob || '',
     bio: profile.bio ?? profile.description ?? user.bio ?? '',
     avatar: resolveAssetUrl(rawAvatar),
+    coverImage: resolveAssetUrl(rawCoverImage),
     avatarVersion: user.avatarVersion || user.avatar_version || undefined,
     qualifications: user.teacher_profile?.headline || user.qualifications || '',
     experience: user.teacher_profile ? `${user.teacher_profile.experience_years ?? 0} năm kinh nghiệm` : user.experience || '',

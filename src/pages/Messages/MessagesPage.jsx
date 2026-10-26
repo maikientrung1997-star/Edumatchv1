@@ -5,6 +5,7 @@ import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { createConversationId, deleteMessageTag, deleteMessageTemplate, getCourse, getConversationsForUser, getMessageTags, getMessageTemplates, markConversationRead, removeMessageTagFromUserConversations, saveConversation, saveMessageTag, saveMessageTemplate, setConversationTags } from '@/features/learning/marketplace';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
 import { setChatWidget } from '@/features/learning/chatWidget';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { formatMessageDayDivider, formatMessageTime, formatMessageTimestamp, messageNeedsDayDivider } from '@/utils/messageTime';
 import './messages.css';
 
@@ -81,7 +82,12 @@ export function MessagesPage() {
         ? message.studentName || 'Học viên EduMatch'
         : message.teacherName || course?.teacher?.name || 'Giáo viên EduMatch';
       const contactId = isTeacher ? message.studentId : message.teacherId;
-      const current = groups.get(key) || { key, course, contactName, contactId, messages: [] };
+      const contactAvatar = isTeacher
+        ? message.studentAvatar || ''
+        : message.teacherAvatar || course?.teacher?.avatar || '';
+      const contactRole = isTeacher ? 'student' : course?.teacher?.role || 'teacher';
+      const current = groups.get(key) || { key, course, contactName, contactId, contactAvatar, contactRole, messages: [] };
+      if (!current.contactAvatar && contactAvatar) current.contactAvatar = contactAvatar;
       current.messages.push(message);
       groups.set(key, current);
     });
@@ -306,14 +312,14 @@ export function MessagesPage() {
             {filteredThreads.length ? filteredThreads.map((thread) => {
               const latest = thread.messages.at(-1);
               const isUnread = isThreadUnread(thread);
-              return <button className={`conversation-item ${selectedThread?.key === thread.key ? 'is-selected' : ''} ${isUnread ? 'is-unread' : ''}`} key={thread.key} onClick={() => selectThread(thread)}><span className={`conversation-item__avatar ${isOnline(thread.contactId) ? 'is-online' : ''}`}>{thread.contactName.slice(0, 1)}</span><span className="conversation-item__copy"><strong>{thread.contactName}</strong>{thread.course?.title && <small>{thread.course.title}</small>}<em>{latest?.text}</em>{getThreadTags(thread).length > 0 && <span className="conversation-item__tags">{getThreadTags(thread).map((tag) => <i key={tag.id} style={{ '--tag-color': tag.color }}>{tag.name}</i>)}</span>}</span>{isUnread && <b className="conversation-item__unread" aria-label="Có tin nhắn chưa đọc" />}</button>;
+              return <button className={`conversation-item ${selectedThread?.key === thread.key ? 'is-selected' : ''} ${isUnread ? 'is-unread' : ''}`} key={thread.key} onClick={() => selectThread(thread)}><span className={`conversation-item__avatar ${isOnline(thread.contactId) ? 'is-online' : ''}`}>{thread.contactAvatar ? <img src={thread.contactAvatar} alt="" /> : <DefaultRoleAvatar role={thread.contactRole} size={18} />}</span><span className="conversation-item__copy"><strong>{thread.contactName}</strong>{thread.course?.title && <small>{thread.course.title}</small>}<em>{latest?.text}</em>{getThreadTags(thread).length > 0 && <span className="conversation-item__tags">{getThreadTags(thread).map((tag) => <i key={tag.id} style={{ '--tag-color': tag.color }}>{tag.name}</i>)}</span>}</span>{isUnread && <b className="conversation-item__unread" aria-label="Có tin nhắn chưa đọc" />}</button>;
             }) : <div className="conversation-empty"><MessageCircle size={24} /><p>Chưa có cuộc trò chuyện nào.</p></div>}
           </div>
         </aside>
         <main className="chat-window">
           {selectedThread ? <>
             <header className="chat-window__head">
-              <span className={`chat-window__avatar ${isOnline(selectedThread.contactId) ? 'is-online' : ''}`}>{selectedThread.contactName.slice(0, 1)}</span>
+              <span className={`chat-window__avatar ${isOnline(selectedThread.contactId) ? 'is-online' : ''}`}>{selectedThread.contactAvatar ? <img src={selectedThread.contactAvatar} alt="" /> : <DefaultRoleAvatar role={selectedThread.contactRole} size={20} />}</span>
               <div className="chat-window__contact">
                 <h2>{selectedThread.contactName}</h2>
                 {selectedThread.course?.title && <p>{selectedThread.course.title}</p>}

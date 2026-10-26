@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { storage } from '@/utils/storage';
+import { getVideoMediaUrl, hydrateVideoMedia } from '@/utils/mediaLibrary';
 import tutoringHero from '@/assets/tutoring-hero.webp';
 import studyTogether from '@/assets/register-student.webp';
 import teacherCommunity from '@/assets/vietnamese-teachers-avatar-strip.png';
@@ -401,9 +402,13 @@ const write = (key, value) => storage.set(key, value);
 const notifyPostsChange = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:posts-updated'));
 };
+const notifyCourseReviewsChange = () => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:course-reviews-updated'));
+};
 
 const normalizePostMediaItem = (postId, item, index) => ({
   ...item,
+  ...(item?.type === 'video' && item?.storageKey ? { src: getVideoMediaUrl(item.storageKey, item.src) } : {}),
   id: item?.id || `${postId}-media-${index + 1}`,
   likes: Array.isArray(item?.likes) ? item.likes : [],
   comments: Array.isArray(item?.comments) ? item.comments : [],
@@ -483,12 +488,41 @@ export const syncTeacherCourseProfile = (teacherId, profileUpdates) => {
   return next;
 };
 
-export const getCourseReviews = (courseId) =>
-  read(STORAGE_KEYS.COURSE_REVIEWS, []).filter((review) => review.courseId === courseId);
+const normalizeStoredVideo = (media) => media?.type === 'video' && media.storageKey
+  ? { ...media, src: getVideoMediaUrl(media.storageKey, media.src) }
+  : media;
+
+const collectStoredVideoKeys = (media, keys) => {
+  if (media?.type === 'video' && media.storageKey) keys.add(media.storageKey);
+};
+
+const queueVideoHydration = (keys, onHydrated) => {
+  if (!keys.size) return;
+  void Promise.all([...keys].map(hydrateVideoMedia)).then((results) => {
+    if (results.some((result) => result.hydrated)) onHydrated();
+  }).catch(() => {});
+};
+
+export const getCourseReviews = (courseId) => {
+  const videoKeys = new Set();
+  const reviews = read(STORAGE_KEYS.COURSE_REVIEWS, [])
+    .filter((review) => review.courseId === courseId)
+    .map((review) => {
+      collectStoredVideoKeys(review.media, videoKeys);
+      const replies = (review.replies || []).map((reply) => {
+        collectStoredVideoKeys(reply.media, videoKeys);
+        return { ...reply, media: normalizeStoredVideo(reply.media) };
+      });
+      return { ...review, media: normalizeStoredVideo(review.media), replies };
+    });
+  queueVideoHydration(videoKeys, notifyCourseReviewsChange);
+  return reviews;
+};
 
 export const addCourseReview = (review) => {
   const saved = read(STORAGE_KEYS.COURSE_REVIEWS, []);
   write(STORAGE_KEYS.COURSE_REVIEWS, [{ ...review, replies: review.replies || [] }, ...saved]);
+  notifyCourseReviewsChange();
 };
 
 export const addCourseReviewReply = (reviewId, reply) => {
@@ -498,6 +532,7 @@ export const addCourseReviewReply = (reviewId, reply) => {
       : review,
   );
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
+  notifyCourseReviewsChange();
   return next.find((review) => review.id === reviewId);
 };
 
@@ -520,6 +555,7 @@ export const toggleCourseReviewLike = (reviewId, userId, replyId = null) => {
     return updatedReview;
   });
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
+  notifyCourseReviewsChange();
   return updatedReview;
 };
 
@@ -531,12 +567,14 @@ export const updateCourseReview = (reviewId, updater) => {
     return updatedReview;
   });
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
+  notifyCourseReviewsChange();
   return updatedReview;
 };
 
 export const deleteCourseReview = (reviewId) => {
   const next = read(STORAGE_KEYS.COURSE_REVIEWS, []).filter((review) => review.id !== reviewId);
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
+  notifyCourseReviewsChange();
   return next;
 };
 
@@ -551,12 +589,44 @@ export const getCourseRating = (courseId) => {
 
 export const getPosts = (authorId) => {
   const saved = read(STORAGE_KEYS.TEACHER_POSTS, []);
+  const currentUser = read(STORAGE_KEYS.USER_INFO, null);
   const savedById = new Map(saved.map((post) => [post.id, post]));
   const sampleIds = new Set(fullCenterPosts.map((post) => post.id));
   const posts = [
     ...saved.filter((post) => !sampleIds.has(post.id)),
     ...fullCenterPosts.map((post) => savedById.get(post.id) || post),
-  ].map(normalizePostMedia);
+  ].map(normalizePostMedia).map((post) => {
+    if (!currentUser?.id || !hasProfileId(post, currentUser.id)) return post;
+    const profileUpdates = {
+      ...(currentUser.name ? { name: currentUser.name } : {}),
+      ...(currentUser.avatar ? { avatar: currentUser.avatar } : {}),
+    };
+    const mediaItems = getPostMediaItems(post).map((item) => ({
+      ...item,
+      comments: synchronizeDiscussionAuthors(item.comments, currentUser.id, profileUpdates),
+    }));
+    return {
+      ...post,
+      ...(profileUpdates.name ? { authorName: profileUpdates.name, author: profileUpdates.name } : {}),
+      ...(profileUpdates.avatar ? { authorAvatar: profileUpdates.avatar } : {}),
+      comments: synchronizeDiscussionAuthors(post.comments, currentUser.id, profileUpdates),
+      mediaItems,
+      ...(post.media ? { media: mediaItems[0] || post.media } : {}),
+    };
+  });
+  const videoKeys = new Set();
+  const collectDiscussionVideoKeys = (items) => (items || []).forEach((item) => {
+    collectStoredVideoKeys(item?.media, videoKeys);
+    collectDiscussionVideoKeys(item?.replies);
+  });
+  posts.forEach((post) => {
+    getPostMediaItems(post).forEach((media) => {
+      collectStoredVideoKeys(media, videoKeys);
+      collectDiscussionVideoKeys(media.comments);
+    });
+    collectDiscussionVideoKeys(post.comments);
+  });
+  queueVideoHydration(videoKeys, notifyPostsChange);
   if (authorId === undefined || authorId === null) return posts;
 
   const normalizedAuthorId = String(authorId);
@@ -565,8 +635,9 @@ export const getPosts = (authorId) => {
 
 export const savePost = (post) => {
   const saved = read(STORAGE_KEYS.TEACHER_POSTS, []);
-  write(STORAGE_KEYS.TEACHER_POSTS, [normalizePostMedia(post), ...saved]);
-  notifyPostsChange();
+  const savedSuccessfully = write(STORAGE_KEYS.TEACHER_POSTS, [normalizePostMedia(post), ...saved]);
+  if (savedSuccessfully) notifyPostsChange();
+  return savedSuccessfully;
 };
 
 export const updatePost = (postId, updater) => {
@@ -594,6 +665,56 @@ export const updatePostMediaItem = (postId, mediaId, updater) => updatePost(post
     media: post.media ? updatedItems[0] : undefined,
   };
 });
+
+const hasProfileId = (item, profileId) => String(item?.authorId ?? item?.teacherId ?? '') === String(profileId);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const synchronizeDiscussionAuthors = (items, profileId, updates) => (items || []).map((item) => {
+  const matches = hasProfileId(item, profileId);
+  return {
+    ...item,
+    ...(matches && hasOwn(updates, 'name') ? { authorName: updates.name, author: updates.name } : {}),
+    ...(matches && hasOwn(updates, 'avatar') ? { authorAvatar: updates.avatar } : {}),
+    replies: synchronizeDiscussionAuthors(item.replies, profileId, updates),
+  };
+});
+
+// Posts persist a small author snapshot so old posts can still render offline.
+// Refresh that snapshot whenever its owner changes name or avatar, including
+// comments and replies, so the interface has one consistent identity.
+export const syncPostAuthorProfile = (profileId, profileUpdates = {}) => {
+  if (profileId == null || (!hasOwn(profileUpdates, 'name') && !hasOwn(profileUpdates, 'avatar'))) return getPosts();
+  const saved = read(STORAGE_KEYS.TEACHER_POSTS, []);
+  const next = saved.map((post) => {
+    const ownsPost = hasProfileId(post, profileId);
+    const mediaItems = getPostMediaItems(post).map((item) => ({
+      ...item,
+      comments: synchronizeDiscussionAuthors(item.comments, profileId, profileUpdates),
+    }));
+    const sharedPost = post.sharedPost && (hasProfileId(post.sharedPost, profileId) || String(post.sharedPost.author?.id ?? '') === String(profileId))
+      ? {
+          ...post.sharedPost,
+          author: {
+            ...(post.sharedPost.author || {}),
+            id: post.sharedPost.author?.id || post.sharedPost.authorId || post.sharedPost.teacherId || profileId,
+            ...(hasOwn(profileUpdates, 'name') ? { name: profileUpdates.name } : {}),
+            ...(hasOwn(profileUpdates, 'avatar') ? { avatar: profileUpdates.avatar } : {}),
+          },
+        }
+      : post.sharedPost;
+    return {
+      ...post,
+      ...(ownsPost && hasOwn(profileUpdates, 'name') ? { authorName: profileUpdates.name, author: profileUpdates.name } : {}),
+      ...(ownsPost && hasOwn(profileUpdates, 'avatar') ? { authorAvatar: profileUpdates.avatar } : {}),
+      comments: synchronizeDiscussionAuthors(post.comments, profileId, profileUpdates),
+      mediaItems,
+      ...(post.media ? { media: mediaItems[0] || post.media } : {}),
+      ...(sharedPost ? { sharedPost } : {}),
+    };
+  });
+  const savedSuccessfully = write(STORAGE_KEYS.TEACHER_POSTS, next);
+  if (savedSuccessfully) notifyPostsChange();
+  return getPosts();
+};
 
 export const deletePost = (postId) => {
   const next = read(STORAGE_KEYS.TEACHER_POSTS, []).filter((post) => post.id !== postId);

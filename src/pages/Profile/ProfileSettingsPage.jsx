@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Check, ImagePlus, ShieldCheck, UserRound } from 'lucide-react';
+import { Camera, Check, ImagePlus, LoaderCircle, ShieldCheck, UserRound } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,6 +9,7 @@ import { fieldErrors, requestError } from '@/utils/formErrors';
 import { getTodayDate } from '@/pages/Register/registerData';
 import { getPostMediaItems, getPosts, syncTeacherCourseProfile } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { SecurityForm } from './SecurityForm';
 import '@/components/auth/account.css';
 import './profileSettings.css';
@@ -21,7 +22,7 @@ const readImageAsDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const createPersistentProfileImage = async (file, maxDimension = 384) => {
+const createPersistentProfileImage = async (file, maxDimension = 360) => {
   const source = await readImageAsDataUrl(file);
   const image = await new Promise((resolve, reject) => {
     const preview = new Image();
@@ -39,7 +40,7 @@ const createPersistentProfileImage = async (file, maxDimension = 384) => {
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL('image/jpeg', 0.8);
+  return canvas.toDataURL('image/jpeg', 0.76);
 };
 
 const profileForm = (user) => ({
@@ -356,10 +357,10 @@ export function ProfileSettingsPage() {
             {avatarSource && failedAvatarSource !== avatarSource ? (
               <img src={avatarSource} alt={`Ảnh đại diện của ${user.name}`} onError={() => setFailedAvatarSource(avatarSource)} />
             ) : (
-              <UserRound size={42} />
+              <DefaultRoleAvatar role={user.role} size={42} />
             )}
-            <button type="button" className="profile-settings-avatar__camera" onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label="Đổi ảnh đại diện" aria-expanded={isAvatarSourceOpen}>
-              <Camera size={17} />
+            <button type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
+              {avatarBusy ? <LoaderCircle className="profile-settings-avatar__spinner" size={17} /> : <Camera size={17} />}
             </button>
           </div>
           <h2>{user.name}</h2>
@@ -382,6 +383,7 @@ export function ProfileSettingsPage() {
               {avatarError}
             </p>
           )}
+          {avatarBusy && <small aria-live="polite">Đang cập nhật ảnh đại diện…</small>}
           {['teacher', 'center'].includes(user.role) && <Link className="profile-sidebar-link" to={ROUTES.VERIFICATION}><ShieldCheck size={16} /><span>{hasSubmittedVerification ? 'Hồ Sơ Xác Minh' : 'Xác Minh Hồ Sơ'}</span></Link>}
           {!isStudent && <Link className="profile-sidebar-link" to={ROUTES.TEACHER_PROFILE(user.id)}><UserRound size={16} /><span>Xem hồ sơ cá nhân</span></Link>}
         </aside>

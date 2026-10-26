@@ -70,6 +70,7 @@ const authFailure = (error, fallback) => ({
   message: error.response?.data?.message || (error.request ? 'Không thể kết nối đến máy chủ. Vui lòng thử lại.' : error.message) || fallback,
   errors: error.response?.data?.errors || {},
   status: error.response?.status,
+  requiresPassword: error.response?.data?.requires_password === true,
 });
 
 export const AuthProvider = ({ children }) => {
@@ -238,6 +239,7 @@ export const AuthProvider = ({ children }) => {
       user, token, isAuthenticated: Boolean(token && user), loading,
       login: (data) => authenticate('login', data),
       register: (data) => authenticate('register', data),
+      loginWithGoogle: (data) => authenticate('googleLogin', data),
       logout, updateUser,
     }}>
       {children}

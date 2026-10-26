@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ROUTES } from '@/constants/routes';
 import { ForgotPasswordModal } from '@/components/auth/ForgotPasswordModal';
+import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons';
 import studentImage from '@/assets/login-student-v2.png';
 import teacherAvatarsImg from '@/assets/teacher-avatars.png';
 import './login.css';
@@ -29,6 +30,7 @@ export const Login = () => {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   const validate = () => {
@@ -51,7 +53,7 @@ export const Login = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (loading) return;
+    if (loading || socialLoading) return;
     setFormError('');
     if (!validate()) return;
 
@@ -78,10 +80,6 @@ export const Login = () => {
     });
     setFormError(message);
     toast.error(message);
-  };
-
-  const announceSocialLogin = (provider) => {
-    toast(`Đăng nhập bằng ${provider} đang được chuẩn bị.`);
   };
 
   return (
@@ -196,60 +194,16 @@ export const Login = () => {
               </div>
 
               {/* Submit Button */}
-              <button className="login-submit" type="submit" disabled={loading}>
+              <button className="login-submit" type="submit" disabled={loading || socialLoading}>
                 {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </button>
             </form>
 
-            {/* Divider */}
-            <div className="login-divider">
-              <span>Hoặc đăng nhập bằng</span>
-            </div>
-
-            {/* Social Logins */}
-            <div className="login-socials" aria-label="Các phương thức đăng nhập khác">
-              <button type="button" onClick={() => announceSocialLogin('Google')}>
-                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.04h3.88c2.28-2.09 3.66-5.18 3.66-9.14z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.04c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.13C3.25 21.31 7.31 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.28c-.25-.72-.38-1.49-.38-2.28s.13-1.56.38-2.28V6.59H1.26C.46 8.19 0 9.99 0 12s.46 3.81 1.26 5.41l4.02-3.13z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.69 1.26 6.59l4.02 3.13c.95-2.83 3.6-4.97 6.72-4.97z"
-                  />
-                </svg>
-                <span>Google</span>
-              </button>
-
-              <button type="button" onClick={() => announceSocialLogin('Facebook')}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2" aria-hidden="true">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
-                <span>Facebook</span>
-              </button>
-
-              <button type="button" onClick={() => announceSocialLogin('Apple')}>
-                <svg
-                  width="19"
-                  height="20"
-                  viewBox="0 0 170 170"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.04-7.6-7.85-11.7-14.44-6.3-10.14-11.21-21.57-14.72-34.3-3.51-12.73-5.27-24.87-5.27-36.42 0-15.02 3.68-27.42 11.05-37.21 7.37-9.78 16.73-14.78 28.08-15 5.21 0 10.63 1.32 16.27 3.96 5.64 2.64 9.49 4.07 11.55 4.3 1.93-.23 5.89-1.72 11.88-4.47 5.99-2.75 11.26-4.01 15.82-3.78 12.08.77 21.72 4.9 28.94 12.4-10.55 6.38-15.7 15.19-15.46 26.43.24 9.17 3.75 16.92 10.53 23.24 6.78 6.33 14.86 10.13 24.24 11.41-2.04 6.07-4.43 12.19-7.18 18.36zm-39.63-107.82c0-6.19 2.24-12.05 6.72-17.58 4.48-5.53 10.05-9.35 16.72-11.45.35 1.58.53 3.05.53 4.41 0 6.07-2.39 12-7.17 17.78-4.78 5.78-10.49 9.5-17.13 11.17-.18-1.57-.27-3.02-.27-4.33z" />
-                </svg>
-                <span>Apple</span>
-              </button>
-            </div>
+            <SocialAuthButtons
+              disabled={loading}
+              onBusyChange={setSocialLoading}
+              onSuccess={() => navigate(location.state?.from?.pathname || ROUTES.HOME, { replace: true })}
+            />
 
             {/* Footer Registration Link */}
             <p className="login-register-copy">

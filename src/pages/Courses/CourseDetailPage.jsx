@@ -1,10 +1,15 @@
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
+<<<<<<< HEAD
 import { useEffect, useState } from 'react';
+=======
+import { useRef, useState } from 'react';
+>>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
 import { ArrowLeft, CalendarDays, Clock3, Heart, LockKeyhole, MessageCircle, Monitor, Pencil, Phone, Send, Star, X } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
+import { chatService, chatError } from '@/services/chatService';
 import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -12,7 +17,7 @@ import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
 import { formatRelativeTime } from '@/utils/formatDate';
-import { addCourseRatingTrust, addCourseReview, addCourseReviewReply, createConversationId, createNotification, deleteCourseReview, enrollmentLabel, getAge, getCourse, getCourseReviews, getProviderTrustCount, modeLabel, paymentLabel, saveConversation, toggleCourseReviewLike, trackProviderAffinity, updateCourse, updateCourseReview } from '@/features/learning/marketplace';
+import { addCourseRatingTrust, addCourseReview, addCourseReviewReply, createConversationId, createNotification, deleteCourseReview, enrollmentLabel, getAge, getCourse, getCourseReviews, getProviderTrustCount, modeLabel, paymentLabel, toggleCourseReviewLike, trackProviderAffinity, updateCourse, updateCourseReview } from '@/features/learning/marketplace';
 import './courses.css';
 
 const formatCurrency = (value) =>
@@ -33,6 +38,8 @@ const createAnonymousCode = () => `HV-${Math.random().toString(36).slice(2, 6).t
 
 export function CourseDetailPage() {
   const { courseId } = useParams();
+  const navigate = useNavigate();
+  const chatOpening = useRef(false);
   const { user, isAuthenticated } = useAuth();
   const { isOnline } = useOnlinePresence(user?.id);
   const [reviews, setReviews] = useState(() => getCourseReviews(courseId));
@@ -162,12 +169,17 @@ export function CourseDetailPage() {
     else deleteCourseReview(review.id);
     setReviews(getCourseReviews(courseId));
   };
-  const send = (event) => {
+  const send = async (event) => {
     event.preventDefault();
     if (!isAuthenticated) { toast.error(`Vui lòng đăng nhập để nhắn tin với ${providerType}.`); return; }
-    if (!message.trim()) return;
-    saveConversation({ id: createConversationId('conversation'), courseId, teacherId: course.teacher.id, teacherName: course.teacher.name, teacherAvatar: course.teacher.avatar || '', studentId: user.id, studentName: user.name || 'Học viên EduMatch', studentAvatar: user.avatar || '', senderId: user.id, text: message.trim(), createdAt: 'Vừa xong' });
-    setShowMessage(false); toast.success(`Tin nhắn đã được gửi đến ${providerType}.`);
+    if (!message.trim() || chatOpening.current) return;
+    chatOpening.current = true;
+    try {
+      const conversation = await chatService.startDirect(course.teacher.id, message);
+      setShowMessage(false);
+      navigate(`${ROUTES.MESSAGES}?conversation=${conversation.id}`);
+    } catch (error) { toast.error(chatError(error)); }
+    finally { chatOpening.current = false; }
   };
   return <><section className="learning-page"><div className="learning-container course-detail">
     <Link className="back-link" to={ROUTES.HOME}><ArrowLeft size={17} /> Tất cả khóa học</Link>

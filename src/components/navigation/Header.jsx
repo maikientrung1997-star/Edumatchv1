@@ -17,11 +17,15 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+<<<<<<< HEAD
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+=======
+import { useChat } from '@/hooks/useChat';
+>>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
 import { ROUTES } from '@/constants/routes';
 import { accountNotificationService } from '@/services/accountNotificationService';
 import { subscribeUserNotifications } from '@/services/pusherService';
-import { getConversationsForUser, getNotifications, markAllNotificationsRead, markNotificationRead } from '@/features/learning/marketplace';
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/features/learning/marketplace';
 import toast from 'react-hot-toast';
 
 const notificationIcon = (type) => {
@@ -44,10 +48,10 @@ export const Header = ({ theme, onToggleTheme }) => {
   const navigate = useNavigate();
   const locationKey = `${location.pathname}${location.search}${location.hash}`;
   const [notificationPanel, setNotificationPanel] = useState({ open: false, locationKey: '' });
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, token, logout } = useAuth();
+  const { counts: chatCounts } = useChat();
   const [notifications, setNotifications] = useState(() => user?.id ? getNotifications(user.id) : []);
   const [serverNotifications, setServerNotifications] = useState({ userId: null, items: [] });
-  const [, setConversationRevision] = useState(0);
   const receivedServerNotificationIds = useRef(new Set());
   const accountMenuRef = useRef(null);
   const allNotifications = [...(serverNotifications.userId === user?.id ? serverNotifications.items : []), ...notifications]
@@ -57,13 +61,7 @@ export const Header = ({ theme, onToggleTheme }) => {
   const teachingDestination = isEducationProvider ? ROUTES.CREATE_COURSE : ROUTES.REGISTER;
   const teachingLabel = isEducationProvider ? 'Thêm khóa học' : 'Đăng ký dạy';
   const unreadNotifications = allNotifications.filter((notification) => !notification.isRead).length;
-  const unreadMessageCount = isAuthenticated
-    ? new Set(
-      getConversationsForUser(user?.id)
-        .filter((message) => (message.unreadFor || []).includes(user?.id))
-        .map((message) => message.senderId || (message.teacherId === user?.id ? message.studentId : message.teacherId))
-    ).size
-    : 0;
+  const unreadMessageCount = isAuthenticated ? chatCounts.unread_messages : 0;
   const notificationOpen = notificationPanel.open && notificationPanel.locationKey === locationKey;
   const userAvatarUrl = user?.avatar
     ? (user.avatarVersion && !user.avatar.startsWith('data:image/') && !user.avatar.startsWith('blob:')
@@ -82,16 +80,6 @@ export const Header = ({ theme, onToggleTheme }) => {
   }, [user?.id]);
 
   useEffect(() => {
-    const refreshConversations = () => setConversationRevision((current) => current + 1);
-    window.addEventListener('edumatch:conversations-updated', refreshConversations);
-    window.addEventListener('storage', refreshConversations);
-    return () => {
-      window.removeEventListener('edumatch:conversations-updated', refreshConversations);
-      window.removeEventListener('storage', refreshConversations);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isAuthenticated || !user?.id) {
       receivedServerNotificationIds.current = new Set();
       return undefined;
@@ -99,8 +87,11 @@ export const Header = ({ theme, onToggleTheme }) => {
     let active = true;
     accountNotificationService.list().then((items) => {
       if (!active) return;
-      receivedServerNotificationIds.current = new Set(items.map((item) => item.id));
-      setServerNotifications({ userId: user.id, items });
+      items.forEach((item) => receivedServerNotificationIds.current.add(item.id));
+      setServerNotifications((current) => {
+        const existing = current.userId === user.id ? current.items : [];
+        return { userId: user.id, items: [...existing, ...items.filter((item) => !existing.some((previous) => previous.id === item.id))] };
+      });
     }).catch(() => { /* The next login still attempts the initial history load. */ });
     const unsubscribe = subscribeUserNotifications(user.id, (notification) => {
       if (!notification?.id || receivedServerNotificationIds.current.has(notification.id)) return;
@@ -118,7 +109,7 @@ export const Header = ({ theme, onToggleTheme }) => {
       active = false;
       unsubscribe();
     };
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, token]);
 
   useEffect(() => {
     const closeAccountMenu = (event) => {

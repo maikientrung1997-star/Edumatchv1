@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookmarkPlus, FileText, Forward, ListFilter, MailOpen, MessageCircle, MoreHorizontal, Pencil, Plus, Reply, Search, Send, Tag, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -346,3 +347,6 @@ export function MessagesPage() {
     </section>
   );
 }
+=======
+export { MessengerWorkspace as MessagesPage } from './RealtimeMessengerWorkspace';
+>>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca

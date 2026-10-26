@@ -5,14 +5,19 @@ import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { useAuth } from '@/hooks/useAuth';
+import { chatService, chatError } from '@/services/chatService';
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { masterDataService } from '@/services/masterDataService';
 import { normalizeAuthUser } from '@/services/authService';
 import { profileService } from '@/services/profileService';
 import { requestError } from '@/utils/formErrors';
 import { formatRelativeTime } from '@/utils/formatDate';
+<<<<<<< HEAD
 import { storage } from '@/utils/storage';
 import { createConversationId, createNotification, deletePost, getAge, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, saveConversation, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
+=======
+import { createNotification, deletePost, getAge, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
+>>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -128,6 +133,7 @@ export function TeacherProfilePage() {
   const { teacherId } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated, updateUser } = useAuth();
+  const chatOpening = useRef(false);
   const [serverProfile, setServerProfile] = useState(null);
   const [posts, setPosts] = useState(() => getPosts(teacherId).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
   const [postText, setPostText] = useState('');
@@ -667,24 +673,15 @@ export function TeacherProfilePage() {
     if (!target || !ownsContent(target.authorId) || !window.confirm('Xóa bình luận này?')) return;
     saveTargetInteraction(postId, mediaId, (current) => ({ ...current, comments: replyId ? (current.comments || []).map((item) => item.id === commentId ? { ...item, replies: (item.replies || []).filter((reply) => reply.id !== replyId) } : item) : (current.comments || []).filter((item) => item.id !== commentId) }));
   };
-  const messageProfile = () => {
+  const messageProfile = async () => {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để nhắn tin.'); navigate(ROUTES.LOGIN); return; }
-    if (ownsProfile) return;
-    saveConversation({
-      id: createConversationId('conversation'),
-      courseId: `profile-${profile.id}`,
-      teacherId: profile.id,
-      teacherName: profile.name,
-      teacherAvatar: profile.avatar || '',
-      studentId: user.id,
-      studentName: user.name || 'Thành viên EduMatch',
-      studentAvatar: user.avatar || '',
-      senderId: user.id,
-      text: `Chào ${profile.name}, mình muốn trao đổi thêm với bạn.`,
-      createdAt: 'Vừa xong',
-    });
-    toast.success('Đã mở cuộc trò chuyện mới.');
-    navigate(ROUTES.MESSAGES);
+    if (ownsProfile || chatOpening.current) return;
+    chatOpening.current = true;
+    try {
+      const conversation = await chatService.startDirect(profile.id);
+      navigate(`${ROUTES.MESSAGES}?conversation=${conversation.id}`);
+    } catch (error) { toast.error(chatError(error)); }
+    finally { chatOpening.current = false; }
   };
   const trustProfile = () => {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng hồ sơ này.'); navigate(ROUTES.LOGIN); return; }

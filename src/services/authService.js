@@ -101,6 +101,10 @@ function saveSession(response) {
 }
 
 export const authService = {
+  async googleLogin(payload) {
+    return saveSession(await api.post('/auth/google', payload));
+  },
+
   async login(credentials) {
     return saveSession(await api.post('/auth/login', credentials));
   },

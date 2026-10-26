@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test:chat": "node --test tests/chat.test.js tests/chatThreadStore.test.js",
+    "test:google": "node --test tests/googleIdentity.test.js",
     "test:auth": "node --test tests/auth.test.js",
     "test:phase2": "node --test tests/phase2.test.js",
     "dev": "vite",
@@ -16,6 +18,8 @@
     "@fontsource/be-vietnam-pro": "^5.3.0",
     "axios": "^1.20.0",
     "clsx": "^2.1.1",
+    "emoji-picker-react": "^5.1.3",
+    "katex": "^0.19.1",
     "lucide-react": "^1.49.0",
     "pdfjs-dist": "6.4.299",
     "pusher-js": "^8.6.0",

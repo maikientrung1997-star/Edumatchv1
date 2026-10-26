@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/contexts';
+import { ChatProvider } from '@/contexts/ChatContext.jsx';
 import AppRoutes from '@/routes';
 import { COLORS } from '@/constants/theme';
 
@@ -9,6 +10,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ChatProvider>
         {/* Global Toast Provider */}
         <Toaster
           position="top-right"
@@ -27,6 +29,7 @@ function App() {
 
         {/* Centralized Route Tree */}
         <AppRoutes />
+        </ChatProvider>
       </AuthProvider>
     </BrowserRouter>
   );

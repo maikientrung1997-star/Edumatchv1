@@ -12,12 +12,8 @@ import { normalizeAuthUser } from '@/services/authService';
 import { profileService } from '@/services/profileService';
 import { requestError } from '@/utils/formErrors';
 import { formatRelativeTime } from '@/utils/formatDate';
-<<<<<<< HEAD
 import { storage } from '@/utils/storage';
-import { createConversationId, createNotification, deletePost, getAge, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, saveConversation, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
-=======
 import { createNotification, deletePost, getAge, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
->>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';

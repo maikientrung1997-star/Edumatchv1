@@ -1,9 +1,5 @@
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
-<<<<<<< HEAD
-import { useEffect, useState } from 'react';
-=======
-import { useRef, useState } from 'react';
->>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CalendarDays, Clock3, Heart, LockKeyhole, MessageCircle, Monitor, Pencil, Phone, Send, Star, X } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';

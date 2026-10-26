@@ -17,11 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-<<<<<<< HEAD
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
-=======
 import { useChat } from '@/hooks/useChat';
->>>>>>> cef2f193afa2324639793ed4c7de8c9cdea456ca
 import { ROUTES } from '@/constants/routes';
 import { accountNotificationService } from '@/services/accountNotificationService';
 import { subscribeUserNotifications } from '@/services/pusherService';

@@ -18,7 +18,7 @@ before(async () => {
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
   };
-  server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  server = await createServer({ cacheDir: `node_modules/.vite-tests/auth-${process.pid}`, server: { middlewareMode: true }, appType: 'custom' });
   ({ api } = await server.ssrLoadModule('/src/services/api.js'));
   ({ authService, normalizeAuthUser } = await server.ssrLoadModule('/src/services/authService.js'));
   ({ profileService } = await server.ssrLoadModule('/src/services/profileService.js'));

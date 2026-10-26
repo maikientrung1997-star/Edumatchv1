@@ -24,3 +24,7 @@ Tài liệu BE đầy đủ: `C:/laragon/www/admin_edumatchv1/app/docs/realtime-
 `npm run test:chat`, `npm run test:auth`, `npm run test:phase2`, `npm run lint`, `npm run build`.
 
 Đã thử hai phiên độc lập với Pusher thật và schema QA riêng; ảnh minh chứng lưu tại `output/qa/realtime-chat-teacher.png`.
+
+## Emoji và cache dev
+
+Bảng emoji vẫn dùng `React.lazy` như nhánh main, được bọc bởi `EmojiPickerBoundary` để lỗi tải chunk không làm trắng cả màn chat. `vite.config.js` đưa `emoji-picker-react` vào dependency optimization lúc khởi động. Các test tạo Vite server phải dùng `cacheDir` riêng dưới `node_modules/.vite-tests/<suite>-<pid>`; không dùng chung `node_modules/.vite` với server dev đang chạy, tránh làm mất các module tối ưu mà trình duyệt đang tham chiếu.

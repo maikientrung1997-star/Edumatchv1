@@ -130,8 +130,6 @@ export const accountFields = [
     autoComplete: "name",
     maxLength: 150,
   },
-  emailField,
-  phoneField,
   {
     name: "dateOfBirth",
     label: "Ngày sinh",
@@ -139,6 +137,8 @@ export const accountFields = [
     type: "date",
     autoComplete: "bday",
   },
+  emailField,
+  phoneField,
   ...passwordFields,
 ];
 

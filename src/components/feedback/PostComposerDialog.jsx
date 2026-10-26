@@ -1,6 +1,7 @@
 import { ImagePlus, Send } from 'lucide-react';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import './post-composer-dialog.css';
 
 export function PostComposerDialog({
@@ -44,14 +45,13 @@ export function PostComposerDialog({
   );
 }
 
-export function PostComposerTrigger({ avatar, name, placeholder, onOpen }) {
-  const avatarLabel = String(name || 'E').trim().slice(0, 1).toUpperCase();
+export function PostComposerTrigger({ avatar, role, placeholder, onOpen }) {
 
   return (
     <section className="post-composer-trigger" aria-label="Tạo bài viết">
       <div className="post-composer-trigger__top">
         <div className="post-composer-trigger__avatar" aria-hidden="true">
-          {avatar ? <img src={avatar} alt="" /> : <span>{avatarLabel}</span>}
+          {avatar ? <img src={avatar} alt="" /> : <DefaultRoleAvatar role={role} size={19} />}
         </div>
         <button type="button" className="post-composer-trigger__prompt" onClick={onOpen}>
           {placeholder}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@/components/feedback/Modal';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
 
@@ -55,7 +56,7 @@ export function PostImageDialog({ viewer, onClose, discussion, interactionTarget
       </section>
       <aside className="post-image-dialog__panel">
         <header className="post-image-dialog__author">
-          <span>{author?.avatar ? <img src={author.avatar} alt="" /> : author?.name?.slice(0, 1)}</span>
+          <span>{author?.avatar ? <img src={author.avatar} alt="" /> : <DefaultRoleAvatar role={author?.role} size={18} />}</span>
           <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
         </header>
         {post.text && <p className="post-image-dialog__text">{post.text}</p>}

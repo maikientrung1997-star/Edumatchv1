@@ -464,6 +464,46 @@
   line-height: var(--text-body--line-height);
   white-space: pre-wrap;
 }
+.inline-post-editor {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+.inline-post-editor textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 11px 12px;
+  border: 1px solid var(--edu-green);
+  border-radius: 10px;
+  background: var(--edu-surface);
+  color: var(--edu-ink);
+  font: inherit;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  resize: vertical;
+}
+.inline-post-editor > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.inline-post-editor button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--edu-line);
+  border-radius: 8px;
+  background: var(--edu-surface);
+  color: var(--edu-muted);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+.inline-post-editor button[type="submit"] {
+  border-color: var(--edu-green);
+  background: var(--edu-green);
+  color: var(--edu-on-primary);
+}
 .community-post__media {
   margin-top: 15px;
   overflow: hidden;

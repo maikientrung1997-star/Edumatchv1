@@ -143,7 +143,7 @@ export function Register() {
   const fields = role === "center"
     ? centerAccountFields
     : role === "teacher"
-      ? [accountFields[0], accountFields[3], accountFields[1], accountFields[2], ...accountFields.slice(4)]
+      ? accountFields
       : accountFields;
   const today = getTodayDate();
 
@@ -533,10 +533,7 @@ export function Register() {
                 }
                 disabled={loading}
               />
-              <span>
-                Tôi đã đọc, hiểu và đồng ý với Điều khoản dành cho Giáo viên
-                &amp; Đối tác của EduMatch.
-              </span>
+              <span>Tôi đồng ý với Điều khoản Giáo viên &amp; Đối tác của EduMatch.</span>
             </label>
             <button
               type="button"
@@ -550,56 +547,34 @@ export function Register() {
         }
       >
         <article className="teacher-terms-document">
-          <header>
-            <span className="teacher-terms-document__icon" aria-hidden="true">
-              <Handshake size={22} />
-            </span>
-            <div>
-              <p>ĐỒNG HÀNH CÙNG EDUMATCH</p>
-              <h2>Chào mừng Quý Giáo viên và Đối tác</h2>
-            </div>
-          </header>
-          <p>
-            EduMatch trân trọng cảm ơn Quý Giáo viên và Quý Đối tác đã tin tưởng
-            đồng hành. EduMatch là nền tảng kết nối học tập, tạo cầu nối tin cậy
-            giữa giảng viên và học viên, hướng đến một môi trường giáo dục
-            chuyên nghiệp, minh bạch và chất lượng.
+          <p className="teacher-terms-document__summary">
+            Các điều khoản chính áp dụng khi bạn đăng khóa học và hợp tác cùng EduMatch.
           </p>
 
           <section>
             <div className="teacher-terms-document__heading">
               <BadgeCheck size={18} />
-              <h3>Cam kết giai đoạn khởi nghiệp</h3>
+              <h3>Miễn phí đến hết năm 2026</h3>
             </div>
             <p>
-              EduMatch là đơn vị khởi nghiệp từ năm 2026. Đến hết ngày
-              31/12/2026, EduMatch không thu bất kỳ khoản phí nền tảng nào từ
-              học viên, Giáo viên hoặc Đối tác.
+              EduMatch không thu bất kỳ khoản phí nền tảng nào từ học viên,
+              Giáo viên hoặc Đối tác đến hết ngày 31/12/2026.
             </p>
           </section>
 
           <section>
             <div className="teacher-terms-document__heading">
               <Landmark size={18} />
-              <h3>Chính sách phí từ năm 2027</h3>
+              <h3>Phí áp dụng từ năm 2027</h3>
             </div>
-            <p>
-              Từ ngày 01/01/2027, EduMatch sẽ áp dụng các khoản phí sau cho khóa
-              học được đăng trên nền tảng:
-            </p>
             <ul className="teacher-terms-document__fees">
               <li>
-                <strong>Phí khởi tạo khóa học:</strong>
-                <span>
-                  200.000 VNĐ/lần cho mỗi khóa học được đăng ký và thiết lập.
-                </span>
+                <strong>Khởi tạo khóa học</strong>
+                <span>200.000 VNĐ/lần đăng ký và thiết lập.</span>
               </li>
               <li>
-                <strong>Phí duy trì khóa học:</strong>
-                <span>
-                  200.000 VNĐ/tháng để duy trì hiển thị, quản lý và vận hành
-                  khóa học.
-                </span>
+                <strong>Duy trì khóa học</strong>
+                <span>200.000 VNĐ/tháng để duy trì hiển thị và quản lý.</span>
               </li>
             </ul>
           </section>
@@ -610,21 +585,15 @@ export function Register() {
               <h3>Phương thức hợp tác</h3>
             </div>
             <p>
-              Khi Giáo viên tự đăng bài, chủ động liên hệ và chốt lịch với học
-              viên, Giáo viên chỉ thanh toán phí khởi tạo và phí duy trì. Khi
-              EduMatch chủ động giới thiệu học viên, mức hoa hồng sẽ được thỏa
-              thuận trước, thông thường từ 15% đến 20% tổng học phí khóa học.
+              Khi tự đăng bài và chốt lịch với học viên, bạn thanh toán phí khởi
+              tạo và duy trì. Khi EduMatch giới thiệu học viên, hoa hồng được
+              thống nhất trước, thông thường từ 15% đến 20% tổng học phí.
             </p>
             <p className="teacher-terms-document__notice">
-              Giáo viên hoặc Đối tác có toàn quyền đồng ý tiếp nhận hoặc từ chối
-              học viên được EduMatch giới thiệu trước khi sắp xếp lớp học.
+              Bạn có quyền nhận hoặc từ chối học viên được EduMatch giới thiệu
+              trước khi sắp xếp lớp học.
             </p>
           </section>
-          <p className="teacher-terms-document__notice">
-            Chính sách tính phí sẽ được điều chỉnh theo thời gian. Chúng tôi
-            luôn nỗ lực để tìm ra chính sách phù hợp, có lợi cho Quý Thầy Cô và
-            các đơn vị đối tác.
-          </p>
         </article>
       </Modal>
     </main>

@@ -340,6 +340,13 @@
   color: var(--edu-green);
   font-weight: 800;
 }
+.conversation-item__avatar > img,
+.chat-window__avatar > img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
 .conversation-item__avatar {
   position: relative;
   width: 38px;

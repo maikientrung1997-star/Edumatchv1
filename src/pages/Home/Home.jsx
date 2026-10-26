@@ -25,6 +25,7 @@ import { chatService, chatError } from '@/services/chatService';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ROUTES } from '@/constants/routes';
 import { CourseCard } from '@/components/courses/CourseCard';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { useMasterData } from '@/hooks/useMasterData';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
@@ -147,7 +148,7 @@ function TutorCard({ tutor, saved, onSave, onOpen }) {
   return (
     <article className="tutor-card">
       <div className="tutor-top">
-        {tutor.image ? <img src={tutor.image} alt={tutor.name} width="68" height="76" loading="lazy" /> : <span className="tutor-avatar-fallback" aria-hidden="true">{tutor.name.slice(0, 1)}</span>}
+        {tutor.image ? <img src={tutor.image} alt={tutor.name} width="68" height="76" loading="lazy" /> : <span className="tutor-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role="teacher" size={24} /></span>}
         <div className="tutor-identity">
           <h3>
             <Link className="tutor-name-link" to={ROUTES.TEACHER_PROFILE(tutor.id)}>
@@ -1112,7 +1113,7 @@ const profileCourses = profile
         {profile && (
           <div className="profile-detail">
             <div className="profile-detail-heading">
-              {profile.image ? <img src={profile.image} alt={profile.name} width="84" height="96" /> : <span className="profile-avatar-fallback" aria-hidden="true">{profile.name.slice(0, 1)}</span>}
+              {profile.image ? <img src={profile.image} alt={profile.name} width="84" height="96" /> : <span className="profile-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role="teacher" size={29} /></span>}
               <div>
                 <span className="subject-tag">{profile.subject}</span>
                 <h3><Link to={ROUTES.TEACHER_PROFILE(profile.id)} onClick={() => setProfile(null)}>{profile.title} {profile.name}</Link></h3>

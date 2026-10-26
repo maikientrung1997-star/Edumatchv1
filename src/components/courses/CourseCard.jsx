@@ -1,6 +1,7 @@
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { CalendarDays, Clock3, Heart, Monitor, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ROUTES } from '@/constants/routes';
 import { enrollmentLabel, getCourseRating, getProviderTrustCount, modeLabel, paymentLabel } from '@/features/learning/marketplace';
 
@@ -27,7 +28,7 @@ export function CourseCard({ course, editable = false, sponsored = false }) {
       <div className="course-card__provider">
         <div className="course-card__teacher" title={isCenter ? course.teacher.name : `GV. ${course.teacher.name}`}>
           <span className="course-card__avatar" aria-hidden="true">
-            {course.teacher.avatar ? <img src={course.teacher.avatar} alt="" /> : course.teacher.name.slice(0, 1)}
+            {course.teacher.avatar ? <img src={course.teacher.avatar} alt="" /> : <DefaultRoleAvatar role={course.teacher.role} size={13} />}
           </span>
           <Link className="course-card__teacher-name" to={ROUTES.TEACHER_PROFILE(course.teacher.id)}>{isCenter ? course.teacher.name : `GV. ${course.teacher.name}`}</Link>
         </div>

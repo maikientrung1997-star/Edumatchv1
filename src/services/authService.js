@@ -83,6 +83,7 @@ export function normalizeAuthUser(user) {
     phoneVisibilityProvided,
     foundedYear: user.center?.founded_year ? String(user.center.founded_year) : user.foundedYear || '',
     teachingField: profile.teaching_field || profile.teachingField || user.teaching_field || user.teachingField || '',
+    photoAlbums: profile.photo_albums || profile.photoAlbums || user.photo_albums || user.photoAlbums || [],
     verificationStatus: profile.verification_status || 'unverified',
     verifiedAt: profile.verified_at || null,
     licenseVerificationStatus: user.center?.verification_status || '',

@@ -6,7 +6,7 @@ import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
 
-export function PostImageDialog({ viewer, onClose, discussion, interactionTarget = null, onActiveIndexChange, onLike, onShowLikes, onShare, onShowShares, shareCount = 0, isLiked = false }) {
+export function PostImageDialog({ viewer, onClose, discussion, interactionTarget = null, onActiveIndexChange, onLike, onShowLikes, onShare, onShowShares, shareCount = 0, isLiked = false, ownerActions = null }) {
   const [activeIndex, setActiveIndex] = useState(viewer?.activeIndex || 0);
   const mediaItems = viewer?.mediaItems || [];
   const activeMedia = mediaItems[activeIndex] || mediaItems[0];
@@ -58,6 +58,7 @@ export function PostImageDialog({ viewer, onClose, discussion, interactionTarget
         <header className="post-image-dialog__author">
           <span>{author?.avatar ? <img src={author.avatar} alt="" /> : <DefaultRoleAvatar role={author?.role} size={18} />}</span>
           <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
+          {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}
         </header>
         {post.text && <p className="post-image-dialog__text">{post.text}</p>}
         <div className="post-image-dialog__stats"><button type="button" onClick={onShowLikes}>{likes.length ? `${likes.length} lượt thích` : 'Chưa có lượt thích'}</button><span>{comments.length} bình luận</span>{shareCount > 0 && <button type="button" onClick={onShowShares}>{shareCount} lượt chia sẻ</button>}</div>

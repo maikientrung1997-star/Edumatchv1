@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BadgeCheck, BookOpen, Camera, ChevronDown, FileCheck2, FileText, Heart, ImagePlus, Images, LoaderCircle, MessageCircle, Phone, Plus, Save, Share2, Star, Video, X } from 'lucide-react';
+import { BadgeCheck, BookOpen, Camera, ChevronDown, FileCheck2, FileText, GripVertical, Heart, ImagePlus, Images, LoaderCircle, MessageCircle, Phone, Plus, Save, Share2, Star, Video, X } from 'lucide-react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
@@ -13,12 +13,12 @@ import { profileService } from '@/services/profileService';
 import { requestError } from '@/utils/formErrors';
 import { formatRelativeTime } from '@/utils/formatDate';
 import { storage } from '@/utils/storage';
-import { hydrateVideoMedia, saveVideoMedia } from '@/utils/mediaLibrary';
+import { hydrateMedia, saveImageMedia, saveVideoMedia } from '@/utils/mediaLibrary';
 import { createNotification, deletePost, getAge, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
-import { PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
+import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
@@ -112,6 +112,9 @@ const normalizePhotoAlbums = (value) => (Array.isArray(value) ? value : []).map(
     storageKey: typeof item === 'object' ? item?.storageKey || '' : '',
     type: typeof item === 'object' && item?.type === 'video' ? 'video' : 'image',
     description: typeof item === 'object' ? String(item?.description || item?.caption || '').trim() : '',
+    likes: typeof item === 'object' && Array.isArray(item?.likes) ? item.likes : [],
+    comments: typeof item === 'object' && Array.isArray(item?.comments) ? item.comments : [],
+    createdAt: typeof item === 'object' ? item?.createdAt || item?.created_at || '' : '',
   })).filter((item) => item.src || item.storageKey),
   createdAt: album?.createdAt || album?.created_at || '',
 })).filter((album) => album.name);
@@ -160,9 +163,11 @@ export function TeacherProfilePage() {
   const [posts, setPosts] = useState(() => getPosts(teacherId).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
   const [postText, setPostText] = useState('');
   const [media, setMedia] = useState([]);
+  const [postAlbumId, setPostAlbumId] = useState('');
   const [isPostComposerOpen, setIsPostComposerOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState(null);
   const [editingPostText, setEditingPostText] = useState('');
+  const [editingPostMedia, setEditingPostMedia] = useState([]);
   const [profileImageUploadField, setProfileImageUploadField] = useState(null);
   const [commentText, setCommentText] = useState({});
   const [commentMedia, setCommentMedia] = useState({});
@@ -186,7 +191,6 @@ export function TeacherProfilePage() {
   const [isAddingAlbumMedia, setIsAddingAlbumMedia] = useState(false);
   const [isEditingAlbumDescription, setIsEditingAlbumDescription] = useState(false);
   const [selectedPortfolioImage, setSelectedPortfolioImage] = useState(null);
-  const [selectedAlbumImage, setSelectedAlbumImage] = useState(null);
   const [activeProfileTextField, setActiveProfileTextField] = useState(null);
   const [profileDraft, setProfileDraft] = useState({});
   const [profileErrors, setProfileErrors] = useState({});
@@ -205,6 +209,7 @@ export function TeacherProfilePage() {
   const [expandedProfileCourseIds, setExpandedProfileCourseIds] = useState({});
   const portfolioImagesInputRef = useRef(null);
   const albumImagesInputRef = useRef(null);
+  const albumDraftDragIndexRef = useRef(null);
   const loadMorePostsRef = useRef(null);
   const courses = getCourses().filter((course) => String(course.teacher?.id) === String(teacherId));
   const ownsProfile = user?.id != null && String(user.id) === String(teacherId);
@@ -282,7 +287,7 @@ export function TeacherProfilePage() {
       ...(profile?.profilePortfolioImages || []).map((src, index) => ({ src, type: 'image', label: `Ảnh hồ sơ năng lực ${index + 1}` })),
       ...visibleProfileAlbums.flatMap((album) => album.media.map((item, index) => ({
         ...item,
-        description: item.description || album.description,
+        albumId: album.id,
         label: `${album.name} ${index + 1}`,
       }))),
       ...posts.flatMap((post) => getMediaItems(post)
@@ -292,31 +297,100 @@ export function TeacherProfilePage() {
 
     return [...new Map(candidates.map((item) => [`${item.type}:${item.storageKey || item.src}`, item])).values()];
   })();
-  const profileAlbumFilters = [
+  const profileAlbumTabs = [
     { id: 'all-media', name: 'Tất cả', media: profileAlbumMedia },
-    { id: 'photos', name: 'Ảnh', media: profileAlbumMedia.filter((item) => item.type !== 'video') },
     { id: 'videos', name: 'Video', media: profileAlbumMedia.filter((item) => item.type === 'video') },
-    ...visibleProfileAlbums,
+    { id: 'photos', name: 'Ảnh', media: profileAlbumMedia.filter((item) => item.type !== 'video') },
+    { id: 'albums', name: 'Album', media: [], count: visibleProfileAlbums.length },
   ];
+  const profileAlbumViews = [...profileAlbumTabs, ...visibleProfileAlbums];
   const linkedAlbumId = new URLSearchParams(location.search).get('album');
   const hasLinkedAlbum = Boolean(linkedAlbumId && visibleProfileAlbums.some((album) => album.id === linkedAlbumId));
   const displayedProfileAlbumFilterId = hasLinkedAlbum ? linkedAlbumId : activeProfileAlbumFilterId;
-  const activeProfileAlbum = profileAlbumFilters.find((album) => album.id === displayedProfileAlbumFilterId) || profileAlbumFilters[0];
+  const activeProfileAlbum = profileAlbumViews.find((album) => album.id === displayedProfileAlbumFilterId) || profileAlbumTabs[0];
   const isCustomProfileAlbum = visibleProfileAlbums.some((album) => album.id === activeProfileAlbum.id);
+  const isAlbumDirectory = activeProfileAlbum.id === 'albums';
+  const isSameAlbumMedia = (candidate, item) => Boolean(candidate && item && (
+    (candidate.id && item.id && candidate.id === item.id)
+    || (candidate.storageKey && item.storageKey && candidate.storageKey === item.storageKey)
+    || (candidate.src && item.src && candidate.src === item.src)
+  ));
+  const openAlbumMedia = (mediaItems, index, albumId = null) => {
+    const item = mediaItems[index];
+    if (!item) return;
+    const allPosts = getPosts();
+    const interactionPostIds = mediaItems.map((mediaItem) => allPosts.find((post) => getMediaItems(post).some((candidate) => isSameAlbumMedia(candidate, mediaItem)))?.id || null);
+    const matchedPost = allPosts.find((post) => post.id === interactionPostIds[index]);
+    // Some older albums were created before album media was linked to a feed
+    // post. Keep those items fully interactive instead of making them dead-end
+    // previews: their reactions and comments are stored back on the album item.
+    const sourcePost = matchedPost || {
+      id: `album-media:${profile.id}:${albumId || 'library'}:${item.id || index}`,
+      teacherId: profile.id,
+      authorId: profile.id,
+      authorName: profile.name,
+      authorRole: profile.role,
+      authorAvatar: profile.avatar || '',
+      media: item,
+      mediaItems: [item],
+      likes: item.likes || [],
+      comments: item.comments || [],
+      createdAt: item.createdAt || new Date().toISOString(),
+      isAlbumMediaFallback: true,
+    };
+    setIsViewingProfileAlbums(false);
+    setImageViewer({
+      post: sourcePost,
+      author: {
+        id: profile.id,
+        name: profile.name,
+        role: profile.role,
+        avatar: profile.avatar || '',
+      },
+      mediaItems,
+      interactionPostIds,
+      activeIndex: index,
+      albumId: matchedPost ? null : albumId,
+    });
+  };
 
   useEffect(() => {
     const profileId = profile?.id || teacherId;
     const storedAlbums = readStoredPhotoAlbums(profileId);
     const sourceAlbums = storedAlbums.length ? storedAlbums : normalizePhotoAlbums(profile?.photoAlbums);
-    if (!sourceAlbums.some((album) => album.media.some((item) => item.type === 'video' && item.storageKey))) return undefined;
+    const legacyAlbumItems = sourceAlbums.flatMap((album) => album.media.map((item, index) => ({ albumId: album.id, index, item })))
+      .filter(({ item }) => item.type === 'image' && !item.storageKey && String(item.src || '').startsWith('data:image/'));
+
+    if (legacyAlbumItems.length) {
+      void Promise.all(legacyAlbumItems.map(async ({ albumId, index, item }) => {
+        const blob = await (await fetch(item.src)).blob();
+        const stored = await saveImageMedia(blob);
+        return { albumId, index, stored };
+      })).then((migrations) => {
+        const migratedLookup = new Map(migrations.map((item) => [`${item.albumId}:${item.index}`, item.stored]));
+        const migratedAlbums = sourceAlbums.map((album) => ({
+          ...album,
+          media: album.media.map((item, index) => {
+            const stored = migratedLookup.get(`${album.id}:${index}`);
+            return stored ? { ...item, ...stored } : item;
+          }),
+        }));
+        saveStoredPhotoAlbums(profileId, migratedAlbums);
+        setProfileAlbums({ profileId: String(profileId), albums: migratedAlbums });
+        if (ownsProfile) updateUser({ photoAlbums: migratedAlbums });
+      }).catch(() => {
+        // Keep legacy media visible when the browser cannot migrate it yet.
+      });
+    }
+    if (!sourceAlbums.some((album) => album.media.some((item) => item.storageKey))) return undefined;
 
     let isCancelled = false;
     const hydrateAlbums = async () => {
       const hydratedAlbums = await Promise.all(sourceAlbums.map(async (album) => ({
         ...album,
         media: await Promise.all(album.media.map(async (item) => {
-          if (item.type !== 'video' || !item.storageKey) return item;
-          const { src } = await hydrateVideoMedia(item.storageKey);
+          if (!item.storageKey) return item;
+          const { src } = await hydrateMedia(item.storageKey);
           return src ? { ...item, src } : item;
         })),
       })));
@@ -326,7 +400,7 @@ export function TeacherProfilePage() {
       // An unavailable local video should not stop the rest of the album loading.
     });
     return () => { isCancelled = true; };
-  }, [profile?.id, profile?.photoAlbums, teacherId]);
+  }, [ownsProfile, profile?.id, profile?.photoAlbums, teacherId, updateUser]);
 
   useEffect(() => {
     if (user?.id && profile?.id && user.id !== profile.id) trackProviderAffinity(user.id, profile.id, 'viewed-profile', 1);
@@ -589,13 +663,15 @@ export function TeacherProfilePage() {
           const storedVideo = await saveVideoMedia(file);
           return { id: `${Date.now()}-${index}-${file.name}`, src: storedVideo.src, storageKey: storedVideo.storageKey, type: 'video' };
         }
-        let src;
+        let imageFile;
         try {
-          src = await createPersistentProfileImage(file, 1080);
+          const source = await createPersistentProfileImage(file, 1080);
+          imageFile = await (await fetch(source)).blob();
         } catch {
-          src = await readImageAsDataUrl(file);
+          imageFile = file;
         }
-        return { id: `${Date.now()}-${index}-${file.name}`, src, type: 'image' };
+        const storedImage = await saveImageMedia(imageFile);
+        return { id: `${Date.now()}-${index}-${file.name}`, src: storedImage.src, storageKey: storedImage.storageKey, type: 'image' };
       }));
       setDraft((current) => ({ ...current, media: [...current.media, ...media] }));
     } catch (error) {
@@ -606,6 +682,30 @@ export function TeacherProfilePage() {
       setIsPreparingAlbumImages(false);
       event.target.value = '';
     }
+  };
+  const reorderAlbumDraftMedia = (fromIndex, toIndex) => {
+    if (fromIndex == null || toIndex == null || fromIndex === toIndex) return;
+    setAlbumDraft((current) => {
+      const media = [...current.media];
+      const [movedMedia] = media.splice(fromIndex, 1);
+      media.splice(toIndex, 0, movedMedia);
+      return { ...current, media };
+    });
+  };
+  const beginAlbumDraftDrag = (event, index) => {
+    albumDraftDragIndexRef.current = index;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  };
+  const moveAlbumDraftOnDrag = (event, index) => {
+    event.preventDefault();
+    const fromIndex = albumDraftDragIndexRef.current;
+    if (fromIndex == null || fromIndex === index) return;
+    reorderAlbumDraftMedia(fromIndex, index);
+    albumDraftDragIndexRef.current = index;
+  };
+  const finishAlbumDraftDrag = () => {
+    albumDraftDragIndexRef.current = null;
   };
   const createProfileAlbum = (event) => {
     event.preventDefault();
@@ -624,33 +724,36 @@ export function TeacherProfilePage() {
       id: createPostId('profile-album'),
       name,
       description,
-      media: albumDraft.media.map((item) => ({ ...item, description })),
+      media: albumDraft.media.map((item) => ({ ...item, description: item.description || '' })),
       createdAt: new Date().toISOString(),
     };
+    if (!publishProfilePost(description, album.media)) return;
     saveProfileAlbums([...visibleProfileAlbums, album]);
-    publishAlbumActivity(album, album.media, album.description, 'created');
     setAlbumDraft({ name: '', description: '', media: [] });
     setIsCreatingProfileAlbum(false);
     toast.success(`Đã tạo album “${name}”.`);
   };
-  const publishAlbumActivity = (album, mediaItems, description, action) => {
+  const publishProfilePost = (text, mediaItems = []) => {
     const post = {
-      id: createPostId('album'),
+      id: createPostId(),
       teacherId,
       authorId: user.id,
       authorName: profile.name,
       authorRole: user.role,
       authorAvatar: profile.avatar || '',
       authorLicenseVerificationStatus: user.licenseVerificationStatus || '',
-      text: description.trim(),
-      mediaItems,
-      albumActivity: { albumId: album.id, albumName: album.name, action },
+      text: text.trim(),
+      ...(mediaItems.length ? { mediaItems } : {}),
       createdAt: new Date().toISOString(),
       likes: [],
       comments: [],
     };
-    if (!savePost(post)) toast.error('Không thể đăng cập nhật album. Vui lòng thử lại.');
-    else refreshProfilePosts();
+    if (!savePost(post)) {
+      toast.error('Không thể lưu ảnh vào bộ nhớ trình duyệt. Vui lòng thử đăng ít ảnh hơn hoặc tải lại trang.');
+      return false;
+    }
+    refreshProfilePosts();
+    return true;
   };
   const addMediaToProfileAlbum = (event) => {
     event.preventDefault();
@@ -661,10 +764,10 @@ export function TeacherProfilePage() {
       return;
     }
     const description = albumAdditionDraft.description.trim();
-    const media = albumAdditionDraft.media.map((item) => ({ ...item, description }));
+    const media = albumAdditionDraft.media.map((item) => ({ ...item, description: item.description || '' }));
     const nextAlbum = { ...album, media: [...album.media, ...media] };
+    if (!publishProfilePost(description, media)) return;
     saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id ? nextAlbum : item));
-    publishAlbumActivity(nextAlbum, media, description, 'added-media');
     setAlbumAdditionDraft({ albumId: '', description: '', media: [] });
     setIsAddingAlbumMedia(false);
     toast.success(`Đã thêm tệp vào album “${album.name}”.`);
@@ -678,9 +781,8 @@ export function TeacherProfilePage() {
   };
   const deleteProfileAlbum = () => {
     if (!isCustomProfileAlbum || !ownsProfile) return;
-    if (!window.confirm(`Xóa album “${activeProfileAlbum.name}” và các bài viết liên quan?`)) return;
+    if (!window.confirm(`Xóa album “${activeProfileAlbum.name}”? Các bài đăng đã công khai vẫn được giữ.`)) return;
 
-    getPosts().filter((post) => String(post.teacherId) === String(profile.id) && post.albumActivity?.albumId === activeProfileAlbum.id).forEach((post) => deletePost(post.id));
     saveProfileAlbums(visibleProfileAlbums.filter((album) => album.id !== activeProfileAlbum.id));
     setActiveProfileAlbumFilterId('all-media');
     if (hasLinkedAlbum) navigate(ROUTES.TEACHER_PROFILE(teacherId), { replace: true });
@@ -693,6 +795,38 @@ export function TeacherProfilePage() {
   };
   const getInteractionTarget = (post, mediaId = null) => mediaId ? getMediaItems(post).find((item) => item.id === mediaId) || null : post;
   const saveTargetInteraction = (postId, mediaId, updater) => {
+    const isAlbumMediaFallback = Boolean(
+      imageViewer?.albumId
+      && imageViewer?.post?.id === postId
+      && !mediaId,
+    );
+    if (isAlbumMediaFallback) {
+      const album = visibleProfileAlbums.find((item) => item.id === imageViewer.albumId);
+      const activeItem = album?.media.find((item) => isSameAlbumMedia(item, imageViewer.mediaItems?.[imageViewer.activeIndex]));
+      if (!album || !activeItem) return;
+      const fallbackPost = {
+        ...imageViewer.post,
+        media: activeItem,
+        mediaItems: [activeItem],
+        likes: activeItem.likes || [],
+        comments: activeItem.comments || [],
+      };
+      const nextPost = updater(fallbackPost);
+      const nextItem = {
+        ...activeItem,
+        likes: nextPost.likes || [],
+        comments: nextPost.comments || [],
+      };
+      saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id
+        ? { ...item, media: item.media.map((media) => isSameAlbumMedia(media, activeItem) ? nextItem : media) }
+        : item));
+      setImageViewer((current) => current ? {
+        ...current,
+        post: { ...nextPost, media: nextItem, mediaItems: [nextItem] },
+        mediaItems: current.mediaItems.map((media) => isSameAlbumMedia(media, activeItem) ? nextItem : media),
+      } : current);
+      return;
+    }
     if (mediaId) updatePostMediaItem(postId, mediaId, updater);
     else updatePost(postId, updater);
     refreshProfilePosts();
@@ -700,16 +834,32 @@ export function TeacherProfilePage() {
   const handlePublish = (event) => {
     event.preventDefault();
     if (!postText.trim() && !media.length) { toast.error('Hãy viết nội dung hoặc chọn ảnh/video để đăng.'); return; }
-    const post = { id: createPostId(), teacherId, authorId: user.id, authorName: profile.name, authorRole: user.role, authorAvatar: profile.avatar || '', authorLicenseVerificationStatus: user.licenseVerificationStatus || '', text: postText.trim(), ...(media.length ? { mediaItems: media } : {}), createdAt: new Date().toISOString(), likes: [], comments: [] };
-    if (!savePost(post)) {
-      toast.error('Không thể lưu ảnh vào bộ nhớ trình duyệt. Vui lòng thử đăng ít ảnh hơn hoặc tải lại trang.');
-      return;
+    if (!publishProfilePost(postText, media)) return;
+    const selectedAlbum = media.length && visibleProfileAlbums.find((album) => album.id === postAlbumId);
+    if (selectedAlbum) {
+      const albumMedia = media.map((item) => ({ ...item, description: item.description || '' }));
+      saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === selectedAlbum.id
+        ? { ...album, media: [...album.media, ...albumMedia] }
+        : album));
     }
-    refreshProfilePosts(); setPostText(''); setMedia([]); setIsPostComposerOpen(false); toast.success('Bài viết đã được đăng.');
+    setPostText(''); setMedia([]); setPostAlbumId(''); setIsPostComposerOpen(false); toast.success('Bài viết đã được đăng.');
+  };
+  const createProfileAlbumFromComposer = ({ name, description = '' }) => {
+    if (!ownsProfile) return null;
+    const album = {
+      id: createPostId('profile-album'),
+      name,
+      description,
+      media: [],
+      createdAt: new Date().toISOString(),
+    };
+    saveProfileAlbums([...visibleProfileAlbums, album]);
+    return album;
   };
   const like = (postId, mediaId = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để tương tác.'); return; }
-    const post = getPosts().find((item) => item.id === postId);
+    const post = getPosts().find((item) => item.id === postId)
+      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
     const target = getInteractionTarget(post, mediaId);
     if (!target) return;
     const likes = target.likes || [];
@@ -738,8 +888,9 @@ export function TeacherProfilePage() {
       return;
     }
     if (!text && !media) return;
-    const targetPost = getPosts().find((post) => post.id === postId);
-    if ((targetPost?.authorId || targetPost?.teacherId) !== user.id) {
+    const targetPost = getPosts().find((post) => post.id === postId)
+      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
+    if (targetPost && (targetPost.authorId || targetPost.teacherId) !== user.id) {
       createNotification({ recipientId: targetPost?.authorId || targetPost?.teacherId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'post_comment', title: `${user.name || 'Một thành viên'} đã bình luận về bài viết của bạn`, description: text, link: ROUTES.POST_DETAIL(postId) });
     }
     saveTargetInteraction(postId, mediaId, (post) => ({ ...post, comments: [...(post.comments || []), { id: `comment-${Date.now()}`, author: user.name || 'Thành viên EduMatch', authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media, replies: [], createdAt: new Date().toISOString() }] }));
@@ -805,7 +956,8 @@ export function TeacherProfilePage() {
     if (!replyTarget || !user) return;
     const text = replyText.trim();
     if (!text && !replyMedia) return;
-    const targetPost = getPosts().find((post) => post.id === replyTarget.postId);
+    const targetPost = getPosts().find((post) => post.id === replyTarget.postId)
+      || (imageViewer?.post?.id === replyTarget.postId ? imageViewer.post : null);
     const parentComment = getInteractionTarget(targetPost, replyTarget.mediaId)?.comments?.find((item) => item.id === replyTarget.commentId);
     const reply = { id: createPostId('reply'), author: user.name || 'Thành viên EduMatch', authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media: replyMedia, likes: [], createdAt: new Date().toISOString() };
     if (parentComment?.authorId && parentComment.authorId !== user.id) {
@@ -818,7 +970,8 @@ export function TeacherProfilePage() {
   };
   const toggleProfileCommentLike = (postId, commentId, replyId = null, mediaId = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để thích bình luận.'); return; }
-    const post = getPosts().find((item) => item.id === postId);
+    const post = getPosts().find((item) => item.id === postId)
+      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
     const target = getInteractionTarget(post, mediaId);
     const comment = target?.comments?.find((item) => item.id === commentId);
     const reply = comment?.replies?.find((item) => item.id === replyId);
@@ -852,11 +1005,13 @@ export function TeacherProfilePage() {
     setCommentText((current) => ({ ...current, [draftKey]: '' }));
     setCommentMedia((current) => ({ ...current, [draftKey]: null }));
   };
-  const viewerPost = imageViewer ? getPosts().find((post) => post.id === imageViewer.post.id) || imageViewer.post : null;
+  const viewerInteractionPostId = imageViewer?.interactionPostIds?.[imageViewer?.activeIndex || 0] || imageViewer?.post?.id;
+  const viewerPost = imageViewer ? getPosts().find((post) => post.id === viewerInteractionPostId) || imageViewer.post : null;
   const viewerAuthor = imageViewer?.author || (viewerPost ? { id: viewerPost.authorId || viewerPost.teacherId || '', name: viewerPost.authorName || viewerPost.author || profile.name, role: viewerPost.authorRole || profile.role, avatar: viewerPost.authorAvatar || profile.avatar || '' } : null);
-  const viewerMediaItems = getMediaItems(viewerPost);
+  const viewerMediaItems = imageViewer?.mediaItems?.length ? imageViewer.mediaItems : getMediaItems(viewerPost);
   const viewerMedia = viewerMediaItems.length > 1 ? viewerMediaItems[imageViewer?.activeIndex || 0] : null;
-  const viewerInteractionTarget = viewerMedia || viewerPost;
+  const viewerInteractionMedia = viewerMedia ? getMediaItems(viewerPost).find((item) => isSameAlbumMedia(item, viewerMedia)) || viewerMedia : null;
+  const viewerInteractionTarget = viewerInteractionMedia || viewerPost;
   const viewerDiscussionKey = viewerMedia ? `${viewerPost.id}:${viewerMedia.id}` : `${viewerPost?.id}:post`;
   const isEditingViewerDiscussion = isEditingProfileDiscussion(viewerPost?.id, viewerMedia?.id);
   const imageViewerDiscussion = viewerInteractionTarget ? <><div className="post-image-dialog__comments">{(viewerInteractionTarget.comments || []).map((item) => {
@@ -869,20 +1024,22 @@ export function TeacherProfilePage() {
     if (!ownsContent(post.authorId || post.teacherId)) return;
     setEditingPostId(post.id);
     setEditingPostText(post.text || '');
+    setEditingPostMedia(getMediaItems(post));
     setOpenContentMenu(null);
   };
   const cancelProfilePostEdit = () => {
     setEditingPostId(null);
     setEditingPostText('');
+    setEditingPostMedia([]);
   };
   const saveProfilePostEdit = (event, post) => {
     event.preventDefault();
     const text = editingPostText.trim();
-    if (!text && !getMediaItems(post).length) {
+    if (!text && !editingPostMedia.length) {
       toast.error('Bài viết cần có nội dung hoặc ảnh/video.');
       return;
     }
-    updatePost(post.id, (current) => ({ ...current, text }));
+    updatePost(post.id, (current) => ({ ...current, text, mediaItems: editingPostMedia, media: editingPostMedia[0] || null }));
     refreshProfilePosts();
     cancelProfilePostEdit();
     toast.success('Đã cập nhật bài viết.');
@@ -981,7 +1138,7 @@ export function TeacherProfilePage() {
         return <article className="social-post" key={post.id}>
           <div className="social-post__head"><ProfileAvatar src={author.avatar} alt={`Ảnh đại diện của ${author.name}`} role={author.role} size={17} /><div><Link className="social-post__author" to={ROUTES.TEACHER_PROFILE(post.authorId || post.teacherId || profile.id)} onClick={(event) => reloadCurrentProfile(event, post.authorId || post.teacherId || profile.id)}>{author.name}</Link><VerifiedBadge userId={post.authorId || post.teacherId || profile.id} />{isCenterProfile && profile.licenseVerificationStatus === 'verified' && <small className="post-verification-badge"><BadgeCheck size={12} /> Đã xác thực pháp lý</small>}<small>{formatPublishedAt(post.createdAt)}</small></div></div>
           {ownsContent(post.authorId || post.teacherId) && <ContentMenu id={`post-${post.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editProfilePost(post)} onDelete={() => removeProfilePost(post)} label="bài viết" />}
-          {editingPostId === post.id ? <form className="inline-post-editor" onSubmit={(event) => saveProfilePostEdit(event, post)}><textarea autoFocus value={editingPostText} onChange={(event) => setEditingPostText(event.target.value)} rows="3" placeholder="Viết nội dung bài đăng..." /><div><button type="button" onClick={cancelProfilePostEdit}>Hủy</button><button type="submit">Lưu thay đổi</button></div></form> : <>{post.albumActivity && <p className="album-activity-line">{post.albumActivity.action === 'created' ? 'Đã tạo album' : 'Đã thêm ảnh/video vào album'} <Link to={`${ROUTES.TEACHER_PROFILE(post.authorId || post.teacherId || profile.id)}?album=${encodeURIComponent(post.albumActivity.albumId)}`}>{post.albumActivity.albumName}</Link></p>}{post.text && <p>{post.text}</p>}</>}
+          {editingPostId === post.id ? <InlinePostEditor draft={editingPostText} onDraftChange={setEditingPostText} media={editingPostMedia} onMediaChange={setEditingPostMedia} onCancel={cancelProfilePostEdit} onSave={(event) => saveProfilePostEdit(event, post)} attachmentId={`profile-edit-post-media-${post.id}`} /> : post.text && <p>{post.text}</p>}
           {originalSharedPost && <div className="shared-post"><span>Đã chia sẻ <Link to={ROUTES.POST_DETAIL(originalSharedPost.id)}>bài viết gốc</Link> của</span>{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}<p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`social-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = getPosts().find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ${item.type === 'video' ? 'video' : 'ảnh'} chia sẻ ${index + 1}`}>{item.type === 'video' ? <video src={item.src} muted preload="metadata" /> : <img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} />}</button>)}</div>}</div>}
           {postMediaItems.length > 0 && <div className={`social-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, postAuthor(post), postMediaItems, index)} aria-label={`Mở ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1}`}>{item.type === 'video' ? <video src={item.src} muted preload="metadata" /> : <img src={item.src} alt={`Ảnh ${index + 1} do ${profile.name} chia sẻ`} />}</button>)}</div>}
           <div className="social-post__summary"><div>{likes.length ? <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: likes, label: 'Những người đã thích bài viết này' })}>{likes.length} lượt thích</button> : <span>Hãy là người đầu tiên thích bài viết này</span>}{comments.length > 0 && <span>{comments.length} bình luận</span>}{shareCount > 0 && <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: shareIds, kind: 'share', title: 'Lượt chia sẻ', label: 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })}>{shareCount} lượt chia sẻ</button>}</div></div>
@@ -1000,32 +1157,31 @@ export function TeacherProfilePage() {
   </div></section>
     <LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} />
     <Modal open={isViewingProfileAlbums || hasLinkedAlbum} onClose={closeProfileAlbums} title="Album ảnh" description={`Ảnh và video công khai của ${profile.name}.`} size="xl" className="profile-album-dialog" footer={ownsProfile ? <><button type="button" className="profile-album-create__cancel" onClick={() => { setAlbumDraft({ name: '', description: '', media: [] }); closeProfileAlbums(); setIsCreatingProfileAlbum(true); }}><ImagePlus size={16} /> Tạo album</button>{isCustomProfileAlbum && <button type="button" className="profile-album-create__submit" onClick={() => { setAlbumAdditionDraft({ albumId: activeProfileAlbum.id, description: '', media: [] }); closeProfileAlbums(); setIsAddingAlbumMedia(true); }}><ImagePlus size={16} /> Thêm ảnh / video</button>}</> : null}>
-      <div className="profile-album-tabs" role="tablist" aria-label="Lọc ảnh và video">{profileAlbumFilters.map((album) => <button type="button" role="tab" aria-selected={activeProfileAlbum.id === album.id} className={activeProfileAlbum.id === album.id ? 'is-active' : ''} key={album.id} onClick={() => selectProfileAlbum(album.id)}>{album.name}<span>{album.media.length}</span></button>)}</div>
-      {isCustomProfileAlbum && <section className="profile-album-description"><div><strong>Mô tả album</strong>{isEditingAlbumDescription ? <textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết mô tả cho album này..." rows="3" /> : <p>{activeProfileAlbum.description || 'Chưa có mô tả cho album này.'}</p>}</div>{ownsProfile && <div>{isEditingAlbumDescription ? <><button type="button" onClick={() => setIsEditingAlbumDescription(false)}>Hủy</button><button type="button" onClick={saveAlbumDescription}>Lưu mô tả</button></> : <ContentMenu id={`album-${activeProfileAlbum.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setAlbumDraft((current) => ({ ...current, description: activeProfileAlbum.description || '' })); setIsEditingAlbumDescription(true); }} onDelete={deleteProfileAlbum} label="album" />}</div>}</section>}
-      {activeProfileAlbum.media.length ? <div className="profile-album-grid">{activeProfileAlbum.media.map((item, index) => <button type="button" className="profile-album-grid__item" key={`${item.storageKey || item.src.slice(0, 40)}-${index}`} onClick={() => setSelectedAlbumImage({ ...item, label: item.label || `${item.type === 'video' ? 'Video' : 'Ảnh'} ${index + 1}`, index, albumName: activeProfileAlbum.name, description: item.description || activeProfileAlbum.description || '' })} aria-label={`Xem ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} trong ${activeProfileAlbum.name}`}>{item.type === 'video' ? <><video src={item.src} muted preload="metadata" /><span className="profile-album-grid__video"><Video size={17} /></span></> : <img src={item.src} alt={`Ảnh ${index + 1} trong ${activeProfileAlbum.name} của ${profile.name}`} loading="lazy" />}</button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>{activeProfileAlbum.name} chưa có ảnh hoặc video công khai.</p></div>}
+      <div className="profile-album-tabs" role="tablist" aria-label="Lọc ảnh và video">{profileAlbumTabs.map((album) => <button type="button" role="tab" aria-selected={activeProfileAlbum.id === album.id} className={activeProfileAlbum.id === album.id ? 'is-active' : ''} key={album.id} onClick={() => selectProfileAlbum(album.id)}>{album.name}<span>{album.count ?? album.media.length}</span></button>)}</div>
+      {isAlbumDirectory ? (visibleProfileAlbums.length ? <div className="profile-albums__grid">{visibleProfileAlbums.map((album) => <button type="button" className="profile-albums__card" key={album.id} onClick={() => selectProfileAlbum(album.id)} aria-label={`Mở album ${album.name}`}><span className={`profile-albums__cover is-${Math.min(album.media.length, 4)}`}>{album.media.length ? album.media.slice(0, 4).map((item, index) => item.type === 'video' ? <video key={`${item.id || item.src}-${index}`} src={item.src} muted preload="metadata" /> : <img key={`${item.id || item.src}-${index}`} src={item.src} alt="" loading="lazy" />) : <Images size={27} />}</span><strong className="profile-albums__name">{album.name}</strong><small>{album.media.length} {album.media.length === 1 ? 'mục' : 'mục'}</small></button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>Chưa có album nào được tạo.</p></div>) : <>
+        {isCustomProfileAlbum && <section className="profile-album-description"><div><strong>Mô tả album</strong>{isEditingAlbumDescription ? <textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết mô tả cho album này..." rows="3" /> : <p>{activeProfileAlbum.description || 'Chưa có mô tả cho album này.'}</p>}</div>{ownsProfile && <div>{isEditingAlbumDescription ? <><button type="button" onClick={() => setIsEditingAlbumDescription(false)}>Hủy</button><button type="button" onClick={saveAlbumDescription}>Lưu mô tả</button></> : <ContentMenu id={`album-${activeProfileAlbum.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setAlbumDraft((current) => ({ ...current, description: activeProfileAlbum.description || '' })); setIsEditingAlbumDescription(true); }} onDelete={deleteProfileAlbum} label="album" />}</div>}</section>}
+        {activeProfileAlbum.media.length ? <div className="profile-album-grid">{activeProfileAlbum.media.map((item, index) => <button type="button" className="profile-album-grid__item" key={`${item.storageKey || item.src.slice(0, 40)}-${index}`} onClick={() => openAlbumMedia(activeProfileAlbum.media, index, isCustomProfileAlbum ? activeProfileAlbum.id : item.albumId || null)} aria-label={`Xem ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} trong ${activeProfileAlbum.name}`}>{item.type === 'video' ? <><video src={item.src} muted preload="metadata" /><span className="profile-album-grid__video"><Video size={17} /></span></> : <img src={item.src} alt={`Ảnh ${index + 1} trong ${activeProfileAlbum.name} của ${profile.name}`} loading="lazy" />}</button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>{activeProfileAlbum.name} chưa có ảnh hoặc video công khai.</p></div>}
+      </>}
     </Modal>
-    <Modal open={Boolean(selectedAlbumImage)} onClose={() => setSelectedAlbumImage(null)} title={selectedAlbumImage?.label || 'Ảnh'} description={`Album ảnh của ${profile.name}`} size="xl" className="profile-album-lightbox">
-      {selectedAlbumImage && <div className="profile-album-lightbox__content">{selectedAlbumImage.type === 'video' ? <video className="profile-album-lightbox__video" src={selectedAlbumImage.src} controls autoPlay /> : <img className="profile-portfolio-lightbox__image" src={selectedAlbumImage.src} alt={`${selectedAlbumImage.label} của ${profile.name}`} />}{selectedAlbumImage.description && <p>{selectedAlbumImage.description}</p>}</div>}
-    </Modal>
-    <Modal open={isCreatingProfileAlbum} onClose={() => { if (!isPreparingAlbumImages) setIsCreatingProfileAlbum(false); }} title="Tạo album" description="Gom ảnh và video cùng một chủ đề để mọi người dễ xem." size="lg" className="profile-album-create-dialog" footer={<><button className="profile-album-create__cancel" type="button" onClick={() => setIsCreatingProfileAlbum(false)} disabled={isPreparingAlbumImages}>Hủy</button><button className="profile-album-create__submit" type="submit" form="profile-album-create-form" disabled={isPreparingAlbumImages}>Tạo album</button></>}>
+    <Modal open={isCreatingProfileAlbum} onClose={() => { if (!isPreparingAlbumImages) setIsCreatingProfileAlbum(false); }} title="Tạo album" description="Gom ảnh và video cùng một chủ đề. Nội dung này cũng sẽ được đăng như một bài viết bình thường." size="lg" className="profile-album-create-dialog" footer={<><button className="profile-album-create__cancel" type="button" onClick={() => setIsCreatingProfileAlbum(false)} disabled={isPreparingAlbumImages}>Hủy</button><button className="profile-album-create__submit" type="submit" form="profile-album-create-form" disabled={isPreparingAlbumImages}>Tạo album</button></>}>
       <form id="profile-album-create-form" className="profile-album-create" onSubmit={createProfileAlbum}>
         <label><span>Tên album</span><input value={albumDraft.name} onChange={(event) => setAlbumDraft((current) => ({ ...current, name: event.target.value.slice(0, 80) }))} placeholder="Ví dụ: Hoạt động ngoại khóa" maxLength="80" autoFocus /></label>
         <label><span>Mô tả album</span><textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết nội dung giới thiệu album như một bài đăng..." rows="4" /></label>
         <div className="profile-album-create__photos"><div><strong>Tệp trong album</strong><small>Chọn một hoặc nhiều ảnh, video</small></div><input ref={albumImagesInputRef} type="file" accept="image/*,video/*" multiple onChange={(event) => addAlbumMedia(event, setAlbumDraft)} disabled={isPreparingAlbumImages} /><button type="button" onClick={() => albumImagesInputRef.current?.click()} disabled={isPreparingAlbumImages}>{isPreparingAlbumImages ? <LoaderCircle className="profile-upload-spinner" size={16} /> : <ImagePlus size={16} />}{isPreparingAlbumImages ? 'Đang chuẩn bị tệp…' : 'Thêm tệp'}</button></div>
-        {albumDraft.media.length > 0 && <div className="profile-album-create__preview">{albumDraft.media.map((item, index) => <figure key={item.id}>{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt={`Ảnh xem trước ${index + 1}`} />}<button type="button" onClick={() => setAlbumDraft((current) => ({ ...current, media: current.media.filter((_, mediaIndex) => mediaIndex !== index) }))} aria-label={`Bỏ tệp ${index + 1}`}><X size={14} /></button></figure>)}</div>}
+        {albumDraft.media.length > 0 && <><div className="profile-album-create__preview">{albumDraft.media.map((item, index) => <figure key={item.id} draggable onDragStart={(event) => beginAlbumDraftDrag(event, index)} onDragOver={(event) => moveAlbumDraftOnDrag(event, index)} onDrop={finishAlbumDraftDrag} onDragEnd={finishAlbumDraftDrag} title="Kéo để thay đổi vị trí hiển thị">{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt={`Ảnh xem trước ${index + 1}`} />}<span className="profile-album-create__drag-handle" aria-hidden="true"><GripVertical size={15} /></span><button type="button" draggable={false} onClick={() => setAlbumDraft((current) => ({ ...current, media: current.media.filter((_, mediaIndex) => mediaIndex !== index) }))} aria-label={`Bỏ tệp ${index + 1}`}><X size={14} /></button></figure>)}</div><div className="profile-album-create__captions">{albumDraft.media.map((item, index) => <label key={`caption-${item.id}`}><span className="profile-album-create__caption-thumb">{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt="" />}</span><span className="profile-album-create__caption-field"><strong>{`${item.type === 'video' ? 'Video' : 'Ảnh'} ${index + 1}`}</strong><textarea value={item.description || ''} onChange={(event) => setAlbumDraft((current) => ({ ...current, media: current.media.map((media, mediaIndex) => mediaIndex === index ? { ...media, description: event.target.value } : media) }))} placeholder="Chú thích" rows="2" /></span></label>)}</div></>}
       </form>
     </Modal>
     <Modal open={isAddingAlbumMedia} onClose={() => { if (!isPreparingAlbumImages) setIsAddingAlbumMedia(false); }} title="Thêm vào album" description="Nội dung và tệp mới sẽ xuất hiện thành một bài viết trên trang cá nhân và Bảng Tin." size="lg" className="profile-album-create-dialog" footer={<><button className="profile-album-create__cancel" type="button" onClick={() => setIsAddingAlbumMedia(false)} disabled={isPreparingAlbumImages}>Hủy</button><button className="profile-album-create__submit" type="submit" form="profile-album-add-media-form" disabled={isPreparingAlbumImages}>Đăng vào album</button></>}>
       <form id="profile-album-add-media-form" className="profile-album-create" onSubmit={addMediaToProfileAlbum}>
         <label><span>Mô tả cho lần đăng này</span><textarea value={albumAdditionDraft.description} onChange={(event) => setAlbumAdditionDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết nội dung như một bài đăng..." rows="4" autoFocus /></label>
         <div className="profile-album-create__photos"><div><strong>Ảnh / video mới</strong><small>Các tệp này sẽ được thêm vào album</small></div><input ref={albumImagesInputRef} type="file" accept="image/*,video/*" multiple onChange={(event) => addAlbumMedia(event, setAlbumAdditionDraft)} disabled={isPreparingAlbumImages} /><button type="button" onClick={() => albumImagesInputRef.current?.click()} disabled={isPreparingAlbumImages}>{isPreparingAlbumImages ? <LoaderCircle className="profile-upload-spinner" size={16} /> : <ImagePlus size={16} />}{isPreparingAlbumImages ? 'Đang chuẩn bị tệp…' : 'Thêm tệp'}</button></div>
-        {albumAdditionDraft.media.length > 0 && <div className="profile-album-create__preview">{albumAdditionDraft.media.map((item, index) => <figure key={item.id}>{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt={`Ảnh xem trước ${index + 1}`} />}<button type="button" onClick={() => setAlbumAdditionDraft((current) => ({ ...current, media: current.media.filter((_, mediaIndex) => mediaIndex !== index) }))} aria-label={`Bỏ tệp ${index + 1}`}><X size={14} /></button></figure>)}</div>}
+        {albumAdditionDraft.media.length > 0 && <><div className="profile-album-create__preview">{albumAdditionDraft.media.map((item, index) => <figure key={item.id}>{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt={`Ảnh xem trước ${index + 1}`} />}<button type="button" onClick={() => setAlbumAdditionDraft((current) => ({ ...current, media: current.media.filter((_, mediaIndex) => mediaIndex !== index) }))} aria-label={`Bỏ tệp ${index + 1}`}><X size={14} /></button></figure>)}</div>{albumAdditionDraft.media.length > 1 && <div className="profile-album-create__captions"><div><strong>Mô tả riêng từng ảnh / video</strong><small>Tùy chọn — khác với nội dung chung của bài đăng.</small></div>{albumAdditionDraft.media.map((item, index) => <label key={`caption-${item.id}`}><span>{`${item.type === 'video' ? 'Video' : 'Ảnh'} ${index + 1}`}</span><textarea value={item.description || ''} onChange={(event) => setAlbumAdditionDraft((current) => ({ ...current, media: current.media.map((media, mediaIndex) => mediaIndex === index ? { ...media, description: event.target.value } : media) }))} placeholder="Viết mô tả riêng..." rows="2" /></label>)}</div>}</>}
       </form>
     </Modal>
     <Modal open={Boolean(expandedCommentImage)} onClose={() => setExpandedCommentImage(null)} title="Ảnh đính kèm" size="xl" className="expandable-image-dialog">
       <div className="expandable-image-dialog__content">{expandedCommentImage && <img src={expandedCommentImage.src} alt={expandedCommentImage.alt} />}</div>
     </Modal>
-    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatPublishedAt(viewerPost?.createdAt) }} interactionTarget={viewerMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => like(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && ownsContent(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editProfilePost(viewerPost); }} onDelete={() => { setImageViewer(null); removeProfilePost(viewerPost); }} label="bài viết" /> : null} />
+    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatPublishedAt(viewerPost?.createdAt) }} interactionTarget={viewerInteractionMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => like(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && !imageViewer?.albumId && ownsContent(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editProfilePost(viewerPost); }} onDelete={() => { setImageViewer(null); removeProfilePost(viewerPost); }} label="bài viết" /> : null} />
     <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm">
       <form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form>
     </Modal>
@@ -1182,6 +1338,10 @@ export function TeacherProfilePage() {
       onDraftChange={setPostText}
       media={media}
       onMediaChange={setMedia}
+      albums={visibleProfileAlbums}
+      selectedAlbumId={postAlbumId}
+      onSelectedAlbumChange={setPostAlbumId}
+      onCreateAlbum={createProfileAlbumFromComposer}
       onPublish={handlePublish}
       placeholder="Hãy chia sẻ để học viên hiểu hơn về bạn"
       attachmentId="profile-post-media"

@@ -12,11 +12,12 @@ import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { ExpandableImage } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { Modal } from '@/components/feedback/Modal';
-import { PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
+import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
 import { ReactionCount } from '@/components/feedback/ReactionCount';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
 import { formatRelativeTime } from '@/utils/formatDate';
+import { addMediaToProfileAlbum, readProfileAlbums, saveProfileAlbumsToStorage } from '@/utils/profileAlbums';
 import './feed.css';
 
 const getAuthor = (item, providers) => {
@@ -67,10 +68,11 @@ const affinityScore = (post, affinity) => {
 
 const POSTS_BATCH_SIZE = 12;
 const FRESH_POST_WINDOW = 72 * 60 * 60 * 1000;
+const FEED_REFERENCE_TIME = Date.now();
 
 export function FeedPage({ postId = null }) {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, updateUser } = useAuth();
   const [posts, setPosts] = useState(() => getPosts().slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
   const [commentDrafts, setCommentDrafts] = useState({});
   const [commentMedia, setCommentMedia] = useState({});
@@ -86,17 +88,20 @@ export function FeedPage({ postId = null }) {
   const [feedTab, setFeedTab] = useState(() => user?.role === 'student' ? 'students' : 'providers');
   const [postDraft, setPostDraft] = useState('');
   const [postMedia, setPostMedia] = useState([]);
+  const [postAlbumId, setPostAlbumId] = useState('');
   const [isPostComposerOpen, setIsPostComposerOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState(null);
   const [editingPostText, setEditingPostText] = useState('');
+  const [editingPostMedia, setEditingPostMedia] = useState([]);
   const [visiblePostCount, setVisiblePostCount] = useState(POSTS_BATCH_SIZE);
   const loadMoreRef = useRef(null);
   const providers = useMemo(() => new Map(getCourses().map((course) => [course.teacher.id, course.teacher])), []);
+  const ownProfileAlbums = useMemo(() => readProfileAlbums(user?.id, user?.photoAlbums), [user?.id, user?.photoAlbums]);
   const rankedPosts = useMemo(() => {
     const affinity = getProviderAffinity(user?.id);
     return posts.slice().sort((first, second) => {
-      const firstAge = Math.max(0, Date.now() - new Date(first.createdAt || 0).getTime());
-      const secondAge = Math.max(0, Date.now() - new Date(second.createdAt || 0).getTime());
+      const firstAge = Math.max(0, FEED_REFERENCE_TIME - new Date(first.createdAt || 0).getTime());
+      const secondAge = Math.max(0, FEED_REFERENCE_TIME - new Date(second.createdAt || 0).getTime());
       const firstIsFresh = firstAge <= FRESH_POST_WINDOW;
       const secondIsFresh = secondAge <= FRESH_POST_WINDOW;
       if (firstIsFresh || secondIsFresh) {
@@ -180,20 +185,22 @@ export function FeedPage({ postId = null }) {
     if (!owns(post.authorId || post.teacherId)) return;
     setEditingPostId(post.id);
     setEditingPostText(post.text || '');
+    setEditingPostMedia(getMediaItems(post));
     setOpenContentMenu(null);
   };
   const cancelPostEdit = () => {
     setEditingPostId(null);
     setEditingPostText('');
+    setEditingPostMedia([]);
   };
   const savePostEdit = (event, post) => {
     event.preventDefault();
     const text = editingPostText.trim();
-    if (!text && !getMediaItems(post).length) {
+    if (!text && !editingPostMedia.length) {
       toast.error('Bài viết cần có nội dung hoặc ảnh/video.');
       return;
     }
-    saveInteraction(post.id, (current) => ({ ...current, text }));
+    saveInteraction(post.id, (current) => ({ ...current, text, mediaItems: editingPostMedia, media: editingPostMedia[0] || null }));
     cancelPostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
@@ -208,6 +215,20 @@ export function FeedPage({ postId = null }) {
   };
   const openImageViewer = (post, author, mediaItems, activeIndex = 0) => {
     setImageViewer({ post, author, mediaItems, activeIndex });
+  };
+  const createFeedAlbum = ({ name, description = '' }) => {
+    if (!user?.id) return null;
+    const album = {
+      id: `profile-album-${Date.now()}`,
+      name,
+      description,
+      media: [],
+      createdAt: new Date().toISOString(),
+    };
+    const nextAlbums = [...ownProfileAlbums, album];
+    saveProfileAlbumsToStorage(user.id, nextAlbums);
+    updateUser({ photoAlbums: nextAlbums });
+    return album;
   };
   const publishFeedPost = (event) => {
     event.preventDefault();
@@ -244,9 +265,15 @@ export function FeedPage({ postId = null }) {
       toast.error('Không thể lưu ảnh vào bộ nhớ trình duyệt. Vui lòng thử đăng ít ảnh hơn hoặc tải lại trang.');
       return;
     }
+    if (postAlbumId && postMedia.length && ownProfileAlbums.some((album) => album.id === postAlbumId)) {
+      const nextAlbums = addMediaToProfileAlbum(ownProfileAlbums, postAlbumId, postMedia);
+      saveProfileAlbumsToStorage(user.id, nextAlbums);
+      updateUser({ photoAlbums: nextAlbums });
+    }
     setPosts(getPosts().slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
     setPostDraft('');
     setPostMedia([]);
+    setPostAlbumId('');
     setIsPostComposerOpen(false);
     setVisiblePostCount(POSTS_BATCH_SIZE);
     toast.success('Bài viết đã được đăng lên Bảng Tin.');
@@ -504,7 +531,7 @@ export function FeedPage({ postId = null }) {
                 <div>{author.id ? <Link className="community-post__author" to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author.name}</strong>}{author.role === 'center' && author.licenseVerificationStatus === 'verified' && <small className="post-verification-badge"><BadgeCheck size={12} /> Đã xác thực pháp lý</small>}<small>{formatRelativeTime(post.createdAt)}</small></div>
                 {owns(post.authorId || post.teacherId) && <ContentMenu id={`post-${post.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editPost(post)} onDelete={() => removePost(post)} label="bài viết" />}
               </header>
-              {editingPostId === post.id ? <form className="inline-post-editor" onSubmit={(event) => savePostEdit(event, post)}><textarea autoFocus value={editingPostText} onChange={(event) => setEditingPostText(event.target.value)} rows="3" placeholder="Viết nội dung bài đăng..." /><div><button type="button" onClick={cancelPostEdit}>Hủy</button><button type="submit">Lưu thay đổi</button></div></form> : <>{post.albumActivity && <p className="album-activity-line">{post.albumActivity.action === 'created' ? 'Đã tạo album' : 'Đã thêm ảnh/video vào album'} <Link to={`${ROUTES.TEACHER_PROFILE(post.authorId || post.teacherId || author.id)}?album=${encodeURIComponent(post.albumActivity.albumId)}`}>{post.albumActivity.albumName}</Link></p>}{post.text && <p className="community-post__text">{post.text}</p>}</>}
+              {editingPostId === post.id ? <InlinePostEditor draft={editingPostText} onDraftChange={setEditingPostText} media={editingPostMedia} onMediaChange={setEditingPostMedia} onCancel={cancelPostEdit} onSave={(event) => savePostEdit(event, post)} attachmentId={`feed-edit-post-media-${post.id}`} /> : post.text && <p className="community-post__text">{post.text}</p>}
               {originalSharedPost && <div className="shared-post"><span>Đã chia sẻ <Link to={ROUTES.POST_DETAIL(originalSharedPost.id)}>bài viết gốc</Link> của</span>{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}<p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`community-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = posts.find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ${item.type === 'video' ? 'video' : 'ảnh'} chia sẻ ${index + 1}`}>{item.type === 'video' ? <video src={item.src} muted preload="metadata" /> : <img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} />}</button>)}</div>}</div>}
               {postMediaItems.length > 0 && <div className={`community-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, author, postMediaItems, index)} aria-label={`Mở ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1}`}>{item.type === 'video' ? <video src={item.src} muted preload="metadata" /> : <img src={item.src} alt={`Ảnh ${index + 1} do ${author.name} chia sẻ`} />}</button>)}</div>}
               <div className="community-post__summary"><div className="community-post__metrics">
@@ -571,7 +598,26 @@ export function FeedPage({ postId = null }) {
           </aside>
         </div>
       </div>
-    </section><PostComposerDialog open={isPostComposerOpen} onClose={() => setIsPostComposerOpen(false)} draft={postDraft} onDraftChange={setPostDraft} media={postMedia} onMediaChange={setPostMedia} onPublish={publishFeedPost} placeholder={composerPlaceholder} attachmentId="feed-post-media" /><LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} /><PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatRelativeTime(viewerPost?.createdAt) }} interactionTarget={viewerMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => toggleLike(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null} /><Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm"><form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form></Modal></>
+    </section>
+    <PostComposerDialog
+      open={isPostComposerOpen}
+      onClose={() => setIsPostComposerOpen(false)}
+      draft={postDraft}
+      onDraftChange={setPostDraft}
+      media={postMedia}
+      onMediaChange={setPostMedia}
+      albums={ownProfileAlbums}
+      selectedAlbumId={postAlbumId}
+      onSelectedAlbumChange={setPostAlbumId}
+      onCreateAlbum={createFeedAlbum}
+      onPublish={publishFeedPost}
+      placeholder={composerPlaceholder}
+      attachmentId="feed-post-media"
+    />
+    <LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} />
+    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatRelativeTime(viewerPost?.createdAt) }} interactionTarget={viewerMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => toggleLike(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null} />
+    <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm"><form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form></Modal>
+    </>
   );
 }
 

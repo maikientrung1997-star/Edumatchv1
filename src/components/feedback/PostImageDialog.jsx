@@ -60,7 +60,7 @@ export function PostImageDialog({ viewer, onClose, discussion, interactionTarget
           <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
           {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}
         </header>
-        {post.text && <p className="post-image-dialog__text">{post.text}</p>}
+        {activeMedia.description && <p className="post-image-dialog__media-description">{activeMedia.description}</p>}
         <div className="post-image-dialog__stats"><button type="button" onClick={onShowLikes}>{likes.length ? `${likes.length} lượt thích` : 'Chưa có lượt thích'}</button><span>{comments.length} bình luận</span>{shareCount > 0 && <button type="button" onClick={onShowShares}>{shareCount} lượt chia sẻ</button>}</div>
         <div className="post-image-dialog__actions"><button type="button" className={isLiked ? 'is-liked' : ''} onClick={onLike}><Heart size={16} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={onShare}><Share2 size={16} /> Chia sẻ</button></div>
         <div className="post-image-dialog__discussion">{discussion}</div>

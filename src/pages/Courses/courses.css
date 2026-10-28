@@ -3263,7 +3263,7 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
 .profile-album-create__cancel:hover { background: var(--edu-tag); }
 .profile-albums__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 .profile-albums__card {
@@ -3286,14 +3286,14 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border-radius: 10px;
   background: var(--edu-soft);
 }
-.profile-albums__cover img {
+.profile-albums__cover :is(img, video) {
   width: 100%;
   height: 100%;
   min-height: 0;
   object-fit: cover;
   transition: transform 160ms ease;
 }
-.profile-albums__cover.is-1 img,
+.profile-albums__cover.is-1 :is(img, video),
 .profile-albums__cover.is-0 > svg {
   grid-column: 1 / -1;
   grid-row: 1 / -1;
@@ -3302,7 +3302,7 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   place-self: center;
   color: var(--edu-muted);
 }
-.profile-albums__card:hover .profile-albums__cover img { transform: scale(1.035); }
+.profile-albums__card:hover .profile-albums__cover :is(img, video) { transform: scale(1.035); }
 .profile-albums__name {
   display: block;
   margin-top: 8px;
@@ -3396,7 +3396,10 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   overflow: hidden;
   border: 1px solid var(--edu-line);
   border-radius: 8px;
+  cursor: grab;
+  transition: opacity 140ms ease, transform 140ms ease;
 }
+.profile-album-create__preview figure:active { cursor: grabbing; opacity: .58; transform: scale(.97); }
 .profile-album-create__preview img { width: 100%; height: 100%; object-fit: cover; }
 .profile-album-create__preview video { width: 100%; height: 100%; object-fit: cover; }
 .profile-album-create__preview button {
@@ -3414,9 +3417,71 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   color: #fff;
   cursor: pointer;
 }
+.profile-album-create__drag-handle {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(22 42 42 / 72%);
+  color: #fff;
+  pointer-events: none;
+}
+.profile-album-create__captions {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--edu-line);
+  border-radius: var(--radius-control);
+  background: var(--edu-soft);
+}
+.profile-album-create__captions > label {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.profile-album-create__caption-thumb {
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--edu-line);
+  border-radius: 8px;
+  background: var(--edu-surface);
+}
+.profile-album-create__caption-thumb :is(img, video) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.profile-album-create__caption-field {
+  display: grid;
+  gap: 5px;
+}
+.profile-album-create__caption-field strong {
+  color: var(--edu-muted);
+  font-size: var(--text-caption);
+  font-weight: 800;
+}
+.profile-album-create__captions textarea {
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid var(--edu-line);
+  border-radius: 8px;
+  background: var(--edu-surface);
+  color: var(--edu-ink);
+  font: inherit;
+  font-weight: 500;
+  line-height: var(--text-control--line-height);
+}
 .profile-album-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 .profile-album-tabs {
@@ -3563,9 +3628,32 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   background: #111;
 }
 .profile-album-lightbox__content {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 14px;
+}
+.profile-album-lightbox__nav {
+  position: absolute;
+  top: min(36dvh, 50%);
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--edu-line);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 92%);
+  color: var(--edu-ink);
+  box-shadow: 0 4px 16px rgb(18 38 37 / 16%);
+  cursor: pointer;
+}
+.profile-album-lightbox__nav:hover { color: var(--edu-green); }
+.profile-album-lightbox__nav--previous { left: max(8px, calc(50% - min(48%, 520px))); }
+.profile-album-lightbox__nav--next { right: max(8px, calc(50% - min(48%, 520px))); }
+.profile-album-lightbox__count {
+  color: var(--edu-muted);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
 }
 .profile-album-lightbox__content p {
   width: min(100%, 760px);
@@ -3589,6 +3677,9 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   margin: 0;
   font-size: var(--text-control);
   line-height: var(--text-control--line-height);
+}
+@media (max-width: 980px) {
+  .profile-album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .teacher-feed__heading {
@@ -3619,6 +3710,10 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   }
   .profile-album-create__preview {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .profile-album-create__captions > label {
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 5px;
   }
   .profile-album-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

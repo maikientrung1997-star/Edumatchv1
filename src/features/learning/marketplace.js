@@ -1,6 +1,6 @@
 import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { storage } from '@/utils/storage';
-import { getVideoMediaUrl, hydrateVideoMedia } from '@/utils/mediaLibrary';
+import { getMediaUrl, hydrateMedia, saveImageMedia } from '@/utils/mediaLibrary';
 import tutoringHero from '@/assets/tutoring-hero.webp';
 import studyTogether from '@/assets/register-student.webp';
 import teacherCommunity from '@/assets/vietnamese-teachers-avatar-strip.png';
@@ -406,9 +406,51 @@ const notifyCourseReviewsChange = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:course-reviews-updated'));
 };
 
+const legacyImageMigrations = new Set();
+const isLegacyStoredImage = (media) => media?.type === 'image' && !media.storageKey && String(media.src || '').startsWith('data:image/');
+const dataUrlToBlob = async (source) => (await fetch(source)).blob();
+
+// Older posts kept whole Base64 images in localStorage. Move those files to
+// IndexedDB in the background so a previously used account can publish again
+// without first deleting its post history.
+const queueLegacyPostImageMigration = (posts) => {
+  const candidates = [];
+  posts.forEach((post) => {
+    const items = Array.isArray(post.mediaItems) && post.mediaItems.length ? post.mediaItems : post.media ? [post.media] : [];
+    items.forEach((media, index) => {
+      if (!isLegacyStoredImage(media)) return;
+      const key = `${post.id}:${index}:${media.src.length}`;
+      if (legacyImageMigrations.has(key)) return;
+      legacyImageMigrations.add(key);
+      candidates.push({ postId: post.id, index, source: media.src, key });
+    });
+  });
+  if (!candidates.length) return;
+  void Promise.all(candidates.map(async (candidate) => {
+    const blob = await dataUrlToBlob(candidate.source);
+    const stored = await saveImageMedia(blob);
+    return { ...candidate, stored };
+  })).then((migrations) => {
+    const replacements = new Map(migrations.map((item) => [`${item.postId}:${item.index}`, item.stored]));
+    const current = read(STORAGE_KEYS.TEACHER_POSTS, []);
+    const next = current.map((post) => {
+      const rawItems = Array.isArray(post.mediaItems) && post.mediaItems.length ? post.mediaItems : post.media ? [post.media] : [];
+      if (!rawItems.length) return post;
+      const mediaItems = rawItems.map((media, index) => {
+        const replacement = replacements.get(`${post.id}:${index}`);
+        return replacement ? { ...media, ...replacement } : media;
+      });
+      const rest = { ...post };
+      delete rest.media;
+      return { ...rest, mediaItems };
+    });
+    if (write(STORAGE_KEYS.TEACHER_POSTS, next)) notifyPostsChange();
+  }).catch(() => {}).finally(() => candidates.forEach((candidate) => legacyImageMigrations.delete(candidate.key)));
+};
+
 const normalizePostMediaItem = (postId, item, index) => ({
   ...item,
-  ...(item?.type === 'video' && item?.storageKey ? { src: getVideoMediaUrl(item.storageKey, item.src) } : {}),
+  ...(item?.storageKey ? { src: getMediaUrl(item.storageKey, item.src) } : {}),
   id: item?.id || `${postId}-media-${index + 1}`,
   likes: Array.isArray(item?.likes) ? item.likes : [],
   comments: Array.isArray(item?.comments) ? item.comments : [],
@@ -488,34 +530,34 @@ export const syncTeacherCourseProfile = (teacherId, profileUpdates) => {
   return next;
 };
 
-const normalizeStoredVideo = (media) => media?.type === 'video' && media.storageKey
-  ? { ...media, src: getVideoMediaUrl(media.storageKey, media.src) }
+const normalizeStoredMedia = (media) => media?.storageKey
+  ? { ...media, src: getMediaUrl(media.storageKey, media.src) }
   : media;
 
-const collectStoredVideoKeys = (media, keys) => {
-  if (media?.type === 'video' && media.storageKey) keys.add(media.storageKey);
+const collectStoredMediaKeys = (media, keys) => {
+  if (media?.storageKey) keys.add(media.storageKey);
 };
 
-const queueVideoHydration = (keys, onHydrated) => {
+const queueMediaHydration = (keys, onHydrated) => {
   if (!keys.size) return;
-  void Promise.all([...keys].map(hydrateVideoMedia)).then((results) => {
+  void Promise.all([...keys].map(hydrateMedia)).then((results) => {
     if (results.some((result) => result.hydrated)) onHydrated();
   }).catch(() => {});
 };
 
 export const getCourseReviews = (courseId) => {
-  const videoKeys = new Set();
+  const mediaKeys = new Set();
   const reviews = read(STORAGE_KEYS.COURSE_REVIEWS, [])
     .filter((review) => review.courseId === courseId)
     .map((review) => {
-      collectStoredVideoKeys(review.media, videoKeys);
+      collectStoredMediaKeys(review.media, mediaKeys);
       const replies = (review.replies || []).map((reply) => {
-        collectStoredVideoKeys(reply.media, videoKeys);
-        return { ...reply, media: normalizeStoredVideo(reply.media) };
+        collectStoredMediaKeys(reply.media, mediaKeys);
+        return { ...reply, media: normalizeStoredMedia(reply.media) };
       });
-      return { ...review, media: normalizeStoredVideo(review.media), replies };
+      return { ...review, media: normalizeStoredMedia(review.media), replies };
     });
-  queueVideoHydration(videoKeys, notifyCourseReviewsChange);
+  queueMediaHydration(mediaKeys, notifyCourseReviewsChange);
   return reviews;
 };
 
@@ -589,6 +631,7 @@ export const getCourseRating = (courseId) => {
 
 export const getPosts = (authorId) => {
   const saved = read(STORAGE_KEYS.TEACHER_POSTS, []);
+  queueLegacyPostImageMigration(saved);
   const currentUser = read(STORAGE_KEYS.USER_INFO, null);
   const savedById = new Map(saved.map((post) => [post.id, post]));
   const sampleIds = new Set(fullCenterPosts.map((post) => post.id));
@@ -614,19 +657,19 @@ export const getPosts = (authorId) => {
       ...(post.media ? { media: mediaItems[0] || post.media } : {}),
     };
   });
-  const videoKeys = new Set();
-  const collectDiscussionVideoKeys = (items) => (items || []).forEach((item) => {
-    collectStoredVideoKeys(item?.media, videoKeys);
-    collectDiscussionVideoKeys(item?.replies);
+  const mediaKeys = new Set();
+  const collectDiscussionMediaKeys = (items) => (items || []).forEach((item) => {
+    collectStoredMediaKeys(item?.media, mediaKeys);
+    collectDiscussionMediaKeys(item?.replies);
   });
   posts.forEach((post) => {
     getPostMediaItems(post).forEach((media) => {
-      collectStoredVideoKeys(media, videoKeys);
-      collectDiscussionVideoKeys(media.comments);
+      collectStoredMediaKeys(media, mediaKeys);
+      collectDiscussionMediaKeys(media.comments);
     });
-    collectDiscussionVideoKeys(post.comments);
+    collectDiscussionMediaKeys(post.comments);
   });
-  queueVideoHydration(videoKeys, notifyPostsChange);
+  queueMediaHydration(mediaKeys, notifyPostsChange);
   if (authorId === undefined || authorId === null) return posts;
 
   const normalizedAuthorId = String(authorId);

@@ -19,7 +19,7 @@
 .post-image-dialog__author :is(a, strong) { color: var(--edu-ink); font-size: var(--text-control); font-weight: 800; text-decoration: none; }
 .post-image-dialog__author a:hover { color: var(--edu-green); }
 .post-image-dialog__author small { color: var(--edu-muted); font-size: var(--text-caption-xs); }
-.post-image-dialog__text { margin: 0; padding: 0 18px 14px; color: var(--edu-ink); white-space: pre-wrap; }
+.post-image-dialog__media-description { margin: 0; padding: 0 18px 14px; color: var(--edu-ink); font-size: var(--text-control); line-height: var(--text-control--line-height); white-space: pre-wrap; }
 .post-image-dialog__stats { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 11px 18px; border-top: 1px solid var(--edu-line); border-bottom: 1px solid var(--edu-line); color: var(--edu-muted); font-size: var(--text-caption); }
 .post-image-dialog__stats button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .post-image-dialog__stats button:hover { color: var(--edu-green); text-decoration: underline; }

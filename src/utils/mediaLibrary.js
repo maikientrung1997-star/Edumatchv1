@@ -31,25 +31,30 @@ const completeTransaction = (transaction) => new Promise((resolve, reject) => {
   transaction.onerror = () => reject(transaction.error || new Error('Không thể lưu video.'));
 });
 
-const createKey = (file) => `video-${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${file.size}`;
+const createKey = (file, kind = 'media') => `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${file.size}`;
 
-export const saveVideoMedia = async (file) => {
-  const id = createKey(file);
+export const saveMedia = async (file, kind = 'media') => {
+  const id = createKey(file, kind);
   const database = await openDatabase();
   const transaction = database.transaction(STORE_NAME, 'readwrite');
-  transaction.objectStore(STORE_NAME).put({ id, file, type: file.type, name: file.name, createdAt: Date.now() });
+  transaction.objectStore(STORE_NAME).put({ id, file, type: file.type, name: file.name || `${kind}-attachment`, createdAt: Date.now() });
   await completeTransaction(transaction);
   const src = URL.createObjectURL(file);
   mediaUrls.set(id, src);
   return { storageKey: id, src };
 };
 
+export const saveVideoMedia = (file) => saveMedia(file, 'video');
+export const saveImageMedia = (file) => saveMedia(file, 'image');
+
 // Blob URLs are only valid for the browser session that created them. After a
 // refresh they must be rebuilt from IndexedDB, rather than reused from storage.
-export const getVideoMediaUrl = (storageKey, fallback = '') =>
+export const getMediaUrl = (storageKey, fallback = '') =>
   mediaUrls.get(storageKey) || (String(fallback).startsWith('blob:') ? '' : fallback);
 
-export const hydrateVideoMedia = async (storageKey) => {
+export const getVideoMediaUrl = getMediaUrl;
+
+export const hydrateMedia = async (storageKey) => {
   if (!storageKey || !supportsIndexedDb()) return { src: '', hydrated: false };
   if (mediaUrls.has(storageKey)) return { src: mediaUrls.get(storageKey), hydrated: false };
   if (pendingReads.has(storageKey)) return pendingReads.get(storageKey);
@@ -65,3 +70,5 @@ export const hydrateVideoMedia = async (storageKey) => {
   pendingReads.set(storageKey, task);
   return task;
 };
+
+export const hydrateVideoMedia = hydrateMedia;

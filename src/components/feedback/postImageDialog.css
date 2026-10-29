@@ -1,6 +1,8 @@
 .post-image-dialog { max-width: min(1180px, calc(100vw - 32px)) !important; }
 .post-media-trigger { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
 .post-media-trigger:focus-visible { outline: 3px solid var(--edu-green); outline-offset: -3px; }
+.post-media-trigger--video { cursor: default; }
+.post-media-trigger--video video { cursor: default; }
 .post-image-dialog > div:nth-child(2) { padding: 0; overflow: hidden; }
 .post-image-dialog__layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(330px, .8fr); min-height: min(68vh, 720px); }
 .post-image-dialog__media { position: relative; display: grid; place-items: center; min-height: 420px; background: #132925; }
@@ -9,7 +11,6 @@
 .post-image-dialog__nav--previous { left: 14px; }
 .post-image-dialog__nav--next { right: 14px; }
 .post-image-dialog__counter { position: absolute; right: 14px; bottom: 14px; padding: 5px 9px; border-radius: 999px; background: rgb(19 41 37 / 80%); color: #fff; font-size: var(--text-caption-xs); font-weight: 700; }
-.post-image-dialog__keyboard-hint { position: absolute; left: 14px; bottom: 14px; padding: 5px 9px; border-radius: var(--radius-control); background: rgb(19 41 37 / 80%); color: #fff; font-size: var(--text-caption-xs); font-weight: 600; }
 .post-image-dialog__panel { display: flex; min-height: 0; flex-direction: column; background: var(--edu-surface); }
 .post-image-dialog__author { display: flex; gap: 10px; align-items: center; padding: 18px 18px 12px; }
 .post-image-dialog__author > span { display: grid; width: 36px; height: 36px; place-items: center; overflow: hidden; border-radius: 50%; background: var(--edu-tag); color: var(--edu-green); font-weight: 800; }

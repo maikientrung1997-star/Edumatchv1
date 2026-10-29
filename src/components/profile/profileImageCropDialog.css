@@ -1,0 +1,152 @@
+.profile-image-crop-dialog {
+  max-width: 56rem;
+}
+
+.profile-image-crop-dialog__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.profile-image-crop-area {
+  position: relative;
+  width: min(100%, 44rem);
+  margin: 0 auto;
+  overflow: hidden;
+  background: #edf4f2;
+  border: 1px solid #c5dfd8;
+  box-shadow: inset 0 0 0 999px rgb(15 52 47 / 0.06);
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.profile-image-crop-area:focus-visible {
+  box-shadow: 0 0 0 3px rgb(0 133 115 / 0.22), inset 0 0 0 999px rgb(15 52 47 / 0.06);
+}
+
+.profile-image-crop-area:active {
+  cursor: grabbing;
+}
+
+.profile-image-crop-area--avatar {
+  aspect-ratio: 1;
+  max-width: 28rem;
+  border-radius: 50%;
+}
+
+.profile-image-crop-area--cover {
+  aspect-ratio: 16 / 5;
+  border-radius: 0.8rem;
+}
+
+.profile-image-crop-area img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+}
+
+.profile-image-crop-area > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #61767a;
+  font-size: 0.9rem;
+}
+
+.profile-image-crop-dialog__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #e0ebe8;
+  border-radius: 0.75rem;
+  background: #f7fbfa;
+}
+
+.profile-image-crop-dialog__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #52676a;
+  font-size: 0.875rem;
+}
+
+.profile-image-crop-dialog__zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: min(18rem, 42vw);
+}
+
+.profile-image-crop-dialog__zoom button {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #0b766a;
+  border: 1px solid #c7dfd9;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.profile-image-crop-dialog__zoom button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.profile-image-crop-dialog__zoom input {
+  width: 100%;
+  accent-color: #078776;
+}
+
+.profile-image-crop-dialog__cancel,
+.profile-image-crop-dialog__save {
+  min-height: 2.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.65rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.profile-image-crop-dialog__cancel {
+  border: 1px solid #d8e5e1;
+  color: #466166;
+  background: #fff;
+}
+
+.profile-image-crop-dialog__save {
+  border: 1px solid #087e70;
+  color: #fff;
+  background: #087e70;
+}
+
+.profile-image-crop-dialog__save:disabled,
+.profile-image-crop-dialog__cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 640px) {
+  .profile-image-crop-dialog__controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-image-crop-dialog__zoom {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-image-crop-area,
+  .profile-image-crop-area img {
+    transition: none;
+  }
+}

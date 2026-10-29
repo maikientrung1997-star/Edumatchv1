@@ -119,17 +119,6 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('auth:expired', clearSession);
     initAuth();
 
-    const handleUserUpdate = (event) => {
-      const updatedUser = event.detail;
-      if (updatedUser?.id) {
-        setUser((current) => {
-          if (!current || String(current.id) === String(updatedUser.id)) {
-            return { ...current, ...updatedUser };
-          }
-          return current;
-        });
-      }
-    };
     const handleStorage = (event) => {
       if (event.key === STORAGE_KEYS.USER_INFO && event.newValue) {
         try {
@@ -147,13 +136,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
     };
-    window.addEventListener('edumatch:user-updated', handleUserUpdate);
     window.addEventListener('storage', handleStorage);
 
     return () => {
       active = false;
       window.removeEventListener('auth:expired', clearSession);
-      window.removeEventListener('edumatch:user-updated', handleUserUpdate);
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
@@ -229,7 +216,6 @@ export const AuthProvider = ({ children }) => {
           ...(Object.prototype.hasOwnProperty.call(updates, 'name') ? { name: nextUser.name } : {}),
         });
       }
-      window.dispatchEvent(new CustomEvent('edumatch:user-updated', { detail: nextUser }));
       return nextUser;
     });
   }, []);

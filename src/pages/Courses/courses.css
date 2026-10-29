@@ -1871,12 +1871,9 @@
   to { transform: rotate(360deg); }
 }
 .profile-avatar-upload input,
-.profile-cover-upload input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
+.profile-cover-upload input,
+.profile-image-upload-input {
+  display: none;
 }
 .teacher-cover__actions {
   display: flex;
@@ -2466,11 +2463,33 @@
 }
 .teacher-cover__cover-upload {
   position: absolute;
-  right: 24px;
-  bottom: 24px;
-  z-index: 1;
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 8px 20px rgb(12 73 59 / 12%);
+  inset: auto 18px 18px auto !important;
+  z-index: 2;
+  margin: 0;
+  border-color: rgb(255 255 255 / 42%);
+  background: rgb(9 55 46 / 48%);
+  color: #fff;
+  opacity: 0.62;
+  box-shadow: 0 8px 20px rgb(12 73 59 / 18%);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  transition: opacity 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.teacher-cover.has-custom-cover > .teacher-cover__cover-upload {
+  position: absolute;
+  inset: auto 18px 18px auto !important;
+}
+.teacher-cover__cover-upload:hover,
+.teacher-cover__cover-upload:focus-visible {
+  border-color: rgb(255 255 255 / 66%);
+  background: rgb(9 55 46 / 88%);
+  color: #fff;
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.teacher-cover__cover-upload.is-uploading {
+  opacity: 1;
+  transform: none;
 }
 .teacher-cover__course-add {
   margin-left: auto;
@@ -2732,12 +2751,16 @@
     font-size: 31px;
   }
   .teacher-cover__cover-upload {
-    right: 16px;
-    bottom: 16px;
+    right: 14px;
+    bottom: 14px;
   }
   .teacher-cover__actions {
     margin-left: 0;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teacher-cover__cover-upload { transition: none; }
 }
 
 /* Explicit semantic headings are needed inside the Home layout reset. */
@@ -3531,10 +3554,8 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   justify-content: space-between;
   gap: 16px;
   margin: 0 0 16px;
-  padding: 13px;
-  border: 1px solid var(--edu-line);
-  border-radius: var(--radius-control);
-  background: var(--edu-soft);
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--edu-line);
 }
 .profile-album-description > div:first-child { min-width: 0; flex: 1; }
 .profile-album-description strong {
@@ -3545,7 +3566,7 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
 }
 .profile-album-description p {
   margin: 0;
-  color: var(--edu-muted);
+  color: var(--edu-ink);
   font-size: var(--text-control);
   line-height: var(--text-control--line-height);
   white-space: pre-wrap;

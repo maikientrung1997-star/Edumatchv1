@@ -52,7 +52,7 @@ export function PostImageDialog({ viewer, onClose, discussion, interactionTarget
         {activeMedia.type === 'video'
           ? <video src={activeMedia.src} controls autoPlay preload="metadata" />
           : <img src={activeMedia.src} alt={`Ảnh ${activeIndex + 1} trong bài viết`} />}
-        {mediaItems.length > 1 && <><button type="button" className="post-image-dialog__nav post-image-dialog__nav--previous" onClick={showPrevious} aria-label="Ảnh trước"><ChevronLeft size={22} /></button><button type="button" className="post-image-dialog__nav post-image-dialog__nav--next" onClick={showNext} aria-label="Ảnh tiếp theo"><ChevronRight size={22} /></button><span className="post-image-dialog__counter">{activeIndex + 1} / {mediaItems.length}</span><span className="post-image-dialog__keyboard-hint">Dùng phím ← → để xem ảnh</span></>}
+        {mediaItems.length > 1 && <><button type="button" className="post-image-dialog__nav post-image-dialog__nav--previous" onClick={showPrevious} aria-label="Ảnh trước"><ChevronLeft size={22} /></button><button type="button" className="post-image-dialog__nav post-image-dialog__nav--next" onClick={showNext} aria-label="Ảnh tiếp theo"><ChevronRight size={22} /></button><span className="post-image-dialog__counter">{activeIndex + 1} / {mediaItems.length}</span></>}
       </section>
       <aside className="post-image-dialog__panel">
         <header className="post-image-dialog__author">

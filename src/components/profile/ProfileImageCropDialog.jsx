@@ -35,7 +35,12 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
   const isOpen = Boolean(draft?.source);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen || !draft?.source) {
+      setImageSize(null);
+      setZoom(1);
+      setOffset({ x: 0, y: 0 });
+      return undefined;
+    }
     let active = true;
     setImageSize(null);
     setZoom(1);
@@ -137,7 +142,7 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
   };
 
   const save = async () => {
-    if (!imageSize || !cropMetrics || saving) return;
+    if (!imageSize || !cropMetrics || saving || !draft?.source) return;
     setSaving(true);
     try {
       const image = imageRef.current || await loadImage(draft.source);
@@ -157,7 +162,7 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
       // A restrained output size prevents local profile persistence from
       // exhausting browser storage and keeps the cover quick to repaint.
       const imageDataUrl = canvas.toDataURL('image/jpeg', variant === 'cover' ? 0.74 : 0.82);
-      const baseName = String(draft.file?.name || `edumatch-${variant}`).replace(/\.[^.]+$/, '');
+      const baseName = String(draft?.file?.name || `edumatch-${variant}`).replace(/\.[^.]+$/, '');
       await onSave?.({
         image: imageDataUrl,
         file: await toFile(imageDataUrl, `${baseName}-${variant}.jpg`),
@@ -178,6 +183,10 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
   }, [areaSize.width, cropMetrics, offset.x, offset.y, output.width]);
 
   const title = variant === 'avatar' ? 'Chọn vùng ảnh đại diện' : 'Chọn vùng ảnh bìa';
+
+  if (!isOpen || !draft?.source) {
+    return null;
+  }
 
   return (
     <Modal
@@ -207,7 +216,7 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
           onPointerUp={stopDrag}
           onPointerCancel={stopDrag}
         >
-          {imageSize ? <img ref={imageRef} src={draft.source} alt="Xem trước vùng ảnh" draggable={false} style={imageStyle} /> : <span>Đang chuẩn bị ảnh...</span>}
+          {imageSize && draft?.source ? <img ref={imageRef} src={draft.source} alt="Xem trước vùng ảnh" draggable={false} style={imageStyle} /> : <span>Đang chuẩn bị ảnh...</span>}
         </div>
         <div className="profile-image-crop-dialog__controls">
           <span className="profile-image-crop-dialog__hint"><Move size={16} /> Kéo ảnh để đặt lại vị trí hiển thị</span>

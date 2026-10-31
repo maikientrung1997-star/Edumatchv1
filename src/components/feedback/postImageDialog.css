@@ -16,11 +16,22 @@
 .post-image-dialog__author > span { display: grid; width: 36px; height: 36px; place-items: center; overflow: hidden; border-radius: 50%; background: var(--edu-tag); color: var(--edu-green); font-weight: 800; }
 .post-image-dialog__author img { width: 100%; height: 100%; object-fit: cover; }
 .post-image-dialog__author > div { display: grid; gap: 2px; }
+.post-image-dialog__author > .content-menu { margin-left: auto; }
 .post-image-dialog__owner-actions { display: inline-flex !important; margin-left: auto; }
 .post-image-dialog__author :is(a, strong) { color: var(--edu-ink); font-size: var(--text-control); font-weight: 800; text-decoration: none; }
 .post-image-dialog__author a:hover { color: var(--edu-green); }
 .post-image-dialog__author small { color: var(--edu-muted); font-size: var(--text-caption-xs); }
 .post-image-dialog__media-description { margin: 0; padding: 0 18px 14px; color: var(--edu-ink); font-size: var(--text-control); line-height: var(--text-control--line-height); white-space: pre-wrap; }
+.post-image-dialog__media-editor { padding: 0 18px 14px; }
+.post-image-dialog__media-editor textarea { display: block; width: 100%; min-height: 80px; resize: vertical; }
+.post-image-dialog__media-editor > div,
+.post-image-dialog__delete-confirm > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 9px; }
+.post-image-dialog__media-editor button,
+.post-image-dialog__delete-confirm button { min-height: 32px; padding: 0 11px; border: 1px solid var(--edu-line); border-radius: 8px; background: var(--edu-surface); color: var(--edu-muted); font: inherit; font-size: var(--text-caption-xs); font-weight: 800; }
+.post-image-dialog__media-editor button:last-child { border-color: var(--edu-green); background: var(--edu-green); color: #fff; }
+.post-image-dialog__delete-confirm { margin: 0 18px 14px; padding: 11px; border: 1px solid rgb(196 62 69 / 28%); border-radius: 10px; background: rgb(196 62 69 / 6%); }
+.post-image-dialog__delete-confirm p { margin: 0; color: var(--edu-ink); font-size: var(--text-caption); font-weight: 700; }
+.post-image-dialog__delete-confirm button:last-child { border-color: var(--color-danger); background: var(--color-danger); color: #fff; }
 .post-image-dialog__stats { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 11px 18px; border-top: 1px solid var(--edu-line); border-bottom: 1px solid var(--edu-line); color: var(--edu-muted); font-size: var(--text-caption); }
 .post-image-dialog__stats button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .post-image-dialog__stats button:hover { color: var(--edu-green); text-decoration: underline; }

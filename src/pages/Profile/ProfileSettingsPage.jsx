@@ -15,6 +15,8 @@ import { SecurityForm } from './SecurityForm';
 import '@/components/auth/account.css';
 import './profileSettings.css';
 
+const TEACHING_FIELD_MAX_LENGTH = 45;
+
 const readImageAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -167,9 +169,12 @@ export function ProfileSettingsPage() {
 
   const change = (event) => {
     const { name, value } = event.target;
+    const nextValue = name === 'teaching_field'
+      ? value.slice(0, TEACHING_FIELD_MAX_LENGTH)
+      : value;
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: nextValue,
       ...(name === 'province_id'
         ? { district_id: '', ward_id: '' }
         : name === 'district_id'
@@ -192,8 +197,6 @@ export function ProfileSettingsPage() {
     if (form.name.trim().length > (user.role === 'center' ? 200 : 150)) next.name = user.role === 'center' ? 'Tên trung tâm tối đa 200 ký tự.' : 'Họ và tên tối đa 150 ký tự.';
     if (form.date_of_birth && form.date_of_birth > getTodayDate())
       next.date_of_birth = 'Ngày sinh không được nằm trong tương lai.';
-    if (!isStudent && form.teaching_field.length > 45)
-      next.teaching_field = 'Lĩnh vực giảng dạy tối đa 45 ký tự.';
     setErrors(next);
     if (Object.keys(next).length) return;
     setBusy(true);
@@ -477,8 +480,8 @@ export function ProfileSettingsPage() {
                 )}
                 {!isStudent && <label className="account-field">
                   <span>Lĩnh vực giảng dạy</span>
-                  <input name="teaching_field" value={form.teaching_field} onChange={change} maxLength={45} placeholder="Lĩnh Vực Giảng Dạy ..." aria-invalid={Boolean(errors.teaching_field)} />
-                  <small className={`profile-field-count ${form.teaching_field.length >= 45 ? 'is-limit' : ''}`}>{form.teaching_field.length}/45 ký tự</small>
+                  <input name="teaching_field" value={form.teaching_field} onChange={change} maxLength={TEACHING_FIELD_MAX_LENGTH} placeholder="Lĩnh Vực Giảng Dạy ..." aria-invalid={Boolean(errors.teaching_field)} />
+                  <small className={`profile-field-count ${form.teaching_field.length >= TEACHING_FIELD_MAX_LENGTH ? 'is-limit' : ''}`}>{form.teaching_field.length}/{TEACHING_FIELD_MAX_LENGTH} ký tự</small>
                   {errors.teaching_field && <small className="account-error">{errors.teaching_field}</small>}
                 </label>}
                 <label className="account-field">

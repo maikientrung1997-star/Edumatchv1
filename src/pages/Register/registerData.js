@@ -294,13 +294,11 @@ export function validateRegistration(form, role, today = new Date()) {
         errors[name] = `Vui lòng nhập ${label.toLowerCase()}.`;
     });
     if (form.qualification.length > 200) errors.qualification = "Bằng cấp/tiêu đề nghề nghiệp tối đa 200 ký tự.";
-    if (form.teachingField.trim().length > 45) errors.teachingField = "Lĩnh vực giảng dạy tối đa 45 ký tự.";
     const years = Number.parseInt(form.experience, 10);
     if (!Number.isInteger(years) || years < 0 || years > 60) errors.experience = "Nhập số năm kinh nghiệm từ 0 đến 60 (ví dụ: 5 năm).";
   } else if (role === "center") {
     if (!form.centerDescription.trim()) errors.centerDescription = "Vui lòng nhập thông tin mô tả về trung tâm.";
     if (!form.teachingField.trim()) errors.teachingField = "Vui lòng nhập lĩnh vực giảng dạy.";
-    else if (form.teachingField.trim().length > 45) errors.teachingField = "Lĩnh vực giảng dạy tối đa 45 ký tự.";
   }
   if (role === "center" && !/^\d{4}$/.test(form.foundedYear))
     errors.foundedYear = "Vui lòng nhập năm thành lập gồm 4 chữ số.";

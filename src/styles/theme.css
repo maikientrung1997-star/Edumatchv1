@@ -170,6 +170,31 @@
   background: #fff;
   color: #69777d;
 }
+
+.default-role-avatar__teacher {
+  display: grid;
+  position: relative;
+  width: var(--default-role-avatar-size);
+  height: var(--default-role-avatar-size);
+  place-items: center;
+}
+
+.default-role-avatar__teacher-board {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.default-role-avatar__teacher-person {
+  position: absolute;
+  width: 68%;
+  height: 68%;
+  bottom: -9%;
+  left: -8%;
+  padding: 1px;
+  border-radius: 50%;
+  background: #fff;
+}
 .image-attachment {
   display: inline-flex;
   align-items: center;

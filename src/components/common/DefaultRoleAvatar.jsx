@@ -1,9 +1,9 @@
-import { Building2, GraduationCap, NotebookPen } from 'lucide-react';
+import { GraduationCap, Presentation, School, UserRound } from 'lucide-react';
 
 const roleIcons = {
   student: GraduationCap,
-  teacher: NotebookPen,
-  center: Building2,
+  teacher: Presentation,
+  center: School,
 };
 
 const roleLabels = {
@@ -14,7 +14,18 @@ const roleLabels = {
 
 export function DefaultRoleAvatar({ role = 'student', size = 18, className = '' }) {
   const Icon = roleIcons[role] || GraduationCap;
-  return <span className={`default-role-avatar ${className}`.trim()} role="img" aria-label={`Ảnh đại diện mặc định của ${roleLabels[role] || roleLabels.student}`}><Icon size={size} strokeWidth={1.8} aria-hidden="true" /></span>;
+  const isTeacher = role === 'teacher';
+
+  return (
+    <span className={`default-role-avatar ${className}`.trim()} role="img" aria-label={`Ảnh đại diện mặc định của ${roleLabels[role] || roleLabels.student}`}>
+      {isTeacher ? (
+        <span className="default-role-avatar__teacher" style={{ '--default-role-avatar-size': `${size}px` }} aria-hidden="true">
+          <Presentation className="default-role-avatar__teacher-board" size={size} strokeWidth={1.8} />
+          <UserRound className="default-role-avatar__teacher-person" size={Math.max(12, Math.round(size * 0.68))} strokeWidth={1.9} />
+        </span>
+      ) : <Icon size={size} strokeWidth={1.8} aria-hidden="true" />}
+    </span>
+  );
 }
 
 export default DefaultRoleAvatar;

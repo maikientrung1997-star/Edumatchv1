@@ -383,7 +383,7 @@ export function Register() {
                         </div>
                         <FieldError name={name} errors={errors} />
                       </div>
-                      {role === "teacher" && name === "phone" && (
+                      {['teacher', 'center'].includes(role) && name === "phone" && (
                         <PhoneVisibility
                           value={form.isPhonePublic}
                           disabled={loading}

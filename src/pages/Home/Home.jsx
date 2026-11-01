@@ -148,7 +148,7 @@ function TutorCard({ tutor, saved, onSave, onOpen }) {
   return (
     <article className="tutor-card">
       <div className="tutor-top">
-        {tutor.image ? <img src={tutor.image} alt={tutor.name} width="68" height="76" loading="lazy" /> : <span className="tutor-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role="teacher" size={24} /></span>}
+        {tutor.image ? <img src={tutor.image} alt={tutor.name} width="68" height="76" loading="lazy" /> : <span className="tutor-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role={tutor.providerType === 'center' ? 'center' : 'teacher'} size={32} /></span>}
         <div className="tutor-identity">
           <h3>
             <Link className="tutor-name-link" to={ROUTES.TEACHER_PROFILE(tutor.id)}>
@@ -1113,7 +1113,7 @@ const profileCourses = profile
         {profile && (
           <div className="profile-detail">
             <div className="profile-detail-heading">
-              {profile.image ? <img src={profile.image} alt={profile.name} width="84" height="96" /> : <span className="profile-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role="teacher" size={29} /></span>}
+              {profile.image ? <img src={profile.image} alt={profile.name} width="84" height="96" /> : <span className="profile-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role={profile.providerType === 'center' ? 'center' : 'teacher'} size={38} /></span>}
               <div>
                 <span className="subject-tag">{profile.subject}</span>
                 <h3><Link to={ROUTES.TEACHER_PROFILE(profile.id)} onClick={() => setProfile(null)}>{profile.title} {profile.name}</Link></h3>

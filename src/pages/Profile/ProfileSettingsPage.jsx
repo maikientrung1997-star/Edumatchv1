@@ -10,9 +10,12 @@ import { getTodayDate } from '@/pages/Register/registerData';
 import { getPostMediaItems, getPosts, syncTeacherCourseProfile } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
 import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { ProfileImageCropDialog } from '@/components/profile/ProfileImageCropDialog';
 import { SecurityForm } from './SecurityForm';
 import '@/components/auth/account.css';
 import './profileSettings.css';
+
+const TEACHING_FIELD_MAX_LENGTH = 45;
 
 const readImageAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -72,6 +75,7 @@ export function ProfileSettingsPage() {
   const [failedAvatarSource, setFailedAvatarSource] = useState('');
   const [avatarError, setAvatarError] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarCropDraft, setAvatarCropDraft] = useState(null);
   const [isAvatarSourceOpen, setIsAvatarSourceOpen] = useState(false);
   const [isAvatarAlbumOpen, setIsAvatarAlbumOpen] = useState(false);
   const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
@@ -165,9 +169,12 @@ export function ProfileSettingsPage() {
 
   const change = (event) => {
     const { name, value } = event.target;
+    const nextValue = name === 'teaching_field'
+      ? value.slice(0, TEACHING_FIELD_MAX_LENGTH)
+      : value;
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: nextValue,
       ...(name === 'province_id'
         ? { district_id: '', ward_id: '' }
         : name === 'district_id'
@@ -190,8 +197,6 @@ export function ProfileSettingsPage() {
     if (form.name.trim().length > (user.role === 'center' ? 200 : 150)) next.name = user.role === 'center' ? 'Tên trung tâm tối đa 200 ký tự.' : 'Họ và tên tối đa 150 ký tự.';
     if (form.date_of_birth && form.date_of_birth > getTodayDate())
       next.date_of_birth = 'Ngày sinh không được nằm trong tương lai.';
-    if (!isStudent && form.teaching_field.length > 45)
-      next.teaching_field = 'Lĩnh vực giảng dạy tối đa 45 ký tự.';
     setErrors(next);
     if (Object.keys(next).length) return;
     setBusy(true);
@@ -233,6 +238,7 @@ export function ProfileSettingsPage() {
   };
   const chooseAvatar = async (event) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setAvatarError('Chọn ảnh JPG, PNG hoặc WebP.');
@@ -240,26 +246,25 @@ export function ProfileSettingsPage() {
       return;
     }
     setAvatarError('');
-      setAvatarFile(file);
-
     try {
-      const localImage = await createPersistentProfileImage(file);
-      setPreview(localImage);
-      const avatarVersion = `${file.name}-${file.size}-${file.lastModified}`;
-      updateUser({ avatar: localImage, avatarVersion });
-      if (['teacher', 'center'].includes(user?.role)) {
-        syncTeacherCourseProfile(user.id, { avatar: localImage });
-      }
-      await uploadAvatar(file, localImage);
+      setAvatarCropDraft({ file, source: await readImageAsDataUrl(file), variant: 'avatar' });
     } catch {
-      const fallbackPreview = await readImageAsDataUrl(file);
-      setPreview(fallbackPreview);
-      updateUser({ avatar: fallbackPreview, avatarVersion: `${file.name}-${file.size}-${file.lastModified}` });
-      if (['teacher', 'center'].includes(user?.role)) {
-        syncTeacherCourseProfile(user.id, { avatar: fallbackPreview });
-      }
-      await uploadAvatar(file, fallbackPreview);
+      setAvatarError('Không thể mở ảnh. Vui lòng chọn một ảnh khác.');
     }
+  };
+
+  const saveCroppedAvatar = async ({ image, file }) => {
+    const avatarVersion = `${file.name}-${file.size}-${file.lastModified}`;
+    setAvatarError('');
+    setAvatarFile(file);
+    setPreview(image);
+    setFailedAvatarSource('');
+    updateUser({ avatar: image, avatarVersion });
+    if (['teacher', 'center'].includes(user?.role)) {
+      syncTeacherCourseProfile(user.id, { avatar: image });
+    }
+    await uploadAvatar(file, image);
+    setAvatarCropDraft(null);
   };
 
   const uploadAvatar = async (fileToUpload = avatarFile, imageOverride = preview) => {
@@ -309,15 +314,8 @@ export function ProfileSettingsPage() {
     }
   };
   const chooseAvatarFromAlbum = (image) => {
-    const avatarVersion = image.id || image.src;
-    setPreview(image.src);
-    setFailedAvatarSource('');
-    updateUser({ avatar: image.src, avatarVersion });
-    if (['teacher', 'center'].includes(user?.role)) {
-      syncTeacherCourseProfile(user.id, { avatar: image.src });
-    }
     setIsAvatarAlbumOpen(false);
-    toast.success('Đã chọn ảnh đại diện từ album.');
+    setAvatarCropDraft({ source: image.src, variant: 'avatar' });
   };
   const districts = provinceChildren.filter((area) => area.level === 'district');
   const wards = form.district_id
@@ -482,8 +480,8 @@ export function ProfileSettingsPage() {
                 )}
                 {!isStudent && <label className="account-field">
                   <span>Lĩnh vực giảng dạy</span>
-                  <input name="teaching_field" value={form.teaching_field} onChange={change} maxLength={45} placeholder="Lĩnh Vực Giảng Dạy ..." aria-invalid={Boolean(errors.teaching_field)} />
-                  <small className={`profile-field-count ${form.teaching_field.length >= 45 ? 'is-limit' : ''}`}>{form.teaching_field.length}/45 ký tự</small>
+                  <input name="teaching_field" value={form.teaching_field} onChange={change} maxLength={TEACHING_FIELD_MAX_LENGTH} placeholder="Lĩnh Vực Giảng Dạy ..." aria-invalid={Boolean(errors.teaching_field)} />
+                  <small className={`profile-field-count ${form.teaching_field.length >= TEACHING_FIELD_MAX_LENGTH ? 'is-limit' : ''}`}>{form.teaching_field.length}/{TEACHING_FIELD_MAX_LENGTH} ký tự</small>
                   {errors.teaching_field && <small className="account-error">{errors.teaching_field}</small>}
                 </label>}
                 <label className="account-field">
@@ -515,6 +513,11 @@ export function ProfileSettingsPage() {
       <Modal open={isAvatarAlbumOpen} onClose={() => setIsAvatarAlbumOpen(false)} title="Chọn ảnh đại diện từ album" description="Chọn một ảnh bạn đã đăng trên bảng tin hoặc trang cá nhân." size="lg" className="profile-avatar-album">
         {avatarAlbumItems.length ? <div className="profile-avatar-album__grid">{avatarAlbumItems.map((image, index) => <button type="button" key={`${image.id || image.src}-${index}`} onClick={() => chooseAvatarFromAlbum(image)}><img src={image.src} alt={`Ảnh trong album ${index + 1}`} /></button>)}</div> : <p className="profile-avatar-album__empty">Bạn chưa có ảnh nào trong album. Hãy tải ảnh lên để làm ảnh đại diện.</p>}
       </Modal>
+      <ProfileImageCropDialog
+        draft={avatarCropDraft}
+        onClose={() => setAvatarCropDraft(null)}
+        onSave={saveCroppedAvatar}
+      />
     </main>
   );
 }

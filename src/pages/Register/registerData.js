@@ -151,7 +151,7 @@ export const centerAccountFields = [
     autoComplete: "organization",
     maxLength: 200,
   },
-  accountFields[1],
+  emailField,
   phoneField,
   ...passwordFields,
 ];

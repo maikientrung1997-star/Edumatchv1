@@ -199,6 +199,23 @@ test('center capability profiles are not limited by the generic 5,000-character 
   assert.equal(payload.centerProfile.description, centerDescription.trim());
 });
 
+test('a center can complete every required field rendered by its registration form', () => {
+  const visibleFields = new Set([
+    ...registration.centerAccountFields,
+    ...registration.centerFields,
+  ].map(({ name }) => name));
+  const form = { ...registration.initialForm, centerName: 'Trung tâm kiểm tra',
+    email: 'center@example.com', phone: '0981234567', password: 'Password@123',
+    confirmPassword: 'Password@123', teachingField: 'Tiếng Anh',
+    foundedYear: '2018', centerDescription: 'Trung tâm đào tạo ngoại ngữ' };
+  assert.ok(visibleFields.has('email'), 'OTP email must be editable on the center form');
+  assert.equal(visibleFields.has('dateOfBirth'), false, 'A center does not require a birth date');
+  assert.deepEqual(registration.validateRegistration(form, 'center'), {});
+  for (const field of Object.keys(registration.validateRegistration(registration.initialForm, 'center'))) {
+    assert.ok(visibleFields.has(field), `Required field ${field} must be visible`);
+  }
+});
+
 test('all registration roles require a valid email, including centers', () => {
   for (const role of ['student', 'teacher', 'center']) {
     assert.ok(registration.validateRegistration({ ...registration.initialForm, email: '' }, role).email);

@@ -306,24 +306,25 @@ export function TeacherProfilePage() {
     if (!item) return;
     const allPosts = getPosts();
     const interactionPostIds = mediaItems.map((mediaItem) => allPosts.find((post) => getMediaItems(post).some((candidate) => isSameAlbumMedia(candidate, mediaItem)))?.id || null);
-    const matchedPost = allPosts.find((post) => post.id === interactionPostIds[index]);
-    // Some older albums were created before album media was linked to a feed
-    // post. Keep those items fully interactive instead of making them dead-end
-    // previews: their reactions and comments are stored back on the album item.
-    const sourcePost = matchedPost || {
-      id: `album-media:${profile.id}:${albumId || 'library'}:${item.id || index}`,
+    const fallbackPosts = mediaItems.map((mediaItem, mediaIndex) => ({
+      id: `album-media:${profile.id}:${albumId || 'library'}:${mediaItem.id || mediaIndex}`,
       teacherId: profile.id,
       authorId: profile.id,
       authorName: profile.name,
       authorRole: profile.role,
       authorAvatar: profile.avatar || '',
-      media: item,
-      mediaItems: [item],
-      likes: item.likes || [],
-      comments: item.comments || [],
-      createdAt: item.createdAt || new Date().toISOString(),
+      media: mediaItem,
+      mediaItems: [mediaItem],
+      likes: mediaItem.likes || [],
+      comments: mediaItem.comments || [],
+      createdAt: mediaItem.createdAt || new Date().toISOString(),
       isAlbumMediaFallback: true,
-    };
+    }));
+    const matchedPost = allPosts.find((post) => post.id === interactionPostIds[index]);
+    // Some older albums were created before album media was linked to a feed
+    // post. Keep those items fully interactive instead of making them dead-end
+    // previews: their reactions and comments are stored back on the album item.
+    const sourcePost = matchedPost || fallbackPosts[index];
     setIsViewingProfileAlbums(false);
     setImageViewer({
       post: sourcePost,
@@ -335,6 +336,7 @@ export function TeacherProfilePage() {
       },
       mediaItems,
       interactionPostIds,
+      fallbackPosts,
       activeIndex: index,
       albumId,
     });
@@ -869,18 +871,25 @@ export function TeacherProfilePage() {
     toast.success(`Đã xóa ${mediaItem.type === 'video' ? 'video' : 'ảnh'}.`);
   };
   const getInteractionTarget = (post, mediaId = null) => mediaId ? getMediaItems(post).find((item) => item.id === mediaId) || null : post;
+  const getViewerFallbackPost = (postId) => {
+    const activeIndex = imageViewer?.activeIndex || 0;
+    const fallbackPost = imageViewer?.fallbackPosts?.[activeIndex] || imageViewer?.post;
+    return fallbackPost && String(fallbackPost.id) === String(postId) ? fallbackPost : null;
+  };
   const saveTargetInteraction = (postId, mediaId, updater) => {
+    const activeIndex = imageViewer?.activeIndex || 0;
+    const activeFallbackPost = imageViewer?.fallbackPosts?.[activeIndex] || imageViewer?.post;
     const isAlbumMediaFallback = Boolean(
       imageViewer?.albumId
-      && imageViewer?.post?.id === postId
-      && !mediaId,
+      && activeFallbackPost?.isAlbumMediaFallback
+      && String(activeFallbackPost.id) === String(postId),
     );
     if (isAlbumMediaFallback) {
       const album = visibleProfileAlbums.find((item) => item.id === imageViewer.albumId);
       const activeItem = album?.media.find((item) => isSameAlbumMedia(item, imageViewer.mediaItems?.[imageViewer.activeIndex]));
       if (!album || !activeItem) return;
       const fallbackPost = {
-        ...imageViewer.post,
+        ...activeFallbackPost,
         media: activeItem,
         mediaItems: [activeItem],
         likes: activeItem.likes || [],
@@ -892,12 +901,18 @@ export function TeacherProfilePage() {
         likes: nextPost.likes || [],
         comments: nextPost.comments || [],
       };
+      const nextFallbackPost = {
+        ...nextPost,
+        media: nextItem,
+        mediaItems: [nextItem],
+      };
       saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id
         ? { ...item, media: item.media.map((media) => isSameAlbumMedia(media, activeItem) ? nextItem : media) }
         : item));
       setImageViewer((current) => current ? {
         ...current,
-        post: { ...nextPost, media: nextItem, mediaItems: [nextItem] },
+        post: current.activeIndex === activeIndex ? nextFallbackPost : current.post,
+        fallbackPosts: (current.fallbackPosts || []).map((fallback, mediaIndex) => mediaIndex === activeIndex ? nextFallbackPost : fallback),
         mediaItems: current.mediaItems.map((media) => isSameAlbumMedia(media, activeItem) ? nextItem : media),
       } : current);
       return;
@@ -933,8 +948,7 @@ export function TeacherProfilePage() {
   };
   const like = (postId, mediaId = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để tương tác.'); return; }
-    const post = getPosts().find((item) => item.id === postId)
-      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
+    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
     const target = getInteractionTarget(post, mediaId);
     if (!target) return;
     const likes = target.likes || [];
@@ -964,7 +978,7 @@ export function TeacherProfilePage() {
     }
     if (!text && !media) return;
     const targetPost = getPosts().find((post) => post.id === postId)
-      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
+      || getViewerFallbackPost(postId);
     if (targetPost && (targetPost.authorId || targetPost.teacherId) !== user.id) {
       createNotification({ recipientId: targetPost?.authorId || targetPost?.teacherId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'post_comment', title: `${user.name || 'Một thành viên'} đã bình luận về bài viết của bạn`, description: text, link: ROUTES.POST_DETAIL(postId) });
     }
@@ -1032,7 +1046,7 @@ export function TeacherProfilePage() {
     const text = replyText.trim();
     if (!text && !replyMedia) return;
     const targetPost = getPosts().find((post) => post.id === replyTarget.postId)
-      || (imageViewer?.post?.id === replyTarget.postId ? imageViewer.post : null);
+      || getViewerFallbackPost(replyTarget.postId);
     const parentComment = getInteractionTarget(targetPost, replyTarget.mediaId)?.comments?.find((item) => item.id === replyTarget.commentId);
     const reply = { id: createPostId('reply'), author: user.name || 'Thành viên EduMatch', authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media: replyMedia, likes: [], createdAt: new Date().toISOString() };
     if (parentComment?.authorId && parentComment.authorId !== user.id) {
@@ -1045,8 +1059,7 @@ export function TeacherProfilePage() {
   };
   const toggleProfileCommentLike = (postId, commentId, replyId = null, mediaId = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để thích bình luận.'); return; }
-    const post = getPosts().find((item) => item.id === postId)
-      || (imageViewer?.post?.id === postId ? imageViewer.post : null);
+    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
     const target = getInteractionTarget(post, mediaId);
     const comment = target?.comments?.find((item) => item.id === commentId);
     const reply = comment?.replies?.find((item) => item.id === replyId);
@@ -1080,11 +1093,13 @@ export function TeacherProfilePage() {
     setCommentText((current) => ({ ...current, [draftKey]: '' }));
     setCommentMedia((current) => ({ ...current, [draftKey]: null }));
   };
-  const viewerInteractionPostId = imageViewer?.interactionPostIds?.[imageViewer?.activeIndex || 0] || imageViewer?.post?.id;
-  const viewerPost = imageViewer ? getPosts().find((post) => post.id === viewerInteractionPostId) || imageViewer.post : null;
+  const viewerActiveIndex = imageViewer?.activeIndex || 0;
+  const viewerFallbackPost = imageViewer?.fallbackPosts?.[viewerActiveIndex] || imageViewer?.post;
+  const viewerInteractionPostId = imageViewer?.interactionPostIds?.[viewerActiveIndex] || viewerFallbackPost?.id;
+  const viewerPost = imageViewer ? getPosts().find((post) => post.id === viewerInteractionPostId) || viewerFallbackPost : null;
   const viewerAuthor = imageViewer?.author || (viewerPost ? { id: viewerPost.authorId || viewerPost.teacherId || '', name: viewerPost.authorName || viewerPost.author || profile.name, role: viewerPost.authorRole || profile.role, avatar: viewerPost.authorAvatar || profile.avatar || '' } : null);
   const viewerMediaItems = imageViewer?.mediaItems?.length ? imageViewer.mediaItems : getMediaItems(viewerPost);
-  const viewerMedia = viewerMediaItems[imageViewer?.activeIndex || 0] || null;
+  const viewerMedia = viewerMediaItems[viewerActiveIndex] || null;
   const viewerInteractionMedia = viewerMedia ? getMediaItems(viewerPost).find((item) => isSameAlbumMedia(item, viewerMedia)) || viewerMedia : null;
   const viewerInteractionTarget = viewerInteractionMedia || viewerPost;
   const viewerDiscussionKey = viewerMedia ? `${viewerPost.id}:${viewerMedia.id}` : `${viewerPost?.id}:post`;
@@ -1125,7 +1140,7 @@ export function TeacherProfilePage() {
     refreshProfilePosts();
   };
   const editProfileComment = (postId, commentId, replyId = null, mediaId = null) => {
-    const post = posts.find((item) => item.id === postId);
+    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
     const comment = getInteractionTarget(post, mediaId)?.comments?.find((item) => item.id === commentId);
     const target = replyId ? comment?.replies?.find((item) => item.id === replyId) : comment;
     if (!target || !ownsContent(target.authorId)) return;
@@ -1139,7 +1154,7 @@ export function TeacherProfilePage() {
     });
   };
   const removeProfileComment = (postId, commentId, replyId = null, mediaId = null) => {
-    const post = posts.find((item) => item.id === postId);
+    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
     const comment = getInteractionTarget(post, mediaId)?.comments?.find((item) => item.id === commentId);
     const target = replyId ? comment?.replies?.find((item) => item.id === replyId) : comment;
     if (!target || !ownsContent(target.authorId) || !window.confirm('Xóa bình luận này?')) return;
@@ -1234,7 +1249,7 @@ export function TeacherProfilePage() {
     <Modal open={isViewingProfileAlbums || hasLinkedAlbum} onClose={closeProfileAlbums} title={isCustomProfileAlbum ? activeProfileAlbum.name : activeProfileAlbum.name === 'Tất cả' ? 'Ảnh' : activeProfileAlbum.name} size="xl" className="profile-album-dialog" footer={ownsProfile ? <><button type="button" className="profile-album-create__cancel" onClick={() => { setAlbumDraft({ name: '', description: '', media: [] }); closeProfileAlbums(); setIsCreatingProfileAlbum(true); }}><ImagePlus size={16} /> Tạo album</button>{isCustomProfileAlbum && <button type="button" className="profile-album-create__submit" onClick={() => { setAlbumAdditionDraft({ albumId: activeProfileAlbum.id, description: '', media: [] }); closeProfileAlbums(); setIsAddingAlbumMedia(true); }}><ImagePlus size={16} /> Thêm ảnh / video</button>}</> : null}>
       <div className="profile-album-tabs" role="tablist" aria-label="Lọc ảnh và video">{profileAlbumTabs.map((album) => <button type="button" role="tab" aria-selected={activeProfileAlbum.id === album.id} className={activeProfileAlbum.id === album.id ? 'is-active' : ''} key={album.id} onClick={() => selectProfileAlbum(album.id)}>{album.name}<span>{album.count ?? album.media.length}</span></button>)}</div>
       {isAlbumDirectory ? (visibleProfileAlbums.length ? <div className="profile-albums__grid">{visibleProfileAlbums.map((album) => <button type="button" className="profile-albums__card" key={album.id} onClick={() => selectProfileAlbum(album.id)} aria-label={`Mở album ${album.name}`}><span className={`profile-albums__cover is-${Math.min(album.media.length, 4)}`}>{album.media.length ? album.media.slice(0, 4).map((item, index) => item.type === 'video' ? <video key={`${item.id || item.src}-${index}`} src={item.src} muted preload="metadata" /> : <img key={`${item.id || item.src}-${index}`} src={item.src} alt="" loading="lazy" />) : <Images size={27} />}</span><strong className="profile-albums__name">{album.name}</strong><small>{album.media.length} {album.media.length === 1 ? 'mục' : 'mục'}</small></button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>Chưa có album nào được tạo.</p></div>) : <>
-        {isCustomProfileAlbum && (activeProfileAlbum.description || ownsProfile) && <section className="profile-album-description"><div>{isEditingAlbumDescription ? <textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết mô tả cho album này..." rows="3" /> : activeProfileAlbum.description && <p>{activeProfileAlbum.description}</p>}</div>{ownsProfile && <div>{isEditingAlbumDescription ? <><button type="button" onClick={() => setIsEditingAlbumDescription(false)}>Hủy</button><button type="button" onClick={saveAlbumDescription}>Lưu mô tả</button></> : <ContentMenu id={`album-${activeProfileAlbum.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setAlbumDraft((current) => ({ ...current, description: activeProfileAlbum.description || '' })); setIsEditingAlbumDescription(true); }} onDelete={deleteProfileAlbum} label="album" />}</div>}</section>}
+        {isCustomProfileAlbum && (activeProfileAlbum.description || ownsProfile) && <section className="profile-album-description"><div>{isEditingAlbumDescription ? <textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết mô tả cho album này..." rows="3" /> : activeProfileAlbum.description && <p>{activeProfileAlbum.description}</p>}</div>{ownsProfile && <div>{isEditingAlbumDescription ? <><button type="button" onClick={() => setIsEditingAlbumDescription(false)}>Hủy</button><button type="button" onClick={saveAlbumDescription}>Lưu</button></> : <ContentMenu id={`album-${activeProfileAlbum.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setAlbumDraft((current) => ({ ...current, description: activeProfileAlbum.description || '' })); setIsEditingAlbumDescription(true); }} onDelete={deleteProfileAlbum} label="album" />}</div>}</section>}
         {activeProfileAlbum.media.length ? <div className="profile-album-grid">{activeProfileAlbum.media.map((item, index) => <button type="button" className="profile-album-grid__item" key={`${item.storageKey || item.src.slice(0, 40)}-${index}`} onClick={() => openAlbumMedia(activeProfileAlbum.media, index, isCustomProfileAlbum ? activeProfileAlbum.id : item.albumId || null)} aria-label={`Xem ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} trong ${activeProfileAlbum.name}`}>{item.type === 'video' ? <><video src={item.src} muted preload="metadata" /><span className="profile-album-grid__video"><Video size={17} /></span></> : <img src={item.src} alt={`Ảnh ${index + 1} trong ${activeProfileAlbum.name} của ${profile.name}`} loading="lazy" />}</button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>{activeProfileAlbum.name} chưa có ảnh hoặc video công khai.</p></div>}
       </>}
     </Modal>

@@ -189,6 +189,7 @@ export function Register() {
     setFormError("");
     const firstError = Object.keys(nextErrors)[0];
     if (firstError) {
+      setFormError(nextErrors[firstError]);
       formRef.current.elements.namedItem(firstError)?.focus();
       return;
     }

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Modal } from './Modal';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { getCourses, getPosts } from '@/features/learning/marketplace';
 import './likes-modal.css';
 
@@ -38,7 +38,7 @@ export function LikesModal({ target, onClose }) {
   return <Modal open={Boolean(target)} onClose={onClose} title={target?.title || 'Lượt thích'} description={target?.label || 'Những người đã bày tỏ sự yêu thích'} size="sm">
     <div className="likes-modal__list">
       {people.map((person, index) => <Link className="likes-modal__person" key={`${person.id}-${index}`} to={ROUTES.TEACHER_PROFILE(person.id)} onClick={onClose}>
-        <span className="likes-modal__avatar">{person.avatar ? <img src={person.avatar} alt="" /> : <DefaultRoleAvatar role={person.role} size={17} />}</span>
+        <span className="likes-modal__avatar"><RoleAvatar src={person.avatar} userId={person.id} name={person.name} role={person.role} size={17} alt="" /></span>
         <strong>{person.name}</strong>
         <span className={`likes-modal__marker ${target?.kind === 'share' ? 'is-share' : ''}`}>{icon}</span>
       </Link>)}

@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, GripVertical, ImagePlus, Send, Trash2, Video, X } f
 import { useRef, useState } from 'react';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import './post-composer-dialog.css';
 
 export function PostComposerDialog({
@@ -120,13 +120,13 @@ export function PostComposerDialog({
   );
 }
 
-export function PostComposerTrigger({ avatar, role, placeholder, onOpen }) {
+export function PostComposerTrigger({ avatar, role, userId, name, placeholder, onOpen }) {
 
   return (
     <section className="post-composer-trigger" aria-label="Tạo bài viết">
       <div className="post-composer-trigger__top">
         <div className="post-composer-trigger__avatar" aria-hidden="true">
-          {avatar ? <img src={avatar} alt="" /> : <DefaultRoleAvatar role={role} size={19} />}
+          <RoleAvatar src={avatar} userId={userId} name={name} role={role} size={19} alt="" />
         </div>
         <button type="button" className="post-composer-trigger__prompt" onClick={onOpen}>
           {placeholder}

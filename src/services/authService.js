@@ -16,9 +16,35 @@ const apiOrigin = (() => {
 const resolveAssetUrl = (value) => {
   if (!value) return '';
   const stringValue = String(value).trim();
-  if (/^(?:https?:|data:|blob:)/i.test(stringValue)) return stringValue;
+  if (!stringValue || stringValue === 'null' || stringValue === 'undefined') return '';
+  if (/^(?:data:|blob:)/i.test(stringValue)) return stringValue;
+  if (/^https?:/i.test(stringValue)) {
+    try {
+      const parsed = new URL(stringValue);
+      if (
+        apiOrigin &&
+        (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
+        parsed.pathname.startsWith('/storage/')
+      ) {
+        const avatarFilename = parsed.pathname.match(/^\/storage\/avatars\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i)?.[1];
+        const rewrittenPath = avatarFilename
+          ? `/api/media/avatars/${encodeURIComponent(avatarFilename)}`
+          : parsed.pathname;
+        return new URL(`${rewrittenPath}${parsed.search}`, apiOrigin).toString();
+      }
+    } catch {
+      // Fall through and return stringValue as-is.
+    }
+    return stringValue;
+  }
 
   const normalized = stringValue.replace(/\\/g, '/');
+  const avatarFilename = normalized.replace(/^\//, '').match(/^(?:storage\/)?avatars\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i)?.[1];
+  if (avatarFilename) {
+    const mediaPath = `/api/media/avatars/${encodeURIComponent(avatarFilename)}`;
+    return apiOrigin ? new URL(mediaPath, apiOrigin).toString() : mediaPath;
+  }
+
   let pathWithStorage = normalized;
   if (!/^\/?storage\//i.test(normalized) && /^(?:avatars|uploads|profiles|images)\//i.test(normalized.replace(/^\//, ''))) {
     pathWithStorage = `/storage/${normalized.replace(/^\//, '')}`;

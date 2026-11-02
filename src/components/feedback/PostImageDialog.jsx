@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@/components/feedback/Modal';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
@@ -112,7 +112,7 @@ export function PostImageDialog({
       </section>
       <aside className="post-image-dialog__panel">
         <header className="post-image-dialog__author">
-          <span>{author?.avatar ? <img src={author.avatar} alt="" /> : <DefaultRoleAvatar role={author?.role} size={18} />}</span>
+          <span><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></span>
           <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)} onClick={onAuthorClick || onClose}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
           {canManageMedia && <ContentMenu id={`viewer-media-${activeMedia.id || activeIndex}`} openId={openMediaMenu} onToggle={setOpenMediaMenu} onEdit={() => setIsEditingMedia(true)} onDelete={requestDeleteMedia} label={activeMedia.type === 'video' ? 'video' : 'ảnh'} />}
           {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}

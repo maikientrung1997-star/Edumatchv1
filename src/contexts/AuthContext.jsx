@@ -41,14 +41,15 @@ const mergePersistedProfileVisuals = (remoteUser) => {
     ? cachedUser
     : {};
   const persistedVisuals = getPersistedProfileVisuals(remoteUser.id);
-  const savedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const rawSavedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const savedAvatar = /^blob:/i.test(String(rawSavedAvatar)) ? '' : rawSavedAvatar;
   const savedAvatarVersion = persistedVisuals.avatarVersion || cachedVisuals.avatarVersion;
   const hasLocalAvatar = Boolean(savedAvatar) && (
-    savedAvatar.startsWith('data:image/') || savedAvatar.startsWith('blob:') || savedAvatarVersion
+    savedAvatar.startsWith('data:image/') || savedAvatarVersion
   );
 
   const preferredAvatar = hasLocalAvatar
-    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/') && !savedAvatar.startsWith('blob:')
+    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/')
         ? withImageVersion(savedAvatar, savedAvatarVersion)
         : savedAvatar)
     : (remoteUser.avatar || savedAvatar);

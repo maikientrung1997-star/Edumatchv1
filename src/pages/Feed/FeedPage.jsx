@@ -7,9 +7,9 @@ import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { useAuth } from '@/hooks/useAuth';
 import { ROUTES } from '@/constants/routes';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar, normalizeRole, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
-import { ExpandableImage } from '@/components/feedback/ExpandableImage';
+import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { Modal } from '@/components/feedback/Modal';
 import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
@@ -21,12 +21,14 @@ import { addMediaToProfileAlbum, readProfileAlbums, saveProfileAlbumsToStorage }
 import './feed.css';
 
 const getAuthor = (item, providers) => {
-  const provider = providers.get(item.authorId || item.teacherId);
+  const id = item.authorId || item.teacherId || '';
+  const provider = providers.get(id);
+  const name = item.authorName || item.author || provider?.name || 'Thành viên EduMatch';
   return {
-    id: item.authorId || item.teacherId || '',
-    name: item.authorName || item.author || provider?.name || 'Thành viên EduMatch',
-    role: item.authorRole || provider?.role || 'teacher',
-    avatar: item.authorAvatar || provider?.avatar || '',
+    id,
+    name,
+    role: normalizeRole(item.authorRole || provider?.role, name, id, 'teacher'),
+    avatar: resolveAvatarSource(item.authorAvatar || provider?.avatar || '', id),
     licenseVerificationStatus: item.authorLicenseVerificationStatus || provider?.licenseVerificationStatus || '',
   };
 };
@@ -505,12 +507,12 @@ export function FeedPage({ postId = null }) {
       return <div className="post-image-dialog__comment" key={comment.id}>
         {commentAuthor.id ? <Link to={ROUTES.TEACHER_PROFILE(commentAuthor.id)}><strong>{commentAuthor.name}</strong></Link> : <strong>{commentAuthor.name}</strong>}
         {comment.text && <p>{comment.text}</p>}
-        {comment.media && (comment.media.type === 'video' ? <video className="discussion-image" src={comment.media.src} controls preload="metadata" /> : <ExpandableImage className="discussion-image" src={comment.media.src} alt={`Ảnh đính kèm từ ${commentAuthor.name}`} />)}
+        <DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable />
         <div className="post-image-dialog__comment-actions"><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, null, viewerMedia?.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(viewerPost.id, comment.id, viewerMedia?.id)}>Trả lời</button>{owns(comment.authorId) && <ContentMenu id={`viewer-comment-${comment.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(viewerPost.id, comment.id, null, viewerMedia?.id)} onDelete={() => removeDiscussion(viewerPost.id, comment.id, null, viewerMedia?.id)} label="bình luận" />}<ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
         {(comment.replies || []).map((reply) => {
           const replyAuthor = getAuthor(reply, providers);
           const isReplyLiked = (reply.likes || []).includes(user?.id);
-          return <div className="post-image-dialog__comment-reply" key={reply.id}>{replyAuthor.id ? <Link to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}><strong>{replyAuthor.name}</strong></Link> : <strong>{replyAuthor.name}</strong>}{reply.text && <p>{reply.text}</p>}{reply.media && (reply.media.type === 'video' ? <video className="discussion-image" src={reply.media.src} controls preload="metadata" /> : <ExpandableImage className="discussion-image" src={reply.media.src} alt={`Ảnh đính kèm từ ${replyAuthor.name}`} />)}<div className="post-image-dialog__comment-actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, reply.id, viewerMedia?.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button>{owns(reply.authorId) && <ContentMenu id={`viewer-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} onDelete={() => removeDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} label="phản hồi" />}<ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>;
+          return <div className="post-image-dialog__comment-reply" key={reply.id}>{replyAuthor.id ? <Link to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}><strong>{replyAuthor.name}</strong></Link> : <strong>{replyAuthor.name}</strong>}{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /><div className="post-image-dialog__comment-actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, reply.id, viewerMedia?.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button>{owns(reply.authorId) && <ContentMenu id={`viewer-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} onDelete={() => removeDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} label="phản hồi" />}<ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>;
         })}
         {isReplying && <form className="feed-reply-form post-image-dialog__reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="2" /><ImageAttachment id={`viewer-reply-image-${comment.id}`} value={replyMedia} onChange={setReplyMedia} label="Tệp" /><button type="submit">Gửi</button></form>}
       </div>;
@@ -571,7 +573,7 @@ export function FeedPage({ postId = null }) {
             const shareCount = shareIds.length;
             return <article className="community-post" id={post.id} key={post.id}>
               <header className="community-post__header">
-                {author.avatar ? <img src={author.avatar} alt={`Ảnh đại diện của ${author.name}`} /> : <DefaultRoleAvatar role={author.role} size={18} />}
+                <RoleAvatar src={author.avatar} userId={author.id} name={author.name} role={author.role} size={18} alt={`Ảnh đại diện của ${author.name}`} />
                 <div>{author.id ? <Link className="community-post__author" to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author.name}</strong>}{author.role === 'center' && author.licenseVerificationStatus === 'verified' && <small className="post-verification-badge"><BadgeCheck size={12} /> Đã xác thực pháp lý</small>}<small>{formatRelativeTime(post.createdAt)}</small></div>
                 {owns(post.authorId || post.teacherId) && <ContentMenu id={`post-${post.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editPost(post)} onDelete={() => removePost(post)} label="bài viết" />}
               </header>
@@ -594,16 +596,16 @@ export function FeedPage({ postId = null }) {
                   const isReplying = replyTarget?.postId === post.id && replyTarget?.commentId === comment.id;
                   const isCommentLiked = (comment.likes || []).includes(user?.id);
                   return <div className="feed-comment" key={comment.id}>
-                    {commentAuthor.avatar ? <img src={commentAuthor.avatar} alt="" /> : <DefaultRoleAvatar role={commentAuthor.role} size={15} />}
+                    <RoleAvatar src={commentAuthor.avatar} userId={commentAuthor.id} name={commentAuthor.name} role={commentAuthor.role} size={15} alt="" />
                     <div className="feed-comment__body">
-                      <div className="feed-comment__bubble">{commentAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(commentAuthor.id)}>{commentAuthor.name}</Link> : <strong>{commentAuthor.name}</strong>}{comment.text && <p>{comment.text}</p>}{comment.media && (comment.media.type === 'video' ? <video className="discussion-image" src={comment.media.src} controls preload="metadata" /> : <ExpandableImage className="discussion-image" src={comment.media.src} alt={`Ảnh đính kèm từ ${commentAuthor.name}`} />)}</div>
+                      <div className="feed-comment__bubble">{commentAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(commentAuthor.id)}>{commentAuthor.name}</Link> : <strong>{commentAuthor.name}</strong>}{comment.text && <p>{comment.text}</p>}<DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable /></div>
                       <div className="feed-comment__meta"><span>{formatRelativeTime(comment.createdAt)}</span><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(post.id, comment.id)}>Trả lời</button>{owns(comment.authorId) && <ContentMenu id={`comment-${comment.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(post.id, comment.id)} onDelete={() => removeDiscussion(post.id, comment.id)} label="bình luận" />}<ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
                       {(comment.replies || []).map((reply) => {
                         const replyAuthor = getAuthor(reply, providers);
                         const isReplyLiked = (reply.likes || []).includes(user?.id);
                         return <div className="feed-comment__reply" key={reply.id}>
-                          {replyAuthor.avatar ? <img src={replyAuthor.avatar} alt="" /> : <DefaultRoleAvatar role={replyAuthor.role} size={14} />}
-                          <div><div className="feed-comment__bubble">{replyAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}>{replyAuthor.name}</Link> : <strong>{replyAuthor.name}</strong>}{reply.text && <p>{reply.text}</p>}{reply.media && (reply.media.type === 'video' ? <video className="discussion-image" src={reply.media.src} controls preload="metadata" /> : <ExpandableImage className="discussion-image" src={reply.media.src} alt={`Ảnh đính kèm từ ${replyAuthor.name}`} />)}</div><div className="feed-comment__meta feed-comment__meta--reply"><span>{formatRelativeTime(reply.createdAt)}</span><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button>{owns(reply.authorId) && <ContentMenu id={`reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(post.id, comment.id, reply.id)} onDelete={() => removeDiscussion(post.id, comment.id, reply.id)} label="phản hồi" />}<ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>
+                          <RoleAvatar src={replyAuthor.avatar} userId={replyAuthor.id} name={replyAuthor.name} role={replyAuthor.role} size={14} alt="" />
+                          <div><div className="feed-comment__bubble">{replyAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}>{replyAuthor.name}</Link> : <strong>{replyAuthor.name}</strong>}{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /></div><div className="feed-comment__meta feed-comment__meta--reply"><span>{formatRelativeTime(reply.createdAt)}</span><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button>{owns(reply.authorId) && <ContentMenu id={`reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(post.id, comment.id, reply.id)} onDelete={() => removeDiscussion(post.id, comment.id, reply.id)} label="phản hồi" />}<ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>
                         </div>;
                       })}
                       {isReplying && <form className="feed-reply-form" onSubmit={submitReply}><CornerDownRight size={15} /><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="1" /><ImageAttachment id={`reply-image-${post.id}-${comment.id}`} value={replyMedia} onChange={setReplyMedia} label="Tệp" /><button type="submit">Gửi</button></form>}

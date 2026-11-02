@@ -26,6 +26,7 @@ const persistProfileVisuals = (user) => {
       avatar: user.avatar || '',
       coverImage: user.coverImage || '',
       avatarVersion: user.avatarVersion || undefined,
+      ...(typeof user.isPhonePublic === 'boolean' ? { isPhonePublic: user.isPhonePublic } : {}),
     },
   });
 };
@@ -53,14 +54,17 @@ const mergePersistedProfileVisuals = (remoteUser) => {
     : (remoteUser.avatar || savedAvatar);
 
   const preferredCoverImage = persistedVisuals.coverImage || cachedVisuals.coverImage || remoteUser.coverImage || '';
+  const preferredPhonePublic = typeof persistedVisuals.isPhonePublic === 'boolean'
+    ? persistedVisuals.isPhonePublic
+    : (typeof cachedVisuals.isPhonePublic === 'boolean' ? cachedVisuals.isPhonePublic : undefined);
 
   return {
     ...remoteUser,
     avatar: preferredAvatar,
     coverImage: preferredCoverImage,
     avatarVersion: savedAvatarVersion || remoteUser.avatarVersion || undefined,
-    ...(!remoteUser.phoneVisibilityProvided && typeof cachedVisuals.isPhonePublic === 'boolean'
-      ? { isPhonePublic: cachedVisuals.isPhonePublic }
+    ...(!remoteUser.phoneVisibilityProvided && typeof preferredPhonePublic === 'boolean'
+      ? { isPhonePublic: preferredPhonePublic }
       : {}),
   };
 };
@@ -149,7 +153,13 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService[method](data);
-      const hydratedUser = mergePersistedProfileVisuals(response.user);
+      let hydratedUser = mergePersistedProfileVisuals(response.user);
+      const payloadPhonePublic = typeof data?.isPhonePublic === 'boolean'
+        ? data.isPhonePublic
+        : (typeof data?.show_phone === 'boolean' ? data.show_phone : undefined);
+      if (typeof payloadPhonePublic === 'boolean' && (!hydratedUser?.phoneVisibilityProvided || typeof hydratedUser?.isPhonePublic !== 'boolean')) {
+        hydratedUser = { ...hydratedUser, isPhonePublic: payloadPhonePublic, phoneVisibilityProvided: true };
+      }
       setToken(response.token);
       setUser(hydratedUser);
       storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);

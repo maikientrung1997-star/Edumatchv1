@@ -7,12 +7,27 @@ import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
 
-export function PostImageDialog({ viewer, onClose, onAuthorClick, discussion, interactionTarget = null, onActiveIndexChange, onLike, onShowLikes, onShare, onShowShares, shareCount = 0, isLiked = false, ownerActions = null, canManageMedia = false, onEditMedia, onDeleteMedia }) {
+export function PostImageDialog({
+  viewer,
+  onClose,
+  onAuthorClick,
+  discussion,
+  interactionTarget = null,
+  onActiveIndexChange,
+  onLike,
+  onShowLikes,
+  onShare,
+  onShowShares,
+  shareCount = 0,
+  isLiked = false,
+  ownerActions = null,
+  canManageMedia = false,
+  onEditMedia,
+  onDeleteMedia,
+  albumName = null,
+  title = null,
+}) {
   const [activeIndex, setActiveIndex] = useState(viewer?.activeIndex || 0);
-  const [openMediaMenu, setOpenMediaMenu] = useState(null);
-  const [isEditingMedia, setIsEditingMedia] = useState(false);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  const [mediaDescription, setMediaDescription] = useState('');
   const mediaItems = viewer?.mediaItems || [];
   const activeMedia = mediaItems[activeIndex] || mediaItems[0];
   const post = viewer?.post;
@@ -20,6 +35,32 @@ export function PostImageDialog({ viewer, onClose, onAuthorClick, discussion, in
   const target = interactionTarget || post;
   const likes = target?.likes || [];
   const comments = target?.comments || [];
+
+  const currentMediaKey = activeMedia?.id || activeMedia?.src || '';
+  const [openMediaMenu, setOpenMediaMenu] = useState(null);
+  const [isEditingMedia, setIsEditingMedia] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [mediaDescription, setMediaDescription] = useState(activeMedia?.description || '');
+  const [prevMediaKey, setPrevMediaKey] = useState(currentMediaKey);
+  if (prevMediaKey !== currentMediaKey) {
+    setPrevMediaKey(currentMediaKey);
+    setMediaDescription(activeMedia?.description || '');
+    setIsEditingMedia(false);
+    setIsConfirmingDelete(false);
+    setOpenMediaMenu(null);
+  }
+
+  const isGenericTab = (name) => ['Tất cả', 'Ảnh', 'Video', 'Album', 'all-media', 'photos', 'videos', 'albums'].includes(String(name || '').trim());
+  const rawAlbumName =
+    title
+    || albumName
+    || viewer?.albumName
+    || viewer?.album?.name
+    || post?.albumName
+    || post?.album?.name
+    || activeMedia?.albumName;
+  const currentAlbumName = isGenericTab(rawAlbumName) ? '' : String(rawAlbumName || '').trim();
+  const dialogTitle = currentAlbumName || (interactionTarget || mediaItems.length > 1 ? 'Album ảnh' : 'Ảnh bài viết');
 
   const changeActiveIndex = useCallback((nextIndex) => {
     setActiveIndex(nextIndex);
@@ -49,12 +90,6 @@ export function PostImageDialog({ viewer, onClose, onAuthorClick, discussion, in
     return () => window.removeEventListener('keydown', handleAlbumKeyDown);
   }, [activeIndex, changeActiveIndex, mediaItems.length, viewer]);
 
-  useEffect(() => {
-    setMediaDescription(activeMedia?.description || '');
-    setIsEditingMedia(false);
-    setIsConfirmingDelete(false);
-    setOpenMediaMenu(null);
-  }, [activeMedia?.id, activeMedia?.src]);
 
   const saveMediaDescription = () => {
     onEditMedia?.(activeMedia, mediaDescription);
@@ -67,12 +102,12 @@ export function PostImageDialog({ viewer, onClose, onAuthorClick, discussion, in
 
   if (!viewer || !post || !activeMedia) return null;
 
-  return <Modal open onClose={onClose} title={interactionTarget ? 'Ảnh / video trong album' : 'Ảnh bài viết'} size="xl" className="post-image-dialog">
+  return <Modal open onClose={onClose} title={dialogTitle} size="xl" className="post-image-dialog">
     <div className="post-image-dialog__layout">
-      <section className="post-image-dialog__media" aria-label={`Ảnh ${activeIndex + 1} trong bài viết`}>
+      <section className="post-image-dialog__media" aria-label={`${activeMedia.type === 'video' ? 'Video' : 'Ảnh'} ${activeIndex + 1} trong ${dialogTitle}`}>
         {activeMedia.type === 'video'
           ? <video src={activeMedia.src} controls autoPlay preload="metadata" />
-          : <img src={activeMedia.src} alt={`Ảnh ${activeIndex + 1} trong bài viết`} />}
+          : <img src={activeMedia.src} alt={`${activeMedia.type === 'video' ? 'Video' : 'Ảnh'} ${activeIndex + 1} trong ${dialogTitle}`} />}
         {mediaItems.length > 1 && <><button type="button" className="post-image-dialog__nav post-image-dialog__nav--previous" onClick={showPrevious} aria-label="Ảnh trước"><ChevronLeft size={22} /></button><button type="button" className="post-image-dialog__nav post-image-dialog__nav--next" onClick={showNext} aria-label="Ảnh tiếp theo"><ChevronRight size={22} /></button><span className="post-image-dialog__counter">{activeIndex + 1} / {mediaItems.length}</span></>}
       </section>
       <aside className="post-image-dialog__panel">

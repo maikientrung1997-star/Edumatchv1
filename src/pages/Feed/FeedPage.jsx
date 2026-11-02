@@ -214,7 +214,30 @@ export function FeedPage({ postId = null }) {
     setShareText('');
   };
   const openImageViewer = (post, author, mediaItems, activeIndex = 0) => {
-    setImageViewer({ post, author, mediaItems, activeIndex });
+    const authorId = post?.authorId || post?.teacherId || author?.id;
+    const authorAlbums = authorId ? readProfileAlbums(authorId) : [];
+    const allKnownAlbums = [...ownProfileAlbums, ...authorAlbums];
+    const activeItem = mediaItems[activeIndex] || mediaItems[0];
+    const matchedAlbum = allKnownAlbums.find((album) =>
+      album.id === post?.albumId
+      || (post?.albumName && album.name === post.albumName)
+      || album.media?.some((m) =>
+        (activeItem && ((m.id && activeItem.id && m.id === activeItem.id) || (m.storageKey && activeItem.storageKey && m.storageKey === activeItem.storageKey) || (m.src && activeItem.src && m.src === activeItem.src)))
+        || mediaItems.some((item) =>
+          (m.id && item.id && m.id === item.id)
+          || (m.storageKey && item.storageKey && m.storageKey === item.storageKey)
+          || (m.src && item.src && m.src === item.src)
+        )
+      )
+    );
+    setImageViewer({
+      post,
+      author,
+      mediaItems,
+      activeIndex,
+      albumId: matchedAlbum?.id || post?.albumId || null,
+      albumName: matchedAlbum?.name || post?.albumName || '',
+    });
   };
   const createFeedAlbum = ({ name, description = '' }) => {
     if (!user?.id) return null;
@@ -247,6 +270,7 @@ export function FeedPage({ postId = null }) {
       return;
     }
 
+    const selectedAlbum = (postAlbumId && postMedia.length && ownProfileAlbums.find((album) => album.id === postAlbumId)) || null;
     const post = {
       id: `post-${Date.now()}`,
       teacherId: user.id,
@@ -257,6 +281,7 @@ export function FeedPage({ postId = null }) {
       authorLicenseVerificationStatus: user.licenseVerificationStatus || '',
       text,
       ...(postMedia.length ? { mediaItems: postMedia } : {}),
+      ...(selectedAlbum ? { albumId: selectedAlbum.id, albumName: selectedAlbum.name } : {}),
       createdAt: new Date().toISOString(),
       likes: [],
       comments: [],
@@ -454,6 +479,25 @@ export function FeedPage({ postId = null }) {
   const viewerInteractionTarget = viewerMedia || viewerPost;
   const viewerDiscussionKey = viewerMedia ? `${viewerPost.id}:${viewerMedia.id}` : `${viewerPost?.id}:post`;
   const isEditingViewerDiscussion = isEditingDiscussion(viewerPost?.id, viewerMedia?.id);
+  const feedViewerActiveIndex = imageViewer?.activeIndex || 0;
+  const feedViewerMedia = viewerMediaItems.length > 1 ? viewerMediaItems[feedViewerActiveIndex] : viewerMediaItems[0];
+  const feedAuthorId = viewerPost?.authorId || viewerPost?.teacherId || viewerAuthor?.id;
+  const feedAuthorAlbums = feedAuthorId ? readProfileAlbums(feedAuthorId) : [];
+  const feedKnownAlbums = [...ownProfileAlbums, ...feedAuthorAlbums];
+  const isGenericFeedTab = (name) => ['Tất cả', 'Ảnh', 'Video', 'Album', 'all-media', 'photos', 'videos', 'albums'].includes(String(name || '').trim());
+  const feedViewerAlbum = feedKnownAlbums.find((album) =>
+    album.id === imageViewer?.albumId
+    || (imageViewer?.albumName && album.name === imageViewer.albumName)
+    || album.id === viewerPost?.albumId
+    || (viewerPost?.albumName && album.name === viewerPost.albumName)
+    || (feedViewerMedia && album.media?.some((m) =>
+      (m.id && feedViewerMedia.id && m.id === feedViewerMedia.id)
+      || (m.storageKey && feedViewerMedia.storageKey && m.storageKey === feedViewerMedia.storageKey)
+      || (m.src && feedViewerMedia.src && m.src === feedViewerMedia.src)
+    ))
+  );
+  const rawFeedAlbumName = imageViewer?.albumName || feedViewerAlbum?.name || viewerPost?.albumName || '';
+  const feedAlbumName = isGenericFeedTab(rawFeedAlbumName) ? '' : rawFeedAlbumName;
   const imageViewerDiscussion = viewerInteractionTarget ? <><div className="post-image-dialog__comments">{(viewerInteractionTarget.comments || []).map((comment) => {
       const commentAuthor = getAuthor(comment, providers);
       const isReplying = replyTarget?.postId === viewerPost.id && replyTarget?.commentId === comment.id && replyTarget?.mediaId === viewerMedia?.id;
@@ -615,7 +659,7 @@ export function FeedPage({ postId = null }) {
       attachmentId="feed-post-media"
     />
     <LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} />
-    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatRelativeTime(viewerPost?.createdAt) }} interactionTarget={viewerMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => toggleLike(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null} />
+    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatRelativeTime(viewerPost?.createdAt), albumName: feedAlbumName }} albumName={feedAlbumName} interactionTarget={viewerMedia || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} discussion={imageViewerDiscussion} onLike={() => toggleLike(viewerPost.id, viewerMedia?.id)} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerMedia)} shareCount={viewerPost ? [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === viewerMedia.id : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} ownerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null} />
     <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm"><form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form></Modal>
     </>
   );

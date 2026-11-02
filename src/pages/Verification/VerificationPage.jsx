@@ -1,6 +1,16 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { FileCheck2, FilePlus2, PhoneCall, ShieldCheck, Trash2 } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  Award,
+  CheckCircle2,
+  FileCheck2,
+  FilePlus2,
+  PhoneCall,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import { Link, Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ROUTES } from '@/constants/routes';
@@ -13,6 +23,50 @@ import '@/components/auth/account.css';
 import './verification.css';
 
 const PdfPreview = lazy(() => import('@/components/feedback/PdfPreview'));
+
+function CelebrationEmblem() {
+  return (
+    <div className="verification-celebration__emblem" aria-hidden="true">
+      <div className="verification-celebration__halo">
+        <div className="verification-celebration__ring">
+          <div className="verification-celebration__core">
+            <Award size={36} strokeWidth={1.9} />
+          </div>
+        </div>
+        <span className="verification-celebration__float is-sparkle">
+          <Sparkles size={14} />
+        </span>
+        <span className="verification-celebration__float is-check">
+          <CheckCircle2 size={15} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function FileThumbnail({ file }) {
+  const imgRef = useRef(null);
+  const isPdf = file?.type === 'application/pdf';
+  const isImage = Boolean(file?.type?.startsWith('image/'));
+
+  useEffect(() => {
+    if (!file || !isImage || !imgRef.current) return undefined;
+    const objectUrl = URL.createObjectURL(file);
+    imgRef.current.src = objectUrl;
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [file, isImage]);
+
+  if (!file) return null;
+  if (isPdf) {
+    return <span className="verification-file-thumb__pdf">PDF</span>;
+  }
+  if (isImage) {
+    return <img ref={imgRef} alt={file.name} />;
+  }
+  return <FileCheck2 size={20} />;
+}
 
 const emptyDocument = (document_type) => ({
   document_type,
@@ -68,6 +122,14 @@ export function VerificationPage() {
     };
   }, []);
   useEffect(() => {
+    const handleCelebrate = () => {
+      setRetry((current) => current + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('edumatch:verification-celebrate', handleCelebrate);
+    return () => window.removeEventListener('edumatch:verification-celebrate', handleCelebrate);
+  }, []);
+  useEffect(() => {
     if (!allowed) return;
     let active = true;
     const load = async () => {
@@ -111,11 +173,53 @@ export function VerificationPage() {
     setCenterDetails((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [`center_details.${field}`]: '' }));
   };
+  const handleCenterFilesAdd = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (!selectedFiles.length) return;
+
+    setDocuments((current) => {
+      const existing = current.filter((item) => Boolean(item.file));
+      const incomingDocs = selectedFiles.map((file) => ({
+        ...emptyDocument('business_registration'),
+        file,
+      }));
+      return [...existing, ...incomingDocs];
+    });
+
+    setErrors((current) => {
+      const next = { ...current };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith('documents.')) delete next[key];
+      });
+      delete next.documents;
+      return next;
+    });
+
+    event.target.value = '';
+  };
+  const removeCenterFile = (removeIndex) => {
+    setDocuments((current) => {
+      const existing = current.filter((item) => Boolean(item.file));
+      const filtered = existing.filter((_, index) => index !== removeIndex);
+      if (filtered.length === 0) {
+        return [emptyDocument('business_registration')];
+      }
+      return filtered;
+    });
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[`documents.${removeIndex}.file`];
+      return next;
+    });
+  };
   const submit = async (event) => {
     event.preventDefault();
     if (busy) return;
     const next = {};
-    let totalSize = 0;
+    const centerFiles = isCenter ? documents.filter((doc) => Boolean(doc.file)) : [];
+    if (isCenter && centerFiles.length === 0) {
+      next['documents.0.file'] = 'Vui lòng chọn ít nhất 1 ảnh hoặc file PDF giấy chứng nhận doanh nghiệp.';
+    }
     documents.forEach((doc, index) => {
       if (!isCenter) {
         for (const field of ['document_name', 'issuing_authority'])
@@ -130,11 +234,12 @@ export function VerificationPage() {
       }
       if (
         !doc.file ||
-        !['image/jpeg', 'image/png', 'application/pdf'].includes(doc.file.type) ||
-        doc.file.size > 2 * 1024 * 1024
-      )
-        next[`documents.${index}.file`] = 'Chọn tệp JPG, PNG hoặc PDF, tối đa 2 MB.';
-      totalSize += doc.file?.size || 0;
+        !['image/jpeg', 'image/png', 'application/pdf'].includes(doc.file.type)
+      ) {
+        if (!isCenter || centerFiles.length > 0) {
+          next[`documents.${index}.file`] = 'Chọn tệp JPG, PNG hoặc PDF.';
+        }
+      }
     });
     if (isCenter) {
       const labels = {
@@ -158,15 +263,17 @@ export function VerificationPage() {
       if (taxCode && !/^\d{10}(?:\d{3})?$/.test(taxCode))
         next['center_details.tax_code'] = 'Mã số thuế gồm 10 hoặc 13 chữ số.';
     }
-    if (totalSize > 7 * 1024 * 1024) next.documents = 'Tổng dung lượng hồ sơ tối đa 7 MB.';
     setErrors(next);
     if (Object.keys(next).length) return;
     setBusy(true);
     setError('');
     try {
-      const response = await verificationService.submit(documents, isCenter ? centerDetails : null);
+      const response = await verificationService.submit(
+        isCenter ? centerFiles : documents,
+        isCenter ? centerDetails : null
+      );
       updateUser(normalizeAuthUser(response.user));
-      setDocuments((current) => current.map((doc) => emptyDocument(doc.document_type)));
+      setDocuments(() => (isCenter ? ['business_registration'] : ['degree', 'identity_front', 'identity_back']).map(emptyDocument));
       if (isCenter) setCenterDetails(emptyCenterDetails(user));
       setRetry((current) => current + 1);
       setPage(1);
@@ -198,6 +305,7 @@ export function VerificationPage() {
   const status = data?.verification_status || 'unverified';
   const canSubmit = data && !['pending', 'verified'].includes(status);
   const latestRequest = data?.requests?.data?.[0] || null;
+  const centerAttachedFiles = isCenter ? documents.filter((doc) => Boolean(doc.file)) : [];
   const renderError = (index, field) =>
     errors[`documents.${index}.${field}`] && (
       <small className="account-error">{errors[`documents.${index}.${field}`]}</small>
@@ -208,36 +316,59 @@ export function VerificationPage() {
     );
 
   return (
-    <main className="verification-page">
-      <header className="verification-heading">
-        <span>
-          <ShieldCheck size={18} /> {isCenter ? 'HỒ SƠ TRUNG TÂM' : 'HỒ SƠ GIÁO VIÊN'}
-        </span>
-        <h1>{status === 'pending' ? 'Hồ sơ đang được xét duyệt' : isCenter ? 'Xác minh hồ sơ trung tâm' : 'Xác minh chuyên môn giáo viên'}</h1>
-        <p>{status === 'pending' ? 'EduMatch đã tiếp nhận hồ sơ của bạn và sẽ thông báo ngay khi có kết quả.' : 'Nộp tài liệu để EduMatch thẩm định và cấp huy hiệu xác minh trên hồ sơ của bạn.'}</p>
-      </header>
-      {status === 'pending' ? <section className="verification-pending-card" aria-label="Trạng thái hồ sơ xác minh">
-        <div className="verification-pending-card__icon"><FileCheck2 size={21} /></div>
-        <div>
-          <strong>Đã tiếp nhận hồ sơ</strong>
-          <p>Đội ngũ EduMatch đang đối chiếu thông tin và tài liệu bạn đã gửi.</p>
-        </div>
-        {latestRequest?.submitted_at && <time dateTime={latestRequest.submitted_at}>Đã gửi {new Date(latestRequest.submitted_at).toLocaleString('vi-VN')}</time>}
-      </section> : !(isCenter && status === 'unverified') && <section className={`verification-state is-${status}`}>
-        <FileCheck2 size={24} />
-        <div>
-          <strong>{statusLabels[status]}</strong>
-          <p>
-            {status === 'pending'
-              ? 'Hồ sơ đã được tiếp nhận. Bạn sẽ nhận thông báo khi có kết quả.'
-              : status === 'verified'
-                ? 'Huy hiệu xác minh đã được hiển thị trên hồ sơ của bạn.'
-                : 'Chuẩn bị bằng cấp và hai mặt CCCD rõ nét, đầy đủ thông tin.'}
-          </p>
-        </div>
-        <VerifiedBadge userId={user.id} />
-      </section>}
-      {isCenter && <a className="verification-support-contact" href="tel:19001234"><PhoneCall size={16} /> Hotline hỗ trợ Giáo viên & đối tác: <strong>19001234</strong></a>}
+    <main className={`verification-page${status === 'verified' ? ' is-celebration-view' : ''}`}>
+      {status === 'verified' ? (
+        <section className="verification-celebration" aria-label="Chúc mừng xác minh thành công">
+          <div className="verification-celebration__card">
+            <CelebrationEmblem />
+            <div className="verification-celebration__badge-wrap">
+              <VerifiedBadge userId={user.id} />
+            </div>
+            <h1>
+              Chúc mừng <strong>{user?.name || (isCenter ? 'Quý Trung tâm' : 'Bạn')}</strong>
+              <br />
+              đã <em>{isCenter ? 'xác thực pháp lý thành công' : 'xác minh chuyên môn thành công'}</em>
+            </h1>
+            <p className="verification-celebration__lead">
+              Hồ sơ của bạn đã được phê duyệt và cấp huy hiệu xác thực chính thức trên EduMatch.
+            </p>
+            <Link className="verification-celebration__primary-btn" to={ROUTES.TEACHER_PROFILE(user.id)}>
+              Bắt đầu trải nghiệm
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <>
+          <header className="verification-heading">
+            <span>
+              <ShieldCheck size={18} /> {isCenter ? 'HỒ SƠ TRUNG TÂM' : 'HỒ SƠ GIÁO VIÊN'}
+            </span>
+            <h1>{status === 'pending' ? 'Hồ sơ đang được xét duyệt' : isCenter ? 'Xác minh hồ sơ trung tâm' : 'Xác minh chuyên môn giáo viên'}</h1>
+            <p>{status === 'pending' ? 'EduMatch đã tiếp nhận hồ sơ của bạn và sẽ thông báo ngay khi có kết quả.' : 'Nộp tài liệu để EduMatch thẩm định và cấp huy hiệu xác minh trên hồ sơ của bạn.'}</p>
+          </header>
+          {status === 'pending' ? <section className="verification-pending-card" aria-label="Trạng thái hồ sơ xác minh">
+            <div className="verification-pending-card__icon"><FileCheck2 size={21} /></div>
+            <div>
+              <strong>Đã tiếp nhận hồ sơ</strong>
+              <p>Đội ngũ EduMatch đang đối chiếu thông tin và tài liệu bạn đã gửi.</p>
+            </div>
+            {latestRequest?.submitted_at && <time dateTime={latestRequest.submitted_at}>Đã gửi {new Date(latestRequest.submitted_at).toLocaleString('vi-VN')}</time>}
+          </section> : !(isCenter && status === 'unverified') && <section className={`verification-state is-${status}`}>
+            <FileCheck2 size={24} />
+            <div>
+              <strong>{statusLabels[status]}</strong>
+              <p>
+                {status === 'pending'
+                  ? 'Hồ sơ đã được tiếp nhận. Bạn sẽ nhận thông báo khi có kết quả.'
+                  : 'Chuẩn bị bằng cấp và hai mặt CCCD rõ nét, đầy đủ thông tin.'}
+              </p>
+            </div>
+            <VerifiedBadge userId={user.id} />
+          </section>}
+          {isCenter && <a className="verification-support-contact" href="tel:19001234"><PhoneCall size={16} /> Hotline hỗ trợ Giáo viên & đối tác: <strong>19001234</strong></a>}
+        </>
+      )}
       {error && (
         <div className="account-error" role="alert">
           {error}{' '}
@@ -255,7 +386,7 @@ export function VerificationPage() {
         <form className="account-form verification-form" onSubmit={submit} noValidate>
           <div>
             <h2>{status === 'rejected' ? 'Bổ sung và nộp lại hồ sơ' : isCenter ? 'Thông tin xác minh doanh nghiệp' : 'Tài liệu xác minh'}</h2>
-            {!isCenter && <p>JPG, PNG hoặc PDF; mỗi tệp tối đa 2 MB, tổng hồ sơ tối đa 7 MB. Tài liệu chỉ được bạn và quản trị viên có quyền xem.</p>}
+            {!isCenter && <p>JPG, PNG hoặc PDF. Tài liệu chỉ được bạn và quản trị viên có quyền xem.</p>}
           </div>
           <fieldset disabled={busy}>
             {isCenter && (
@@ -307,104 +438,171 @@ export function VerificationPage() {
                 </div>
               </section>
             )}
-            {documents.map((doc, index) => (
-              <section className="verification-document" key={index}>
+            {isCenter ? (
+              <section className="verification-document verification-business-documents">
                 <div className="verification-document-heading">
-                  <h3>{isCenter ? 'Giấy chứng nhận thành lập doanh nghiệp' : `Tài liệu ${index + 1}`}</h3>
-                  {index >= (isCenter ? 4 : 3) && (
-                    <button
-                      className="account-secondary"
-                      type="button"
-                      onClick={() =>
-                        setDocuments((current) => current.filter((_, i) => i !== index))
-                      }
-                    >
-                      <Trash2 size={14} /> Xóa
-                    </button>
+                  <div>
+                    <h3>Giấy chứng nhận thành lập doanh nghiệp & Giấy tờ pháp lý</h3>
+                    <p className="verification-document-subtitle">
+                      Ảnh hoặc File PDF giấy chứng nhận đăng ký doanh nghiệp, giấy phép đào tạo.
+                    </p>
+                  </div>
+                  {centerAttachedFiles.length > 0 && (
+                    <span className="verification-document-count">
+                      {centerAttachedFiles.length} tệp đã chọn
+                    </span>
                   )}
                 </div>
-                {!isCenter && <div className="account-grid">
-                  <label className="account-field">
-                    <span>Loại tài liệu</span>
-                    <select
-                      value={doc.document_type}
-                      disabled={busy || isCenter || (index > 0 && index < 3)}
-                      onChange={(e) => change(index, 'document_type', e.target.value)}
-                    >
-                      {Object.entries(data.document_types)
-                        .filter(([type]) =>
-                          index >= (isCenter ? 4 : 3)
-                            ? !type.startsWith('identity_')
-                            : index === 0 && !isCenter
-                              ? !type.startsWith('identity_')
-                              : true
-                        )
-                        .map(([type, label]) => (
-                          <option key={type} value={type}>
-                            {label}
-                          </option>
-                        ))}
-                    </select>
-                    {renderError(index, 'document_type')}
-                  </label>
-                  <label className="account-field">
-                    <span>Tên chứng chỉ / tài liệu</span>
-                    <input
-                      value={doc.document_name}
-                      onChange={(e) => change(index, 'document_name', e.target.value)}
-                      maxLength={200}
-                      required
-                    />
-                    {renderError(index, 'document_name')}
-                  </label>
-                  <label className="account-field">
-                    <span>Đơn vị cấp</span>
-                    <input
-                      value={doc.issuing_authority}
-                      onChange={(e) => change(index, 'issuing_authority', e.target.value)}
-                      maxLength={200}
-                      required
-                    />
-                    {renderError(index, 'issuing_authority')}
-                  </label>
-                  <label className="account-field">
-                    <span>Năm cấp</span>
-                    <input
-                      value={doc.issued_year}
-                      onChange={(e) =>
-                        change(index, 'issued_year', e.target.value.replace(/\D/g, '').slice(0, 4))
-                      }
-                      inputMode="numeric"
-                      maxLength={4}
-                      required
-                    />
-                    {renderError(index, 'issued_year')}
-                  </label>
-                </div>}
+
                 <div className="account-field">
-                  <span>{isCenter ? 'Ảnh hoặc File PDF giấy chứng nhận thành lập doanh nghiệp' : 'Tệp tài liệu'}</span>
                   <div className="verification-file-picker">
                     <input
-                      id={`verification-file-${index}`}
+                      id="verification-center-files"
                       className="verification-file-picker__input"
                       type="file"
+                      multiple
                       accept="image/jpeg,image/png,application/pdf"
-                      onChange={(e) => change(index, 'file', e.target.files?.[0] || null)}
-                      required
+                      onChange={handleCenterFilesAdd}
                     />
-                    <label className="verification-file-picker__trigger" htmlFor={`verification-file-${index}`}>
-                      <FilePlus2 size={16} /> Chọn tệp
+                    <label
+                      className="verification-file-picker__trigger"
+                      htmlFor="verification-center-files"
+                    >
+                      <FilePlus2 size={16} /> {centerAttachedFiles.length > 0 ? 'Chọn thêm tệp / ảnh' : 'Chọn tệp'}
                     </label>
                   </div>
-                  {doc.file && (
-                    <small>
-                      {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
-                    </small>
-                  )}
-                  {renderError(index, 'file')}
+                  {centerAttachedFiles.length === 0 && renderError(0, 'file')}
                 </div>
+
+                {centerAttachedFiles.length > 0 && (
+                  <div className="verification-file-list" aria-label="Danh sách tệp xác minh đã chọn">
+                    {centerAttachedFiles.map((doc, fileIndex) => (
+                      <div className="verification-file-item" key={`${doc.file?.name}-${fileIndex}`}>
+                        <div className="verification-file-item__main">
+                          <div className="verification-file-thumb">
+                            <FileThumbnail file={doc.file} />
+                          </div>
+                          <div className="verification-file-info">
+                            <strong title={doc.file?.name}>{doc.file?.name}</strong>
+                            <small>
+                              {doc.file ? `${(doc.file.size / 1024).toFixed(0)} KB · ${doc.file.type === 'application/pdf' ? 'Tài liệu PDF' : 'Ảnh'}` : ''}
+                            </small>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="verification-file-item__remove"
+                          onClick={() => removeCenterFile(fileIndex)}
+                          aria-label={`Xóa tệp ${doc.file?.name}`}
+                        >
+                          <Trash2 size={14} /> Xóa
+                        </button>
+                        {renderError(fileIndex, 'file')}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
-            ))}
+            ) : (
+              documents.map((doc, index) => (
+                <section className="verification-document" key={index}>
+                  <div className="verification-document-heading">
+                    <h3>{`Tài liệu ${index + 1}`}</h3>
+                    {index >= 3 && (
+                      <button
+                        className="account-secondary"
+                        type="button"
+                        onClick={() =>
+                          setDocuments((current) => current.filter((_, i) => i !== index))
+                        }
+                      >
+                        <Trash2 size={14} /> Xóa
+                      </button>
+                    )}
+                  </div>
+                  <div className="account-grid">
+                    <label className="account-field">
+                      <span>Loại tài liệu</span>
+                      <select
+                        value={doc.document_type}
+                        disabled={busy || (index > 0 && index < 3)}
+                        onChange={(e) => change(index, 'document_type', e.target.value)}
+                      >
+                        {Object.entries(data?.document_types || {})
+                          .filter(([type]) =>
+                            index >= 3
+                              ? !type.startsWith('identity_')
+                              : index === 0
+                                ? !type.startsWith('identity_')
+                                : true
+                          )
+                          .map(([type, label]) => (
+                            <option key={type} value={type}>
+                              {label}
+                            </option>
+                          ))}
+                      </select>
+                      {renderError(index, 'document_type')}
+                    </label>
+                    <label className="account-field">
+                      <span>Tên chứng chỉ / tài liệu</span>
+                      <input
+                        value={doc.document_name}
+                        onChange={(e) => change(index, 'document_name', e.target.value)}
+                        maxLength={200}
+                        required
+                      />
+                      {renderError(index, 'document_name')}
+                    </label>
+                    <label className="account-field">
+                      <span>Đơn vị cấp</span>
+                      <input
+                        value={doc.issuing_authority}
+                        onChange={(e) => change(index, 'issuing_authority', e.target.value)}
+                        maxLength={200}
+                        required
+                      />
+                      {renderError(index, 'issuing_authority')}
+                    </label>
+                    <label className="account-field">
+                      <span>Năm cấp</span>
+                      <input
+                        value={doc.issued_year}
+                        onChange={(e) =>
+                          change(index, 'issued_year', e.target.value.replace(/\D/g, '').slice(0, 4))
+                        }
+                        inputMode="numeric"
+                        maxLength={4}
+                        required
+                      />
+                      {renderError(index, 'issued_year')}
+                    </label>
+                  </div>
+                  <div className="account-field">
+                    <span>Tệp tài liệu</span>
+                    <div className="verification-file-picker">
+                      <input
+                        id={`verification-file-${index}`}
+                        className="verification-file-picker__input"
+                        type="file"
+                        accept="image/jpeg,image/png,application/pdf"
+                        onChange={(e) => change(index, 'file', e.target.files?.[0] || null)}
+                        required
+                      />
+                      <label className="verification-file-picker__trigger" htmlFor={`verification-file-${index}`}>
+                        <FilePlus2 size={16} /> Chọn tệp
+                      </label>
+                    </div>
+                    {doc.file && (
+                      <small>
+                        {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
+                      </small>
+                    )}
+                    {renderError(index, 'file')}
+                  </div>
+                </section>
+              ))
+            )}
           </fieldset>
           {isCenter && (
             <p className="verification-contact-note">
@@ -429,13 +627,22 @@ export function VerificationPage() {
                 <FilePlus2 size={16} /> Thêm chứng chỉ
               </button>
             )}
+            {isCenter && centerAttachedFiles.length > 0 && (
+              <label
+                className="account-secondary verification-file-picker__trigger"
+                htmlFor="verification-center-files"
+                style={{ cursor: 'pointer' }}
+              >
+                <FilePlus2 size={16} /> Thêm tệp / ảnh
+              </label>
+            )}
             <button className="account-primary" type="submit" disabled={busy}>
               {busy ? 'Đang gửi hồ sơ...' : 'Gửi hồ sơ xét duyệt'}
             </button>
           </div>
         </form>
       )}
-      {data && status !== 'pending' && (
+      {data && !['pending', 'verified'].includes(status) && (
         <section className="verification-history">
           <h2>Lịch sử hồ sơ</h2>
           {data.requests.data.length ? (
@@ -459,7 +666,7 @@ export function VerificationPage() {
                   {record.documents.map((doc) => (
                     <li key={doc.id}>
                       <div>
-                        <strong>{data.document_types[doc.document_type] || 'Tài liệu xác minh'}</strong>
+                        <strong>{data?.document_types?.[doc.document_type] || 'Tài liệu xác minh'}</strong>
                         <small>
                           Tài liệu đã gửi{doc.issued_year ? ` · Năm cấp ${doc.issued_year}` : ''}
                         </small>

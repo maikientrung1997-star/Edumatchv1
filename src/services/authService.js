@@ -31,9 +31,21 @@ const resolveAssetUrl = (value) => {
 
 export function normalizeAuthUser(user) {
   if (!user) return null;
-  const profile = user.student_profile || user.teacher_profile || user.center || {};
-  const phoneVisibilityProvided = [user, profile].some((item) =>
-    Object.prototype.hasOwnProperty.call(item || {}, 'show_phone') || Object.prototype.hasOwnProperty.call(item || {}, 'isPhonePublic'),
+  const profile =
+    user.student_profile ||
+    user.teacher_profile ||
+    user.teacherProfile ||
+    user.center_profile ||
+    user.centerProfile ||
+    user.center ||
+    {};
+  const phoneVisibilityProvided = [user, profile, user.center, user.center_profile, user.centerProfile].some((item) =>
+    Boolean(item) && (
+      Object.prototype.hasOwnProperty.call(item, 'show_phone') ||
+      Object.prototype.hasOwnProperty.call(item, 'showPhone') ||
+      Object.prototype.hasOwnProperty.call(item, 'is_phone_public') ||
+      Object.prototype.hasOwnProperty.call(item, 'isPhonePublic')
+    ),
   );
   const rawAvatar =
     user.avatar ||
@@ -69,17 +81,37 @@ export function normalizeAuthUser(user) {
     user.teacher_profile?.cover_url ||
     '';
 
+  const rawPhonePublic =
+    profile.show_phone ??
+    profile.showPhone ??
+    profile.is_phone_public ??
+    profile.isPhonePublic ??
+    user.center?.show_phone ??
+    user.center?.showPhone ??
+    user.center?.is_phone_public ??
+    user.center?.isPhonePublic ??
+    user.center_profile?.show_phone ??
+    user.centerProfile?.show_phone ??
+    user.show_phone ??
+    user.showPhone ??
+    user.is_phone_public ??
+    user.isPhonePublic;
+
   return {
     ...user,
     name: user.center?.name || user.name,
+    phone: user.center?.phone || profile.phone || user.phone || '',
     dob: profile.date_of_birth?.slice(0, 10) || user.dob || '',
     bio: profile.bio ?? profile.description ?? user.bio ?? '',
     avatar: resolveAssetUrl(rawAvatar),
     coverImage: resolveAssetUrl(rawCoverImage),
     avatarVersion: user.avatarVersion || user.avatar_version || undefined,
     qualifications: user.teacher_profile?.headline || user.qualifications || '',
-    experience: user.teacher_profile ? `${user.teacher_profile.experience_years ?? 0} năm kinh nghiệm` : user.experience || '',
-    isPhonePublic: profile.show_phone ?? user.show_phone ?? user.isPhonePublic ?? false,
+    experience:
+      user.teacher_profile?.experience ||
+      user.experience ||
+      (user.teacher_profile ? `${user.teacher_profile.experience_years ?? 0} năm kinh nghiệm` : ''),
+    isPhonePublic: rawPhonePublic != null ? Boolean(rawPhonePublic) : false,
     phoneVisibilityProvided,
     foundedYear: user.center?.founded_year ? String(user.center.founded_year) : user.foundedYear || '',
     teachingField: profile.teaching_field || profile.teachingField || user.teaching_field || user.teachingField || '',

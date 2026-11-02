@@ -259,7 +259,15 @@ test('professional registration maps field errors and validates years', () => {
     qualification: 'Quá dài', experience: 'Năm sai', biography: 'Mô tả sai',
   });
   assert.ok(registration.validateRegistration({ ...registration.initialForm, foundedYear: '2999' }, 'center').foundedYear);
-  assert.ok(registration.validateRegistration({ ...registration.initialForm, experience: '61 năm' }, 'teacher').experience);
+  const longText = 'Thạc sĩ Sư phạm Tiếng Anh, chứng chỉ TESOL & IELTS 8.5. '.repeat(10);
+  const validTeacherErrors = registration.validateRegistration({
+    ...registration.initialForm,
+    qualification: longText,
+    experience: 'Giảng dạy chuyên sâu tại các trường quốc tế và luyện thi học sinh giỏi cấp quốc gia',
+  }, 'teacher');
+  assert.equal(validTeacherErrors.qualification, undefined);
+  assert.equal(validTeacherErrors.experience, undefined);
+  assert.ok(registration.validateRegistration({ ...registration.initialForm, experience: '   ' }, 'teacher').experience);
 });
 
 test('profiles are restored from server data for all roles', () => {

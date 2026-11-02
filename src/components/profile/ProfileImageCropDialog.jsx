@@ -33,18 +33,20 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [saving, setSaving] = useState(false);
   const isOpen = Boolean(draft?.source);
+  const [prevSource, setPrevSource] = useState(draft?.source);
 
-  useEffect(() => {
-    if (!isOpen || !draft?.source) {
-      setImageSize(null);
-      setZoom(1);
-      setOffset({ x: 0, y: 0 });
-      return undefined;
-    }
-    let active = true;
+  if (prevSource !== draft?.source) {
+    setPrevSource(draft?.source);
     setImageSize(null);
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+  }
+
+  useEffect(() => {
+    if (!isOpen || !draft?.source) {
+      return undefined;
+    }
+    let active = true;
     loadImage(draft.source)
       .then((image) => {
         if (active) setImageSize({ width: image.naturalWidth, height: image.naturalHeight });

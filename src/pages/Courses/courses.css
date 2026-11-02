@@ -2998,7 +2998,17 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   margin-top: 6px;
 }
 .teacher-cover__status-list .teacher-cover__trust-count,
-.teacher-cover__status-list .center-verification-badge { margin-top: 0; }
+.teacher-cover__status-list .center-verification-badge,
+.teacher-cover__status-list .verified-provider-badge { margin-top: 0; }
+.teacher-cover__status-list .verified-provider-badge {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--edu-green);
+  font-size: var(--text-caption-xs);
+  font-weight: 800;
+  line-height: var(--text-caption-xs--line-height);
+}
 .teacher-cover.has-custom-cover .teacher-cover__status-list {
   display: grid;
   justify-items: start;
@@ -3006,7 +3016,8 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   margin-top: 10px;
 }
 .teacher-cover.has-custom-cover .teacher-cover__status-list .teacher-cover__trust-count,
-.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge {
+.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge,
+.teacher-cover.has-custom-cover .teacher-cover__status-list .verified-provider-badge {
   min-height: 28px;
   margin: 0;
   padding: 0 9px;
@@ -3021,11 +3032,13 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border-color: rgb(255 164 179 / 52%);
   color: #ffa8b8 !important;
 }
-.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge {
+.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge,
+.teacher-cover.has-custom-cover .teacher-cover__status-list .verified-provider-badge {
   border-color: rgb(167 243 221 / 48%);
   color: #b8f7e3 !important;
 }
-.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge svg {
+.teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge svg,
+.teacher-cover.has-custom-cover .teacher-cover__status-list .verified-provider-badge svg {
   color: currentColor;
 }
 .teacher-cover.has-custom-cover button.teacher-cover__trust-count:hover {

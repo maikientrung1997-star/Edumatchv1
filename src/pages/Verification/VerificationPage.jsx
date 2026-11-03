@@ -341,111 +341,169 @@ export function VerificationPage() {
       ) : (
         <>
           <header className="verification-heading">
-            <span>
-              <ShieldCheck size={18} /> {isCenter ? 'HỒ SƠ TRUNG TÂM' : 'HỒ SƠ GIÁO VIÊN'}
-            </span>
-            <h1>{status === 'pending' ? 'Hồ sơ đang được xét duyệt' : isCenter ? 'Xác minh hồ sơ trung tâm' : 'Xác minh chuyên môn giáo viên'}</h1>
-            <p>{status === 'pending' ? 'EduMatch đã tiếp nhận hồ sơ của bạn và sẽ thông báo ngay khi có kết quả.' : 'Nộp tài liệu để EduMatch thẩm định và cấp huy hiệu xác minh trên hồ sơ của bạn.'}</p>
+            <div className="verification-heading__top">
+              <span className="verification-eyebrow">
+                <ShieldCheck size={15} /> {isCenter ? 'XÁC THỰC ĐỐI TÁC' : 'XÁC MINH GIÁO VIÊN'}
+              </span>
+              {isCenter && (
+                <a className="verification-support-pill" href="tel:19001234">
+                  <PhoneCall size={13.5} /> Hỗ trợ đối tác: <strong>19001234</strong>
+                </a>
+              )}
+            </div>
+            <h1>{status === 'pending' ? 'Hồ sơ đang được xét duyệt' : isCenter ? 'Xác thực pháp lý trung tâm' : 'Xác minh chuyên môn giáo viên'}</h1>
+            <p>
+              {status === 'pending'
+                ? 'EduMatch đã tiếp nhận hồ sơ của bạn và sẽ thông báo ngay khi có kết quả.'
+                : isCenter
+                  ? 'Hoàn thiện thông tin pháp lý để nhận huy hiệu Đối tác xác thực chính thức trên EduMatch.'
+                  : 'Cung cấp bằng cấp và giấy tờ tùy thân để nhận huy hiệu Giáo viên xác minh trên EduMatch.'}
+            </p>
           </header>
-          {status === 'pending' ? <section className="verification-pending-card" aria-label="Trạng thái hồ sơ xác minh">
-            <div className="verification-pending-card__icon"><FileCheck2 size={21} /></div>
-            <div>
-              <strong>Đã tiếp nhận hồ sơ</strong>
-              <p>Đội ngũ EduMatch đang đối chiếu thông tin và tài liệu bạn đã gửi.</p>
-            </div>
-            {latestRequest?.submitted_at && <time dateTime={latestRequest.submitted_at}>Đã gửi {new Date(latestRequest.submitted_at).toLocaleString('vi-VN')}</time>}
-          </section> : !(isCenter && status === 'unverified') && <section className={`verification-state is-${status}`}>
-            <FileCheck2 size={24} />
-            <div>
-              <strong>{statusLabels[status]}</strong>
-              <p>
-                {status === 'pending'
-                  ? 'Hồ sơ đã được tiếp nhận. Bạn sẽ nhận thông báo khi có kết quả.'
-                  : 'Chuẩn bị bằng cấp và hai mặt CCCD rõ nét, đầy đủ thông tin.'}
-              </p>
-            </div>
-            <VerifiedBadge userId={user.id} />
-          </section>}
-          {isCenter && <a className="verification-support-contact" href="tel:19001234"><PhoneCall size={16} /> Hotline hỗ trợ Giáo viên & đối tác: <strong>19001234</strong></a>}
+
+          {status === 'pending' ? (
+            <section className="verification-pending-card" aria-label="Trạng thái hồ sơ xác minh">
+              <div className="verification-pending-card__icon"><FileCheck2 size={22} /></div>
+              <div className="verification-pending-card__body">
+                <div className="verification-pending-card__title-row">
+                  <strong>Đã tiếp nhận hồ sơ thẩm định</strong>
+                  {latestRequest?.submitted_at && (
+                    <time dateTime={latestRequest.submitted_at}>
+                      {new Date(latestRequest.submitted_at).toLocaleString('vi-VN')}
+                    </time>
+                  )}
+                </div>
+                <p>Đội ngũ EduMatch đang đối chiếu thông tin và tài liệu của bạn. Kết quả sẽ được gửi qua thông báo ngay khi hoàn tất.</p>
+              </div>
+            </section>
+          ) : !(isCenter && status === 'unverified') && (
+            <section className={`verification-state is-${status}`} aria-label="Trạng thái hồ sơ">
+              <div className="verification-state__icon">
+                <FileCheck2 size={20} />
+              </div>
+              <div className="verification-state__content">
+                <strong>{isCenter && status === 'rejected' ? 'Hồ sơ chưa được xét duyệt' : statusLabels[status]}</strong>
+                <p>
+                  {status === 'pending'
+                    ? 'Hồ sơ đã được tiếp nhận. Bạn sẽ nhận thông báo khi có kết quả.'
+                    : isCenter
+                      ? `${latestRequest?.rejection_reason ? `Lý do: ${latestRequest.rejection_reason}. ` : ''}Đội ngũ EduMatch sẽ liên hệ trực tiếp qua SĐT để hướng dẫn.`
+                      : `${latestRequest?.rejection_reason ? `Lý do: ${latestRequest.rejection_reason}. ` : 'Chuẩn bị bằng cấp và hai mặt CCCD rõ nét, đầy đủ thông tin.'}`}
+                </p>
+              </div>
+              <VerifiedBadge userId={user.id} />
+            </section>
+          )}
         </>
       )}
       {error && (
-        <div className="account-error" role="alert">
-          {error}{' '}
+        <div className="account-error verification-alert" role="alert">
+          <span>{error}</span>
           <button
             type="button"
             className="account-secondary"
             onClick={() => setRetry((v) => v + 1)}
           >
-            Tải lại hồ sơ
+            Tải lại
           </button>
         </div>
       )}
-      {loading && <p role="status">Đang tải hồ sơ xác minh...</p>}
+      {loading && <p className="verification-loading" role="status">Đang tải hồ sơ...</p>}
       {canSubmit && (
         <form className="account-form verification-form" onSubmit={submit} noValidate>
-          <div>
-            <h2>{status === 'rejected' ? 'Bổ sung và nộp lại hồ sơ' : isCenter ? 'Thông tin xác minh doanh nghiệp' : 'Tài liệu xác minh'}</h2>
-            {!isCenter && <p>JPG, PNG hoặc PDF. Tài liệu chỉ được bạn và quản trị viên có quyền xem.</p>}
-          </div>
           <fieldset disabled={busy}>
             {isCenter && (
-              <section className="verification-document verification-business-details">
-                <div className="verification-document-heading">
-                  <h3>Thông tin trung tâm và doanh nghiệp</h3>
+              <section className="verification-section">
+                <div className="verification-section__header">
+                  <div>
+                    <h2>{status === 'rejected' ? 'Cập nhật thông tin trung tâm' : 'Thông tin pháp lý & liên hệ'}</h2>
+                    <p>Thông tin được dùng để đối chiếu pháp nhân và cấp chứng nhận đối tác.</p>
+                  </div>
                 </div>
-                <div className="account-grid">
+                <div className="account-grid verification-grid">
                   <label className="account-field">
                     <span>Tên trung tâm đào tạo</span>
-                    <input value={centerDetails.center_name} onChange={(event) => changeCenterDetail('center_name', event.target.value)} maxLength={160} />
+                    <input
+                      value={centerDetails.center_name}
+                      onChange={(event) => changeCenterDetail('center_name', event.target.value)}
+                      maxLength={160}
+                    />
                     {renderCenterError('center_name')}
                   </label>
                   <label className="account-field">
                     <span>Lĩnh vực đào tạo</span>
-                    <input value={centerDetails.training_field} onChange={(event) => changeCenterDetail('training_field', event.target.value)} maxLength={200} />
+                    <input
+                      value={centerDetails.training_field}
+                      onChange={(event) => changeCenterDetail('training_field', event.target.value)}
+                      maxLength={200}
+                    />
                     {renderCenterError('training_field')}
                   </label>
                   <label className="account-field">
                     <span>Địa chỉ đào tạo</span>
-                    <input value={centerDetails.training_address} onChange={(event) => changeCenterDetail('training_address', event.target.value)} maxLength={300} />
+                    <input
+                      value={centerDetails.training_address}
+                      onChange={(event) => changeCenterDetail('training_address', event.target.value)}
+                      maxLength={300}
+                    />
                     {renderCenterError('training_address')}
                   </label>
                   <label className="account-field">
-                    <span>Tên công ty</span>
-                    <input value={centerDetails.company_name} onChange={(event) => changeCenterDetail('company_name', event.target.value)} maxLength={160} />
+                    <span>Tên công ty / Pháp nhân</span>
+                    <input
+                      value={centerDetails.company_name}
+                      onChange={(event) => changeCenterDetail('company_name', event.target.value)}
+                      maxLength={160}
+                    />
                     {renderCenterError('company_name')}
                   </label>
                   <label className="account-field">
                     <span>Mã số thuế</span>
-                    <input value={centerDetails.tax_code} onChange={(event) => changeCenterDetail('tax_code', event.target.value.replace(/\D/g, '').slice(0, 13))} inputMode="numeric" maxLength={13} />
+                    <input
+                      value={centerDetails.tax_code}
+                      onChange={(event) => changeCenterDetail('tax_code', event.target.value.replace(/\D/g, '').slice(0, 13))}
+                      inputMode="numeric"
+                      maxLength={13}
+                    />
                     {renderCenterError('tax_code')}
                   </label>
                   <label className="account-field">
-                    <span>Địa chỉ công ty</span>
-                    <input value={centerDetails.company_address} onChange={(event) => changeCenterDetail('company_address', event.target.value)} maxLength={300} />
+                    <span>Địa chỉ đăng ký kinh doanh</span>
+                    <input
+                      value={centerDetails.company_address}
+                      onChange={(event) => changeCenterDetail('company_address', event.target.value)}
+                      maxLength={300}
+                    />
                     {renderCenterError('company_address')}
                   </label>
                   <label className="account-field">
                     <span>Người đại diện liên hệ</span>
-                    <input value={centerDetails.representative_name} onChange={(event) => changeCenterDetail('representative_name', event.target.value)} maxLength={120} />
+                    <input
+                      value={centerDetails.representative_name}
+                      onChange={(event) => changeCenterDetail('representative_name', event.target.value)}
+                      maxLength={120}
+                    />
                     {renderCenterError('representative_name')}
                   </label>
                   <label className="account-field">
                     <span>Số điện thoại liên hệ</span>
-                    <input value={centerDetails.representative_phone} onChange={(event) => changeCenterDetail('representative_phone', event.target.value)} inputMode="tel" maxLength={15} />
+                    <input
+                      value={centerDetails.representative_phone}
+                      onChange={(event) => changeCenterDetail('representative_phone', event.target.value)}
+                      inputMode="tel"
+                      maxLength={15}
+                    />
                     {renderCenterError('representative_phone')}
                   </label>
                 </div>
               </section>
             )}
             {isCenter ? (
-              <section className="verification-document verification-business-documents">
-                <div className="verification-document-heading">
+              <section className="verification-section verification-section--divider">
+                <div className="verification-section__header">
                   <div>
-                    <h3>Giấy chứng nhận thành lập doanh nghiệp & Giấy tờ pháp lý</h3>
-                    <p className="verification-document-subtitle">
-                      Ảnh hoặc File PDF giấy chứng nhận đăng ký doanh nghiệp, giấy phép đào tạo.
-                    </p>
+                    <h2>Giấy tờ pháp lý đính kèm</h2>
+                    <p>Bản chụp hoặc PDF Giấy chứng nhận đăng ký doanh nghiệp, Quyết định thành lập hoặc Giấy phép đào tạo.</p>
                   </div>
                   {centerAttachedFiles.length > 0 && (
                     <span className="verification-document-count">
@@ -454,23 +512,30 @@ export function VerificationPage() {
                   )}
                 </div>
 
-                <div className="account-field">
-                  <div className="verification-file-picker">
-                    <input
-                      id="verification-center-files"
-                      className="verification-file-picker__input"
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/png,application/pdf"
-                      onChange={handleCenterFilesAdd}
-                    />
-                    <label
-                      className="verification-file-picker__trigger"
-                      htmlFor="verification-center-files"
-                    >
-                      <FilePlus2 size={16} /> {centerAttachedFiles.length > 0 ? 'Chọn thêm tệp / ảnh' : 'Chọn tệp'}
-                    </label>
-                  </div>
+                <div className="verification-upload-box">
+                  <input
+                    id="verification-center-files"
+                    className="verification-file-picker__input"
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,application/pdf"
+                    onChange={handleCenterFilesAdd}
+                  />
+                  <label
+                    className="verification-upload-dropzone"
+                    htmlFor="verification-center-files"
+                  >
+                    <span className="verification-upload-dropzone__icon">
+                      <FilePlus2 size={18} />
+                    </span>
+                    <span className="verification-upload-dropzone__text">
+                      <strong>{centerAttachedFiles.length > 0 ? 'Thêm tài liệu pháp lý khác' : 'Tải lên tài liệu pháp lý'}</strong>
+                      <small>Hỗ trợ ảnh JPG, PNG hoặc tài liệu PDF · Có thể chọn nhiều tệp</small>
+                    </span>
+                    <span className="verification-upload-dropzone__action">
+                      Chọn tệp
+                    </span>
+                  </label>
                   {centerAttachedFiles.length === 0 && renderError(0, 'file')}
                 </div>
 
@@ -485,7 +550,7 @@ export function VerificationPage() {
                           <div className="verification-file-info">
                             <strong title={doc.file?.name}>{doc.file?.name}</strong>
                             <small>
-                              {doc.file ? `${(doc.file.size / 1024).toFixed(0)} KB · ${doc.file.type === 'application/pdf' ? 'Tài liệu PDF' : 'Ảnh'}` : ''}
+                              {doc.file ? `${(doc.file.size / 1024).toFixed(0)} KB · ${doc.file.type === 'application/pdf' ? 'PDF' : 'Hình ảnh'}` : ''}
                             </small>
                           </div>
                         </div>
@@ -504,176 +569,182 @@ export function VerificationPage() {
                 )}
               </section>
             ) : (
-              documents.map((doc, index) => (
-                <section className="verification-document" key={index}>
-                  <div className="verification-document-heading">
-                    <h3>{`Tài liệu ${index + 1}`}</h3>
-                    {index >= 3 && (
-                      <button
-                        className="account-secondary"
-                        type="button"
-                        onClick={() =>
-                          setDocuments((current) => current.filter((_, i) => i !== index))
-                        }
-                      >
-                        <Trash2 size={14} /> Xóa
-                      </button>
-                    )}
+              <section className="verification-section">
+                <div className="verification-section__header">
+                  <div>
+                    <h2>{status === 'rejected' ? 'Bổ sung và nộp lại tài liệu' : 'Tài liệu xác minh'}</h2>
+                    <p>Hỗ trợ JPG, PNG hoặc PDF. Tài liệu được bảo mật và chỉ phục vụ công tác thẩm định.</p>
                   </div>
-                  <div className="account-grid">
-                    <label className="account-field">
-                      <span>Loại tài liệu</span>
-                      <select
-                        value={doc.document_type}
-                        disabled={busy || (index > 0 && index < 3)}
-                        onChange={(e) => change(index, 'document_type', e.target.value)}
-                      >
-                        {Object.entries(data?.document_types || {})
-                          .filter(([type]) =>
-                            index >= 3
-                              ? !type.startsWith('identity_')
-                              : index === 0
-                                ? !type.startsWith('identity_')
-                                : true
-                          )
-                          .map(([type, label]) => (
-                            <option key={type} value={type}>
-                              {label}
-                            </option>
-                          ))}
-                      </select>
-                      {renderError(index, 'document_type')}
-                    </label>
-                    <label className="account-field">
-                      <span>Tên chứng chỉ / tài liệu</span>
-                      <input
-                        value={doc.document_name}
-                        onChange={(e) => change(index, 'document_name', e.target.value)}
-                        maxLength={200}
-                        required
-                      />
-                      {renderError(index, 'document_name')}
-                    </label>
-                    <label className="account-field">
-                      <span>Đơn vị cấp</span>
-                      <input
-                        value={doc.issuing_authority}
-                        onChange={(e) => change(index, 'issuing_authority', e.target.value)}
-                        maxLength={200}
-                        required
-                      />
-                      {renderError(index, 'issuing_authority')}
-                    </label>
-                    <label className="account-field">
-                      <span>Năm cấp</span>
-                      <input
-                        value={doc.issued_year}
-                        onChange={(e) =>
-                          change(index, 'issued_year', e.target.value.replace(/\D/g, '').slice(0, 4))
-                        }
-                        inputMode="numeric"
-                        maxLength={4}
-                        required
-                      />
-                      {renderError(index, 'issued_year')}
-                    </label>
-                  </div>
-                  <div className="account-field">
-                    <span>Tệp tài liệu</span>
-                    <div className="verification-file-picker">
-                      <input
-                        id={`verification-file-${index}`}
-                        className="verification-file-picker__input"
-                        type="file"
-                        accept="image/jpeg,image/png,application/pdf"
-                        onChange={(e) => change(index, 'file', e.target.files?.[0] || null)}
-                        required
-                      />
-                      <label className="verification-file-picker__trigger" htmlFor={`verification-file-${index}`}>
-                        <FilePlus2 size={16} /> Chọn tệp
-                      </label>
+                </div>
+                <div className="verification-teacher-docs">
+                  {documents.map((doc, index) => (
+                    <div className="verification-document" key={index}>
+                      <div className="verification-document-heading">
+                        <h3>{`Tài liệu ${index + 1}`}</h3>
+                        {index >= 3 && (
+                          <button
+                            className="verification-file-item__remove"
+                            type="button"
+                            onClick={() =>
+                              setDocuments((current) => current.filter((_, i) => i !== index))
+                            }
+                          >
+                            <Trash2 size={14} /> Xóa
+                          </button>
+                        )}
+                      </div>
+                      <div className="account-grid verification-grid">
+                        <label className="account-field">
+                          <span>Loại tài liệu</span>
+                          <select
+                            value={doc.document_type}
+                            disabled={busy || (index > 0 && index < 3)}
+                            onChange={(e) => change(index, 'document_type', e.target.value)}
+                          >
+                            {Object.entries(data?.document_types || {})
+                              .filter(([type]) =>
+                                index >= 3
+                                  ? !type.startsWith('identity_')
+                                  : index === 0
+                                    ? !type.startsWith('identity_')
+                                    : true
+                              )
+                              .map(([type, label]) => (
+                                <option key={type} value={type}>
+                                  {label}
+                                </option>
+                              ))}
+                          </select>
+                          {renderError(index, 'document_type')}
+                        </label>
+                        <label className="account-field">
+                          <span>Tên chứng chỉ / tài liệu</span>
+                          <input
+                            value={doc.document_name}
+                            onChange={(e) => change(index, 'document_name', e.target.value)}
+                            maxLength={200}
+                            required
+                          />
+                          {renderError(index, 'document_name')}
+                        </label>
+                        <label className="account-field">
+                          <span>Đơn vị cấp</span>
+                          <input
+                            value={doc.issuing_authority}
+                            onChange={(e) => change(index, 'issuing_authority', e.target.value)}
+                            maxLength={200}
+                            required
+                          />
+                          {renderError(index, 'issuing_authority')}
+                        </label>
+                        <label className="account-field">
+                          <span>Năm cấp</span>
+                          <input
+                            value={doc.issued_year}
+                            onChange={(e) =>
+                              change(index, 'issued_year', e.target.value.replace(/\D/g, '').slice(0, 4))
+                            }
+                            inputMode="numeric"
+                            maxLength={4}
+                            required
+                          />
+                          {renderError(index, 'issued_year')}
+                        </label>
+                      </div>
+                      <div className="account-field">
+                        <span>Tệp đính kèm</span>
+                        <div className="verification-file-picker">
+                          <input
+                            id={`verification-file-${index}`}
+                            className="verification-file-picker__input"
+                            type="file"
+                            accept="image/jpeg,image/png,application/pdf"
+                            onChange={(e) => change(index, 'file', e.target.files?.[0] || null)}
+                            required
+                          />
+                          <label className="verification-file-picker__trigger" htmlFor={`verification-file-${index}`}>
+                            <FilePlus2 size={15} /> {doc.file ? 'Đổi tệp khác' : 'Chọn tệp'}
+                          </label>
+                          {doc.file && (
+                            <span className="verification-file-picker__selected">
+                              {doc.file.name} <em>({(doc.file.size / 1024).toFixed(0)} KB)</em>
+                            </span>
+                          )}
+                        </div>
+                        {renderError(index, 'file')}
+                      </div>
                     </div>
-                    {doc.file && (
-                      <small>
-                        {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
-                      </small>
-                    )}
-                    {renderError(index, 'file')}
-                  </div>
-                </section>
-              ))
+                  ))}
+                </div>
+              </section>
             )}
           </fieldset>
-          {isCenter && (
-            <p className="verification-contact-note">
-              Để bảo đảm hồ sơ chính xác, đội ngũ EduMatch có thể liên hệ với người đại diện qua số điện thoại đã cung cấp để đối chiếu thông tin hoặc hướng dẫn bổ sung. Kết quả sẽ được thông báo trên EduMatch ngay khi quá trình xác minh hoàn tất.
-            </p>
-          )}
           {errors.documents && (
             <p className="account-error" role="alert">
               {errors.documents}
             </p>
           )}
-          <div className="account-actions">
-            {!isCenter && documents.length < 8 && (
-              <button
-                className="account-secondary"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  setDocuments((current) => [...current, emptyDocument('professional_certificate')])
-                }
-              >
-                <FilePlus2 size={16} /> Thêm chứng chỉ
+          <div className="verification-form-footer">
+            <p className="verification-privacy-hint">
+              {isCenter
+                ? 'Hồ sơ được bảo mật tuyệt đối. Đội ngũ EduMatch sẽ liên hệ qua SĐT đại diện khi cần hỗ trợ.'
+                : 'Thông tin và giấy tờ của bạn được bảo mật, chỉ dùng cho mục đích xác minh trên EduMatch.'}
+            </p>
+            <div className="account-actions verification-actions">
+              {!isCenter && documents.length < 8 && (
+                <button
+                  className="account-secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    setDocuments((current) => [...current, emptyDocument('professional_certificate')])
+                  }
+                >
+                  <FilePlus2 size={15} /> Thêm chứng chỉ
+                </button>
+              )}
+              <button className="account-primary verification-submit-btn" type="submit" disabled={busy}>
+                {busy ? 'Đang gửi hồ sơ...' : 'Gửi hồ sơ xét duyệt'}
+                {!busy && <ArrowRight size={15} />}
               </button>
-            )}
-            {isCenter && centerAttachedFiles.length > 0 && (
-              <label
-                className="account-secondary verification-file-picker__trigger"
-                htmlFor="verification-center-files"
-                style={{ cursor: 'pointer' }}
-              >
-                <FilePlus2 size={16} /> Thêm tệp / ảnh
-              </label>
-            )}
-            <button className="account-primary" type="submit" disabled={busy}>
-              {busy ? 'Đang gửi hồ sơ...' : 'Gửi hồ sơ xét duyệt'}
-            </button>
+            </div>
           </div>
         </form>
       )}
-      {data && !['pending', 'verified'].includes(status) && (
+      {data && !['pending', 'verified'].includes(status) && data.requests?.data?.length > 0 && (
         <section className="verification-history">
-          <h2>Lịch sử hồ sơ</h2>
-          {data.requests.data.length ? (
-            data.requests.data.map((record) => (
+          <div className="verification-history__header">
+            <h2>Lịch sử gửi hồ sơ</h2>
+          </div>
+          <div className="verification-history__list">
+            {data.requests.data.map((record) => (
               <article key={record.id} className="verification-history-item">
-                <div className="verification-document-heading">
-                  <h3>Hồ sơ #{record.id}</h3>
-                  <strong>{statusLabels[record.status]}</strong>
+                <div className="verification-history-item__top">
+                  <div className="verification-history-item__meta">
+                    <h3>Hồ sơ #{record.id}</h3>
+                    <span>
+                      Ngày gửi {new Date(record.submitted_at).toLocaleString('vi-VN')}
+                    </span>
+                  </div>
+                  <span className={`verification-status-pill is-${record.status}`}>
+                    {isCenter && record.status === 'rejected' ? 'Chưa được xét duyệt' : statusLabels[record.status]}
+                  </span>
                 </div>
-                <p>
-                  Nộp ngày {new Date(record.submitted_at).toLocaleString('vi-VN')}
-                  {record.reviewed_at &&
-                    ` · Xét duyệt ${new Date(record.reviewed_at).toLocaleString('vi-VN')}`}
-                </p>
-                {record.rejection_reason && (
+                {record.rejection_reason && record.id !== latestRequest?.id && (
                   <p className="verification-rejection" role="status">
-                    <strong>Lý do cần bổ sung:</strong> {record.rejection_reason}
+                    <strong>{isCenter ? 'Lý do:' : 'Lý do cần bổ sung:'}</strong> {record.rejection_reason}
                   </p>
                 )}
-                <ul>
+                <ul className="verification-history-docs">
                   {record.documents.map((doc) => (
                     <li key={doc.id}>
                       <div>
-                        <strong>{data?.document_types?.[doc.document_type] || 'Tài liệu xác minh'}</strong>
-                        <small>
-                          Tài liệu đã gửi{doc.issued_year ? ` · Năm cấp ${doc.issued_year}` : ''}
-                        </small>
+                        <strong>{data?.document_types?.[doc.document_type] || 'Tài liệu pháp lý'}</strong>
+                        {doc.issued_year && <small>Năm cấp {doc.issued_year}</small>}
                       </div>
                       <button
                         type="button"
-                        className="account-secondary"
+                        className="verification-doc-link"
                         disabled={previewBusy}
                         onClick={() => openDocument(doc)}
                       >
@@ -683,12 +754,10 @@ export function VerificationPage() {
                   ))}
                 </ul>
               </article>
-            ))
-          ) : (
-            <p>Bạn chưa nộp hồ sơ xác minh.</p>
-          )}
+            ))}
+          </div>
           {data.requests.last_page > 1 && (
-            <div className="account-actions">
+            <div className="account-actions verification-pagination">
               <button
                 className="account-secondary"
                 disabled={page <= 1}

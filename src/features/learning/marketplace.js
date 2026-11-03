@@ -502,18 +502,20 @@ export const getCourses = () => {
   const visualsByUser = read(STORAGE_KEYS.PROFILE_VISUALS, {}) || {};
   const hydratedSavedCourses = saved.map((course) => {
     const teacherId = course.teacher?.id;
+    const baseCenter = Object.values(centerProfiles).find((c) => String(c.id) === String(teacherId)) || {};
     const isCurrentUser = currentUser?.id != null && teacherId != null && String(teacherId) === String(currentUser.id);
     const persistedVisuals = teacherId != null ? (visualsByUser[String(teacherId)] || {}) : {};
     const persistedAvatar = persistedVisuals.avatar && !/^blob:/i.test(String(persistedVisuals.avatar))
       ? persistedVisuals.avatar
       : '';
-    const resolvedAvatar = (isCurrentUser && currentUser.avatar) || persistedAvatar || course.teacher?.avatar || '';
-    const teacherName = (isCurrentUser && currentUser.name) || course.teacher?.name || '';
-    const rawRole = (isCurrentUser && currentUser.role) || course.teacher?.role || '';
+    const resolvedAvatar = (isCurrentUser && currentUser.avatar) || persistedAvatar || course.teacher?.avatar || baseCenter.coverImage || '';
+    const teacherName = (isCurrentUser && currentUser.name) || course.teacher?.name || baseCenter.name || '';
+    const rawRole = (isCurrentUser && currentUser.role) || course.teacher?.role || baseCenter.role || '';
     const resolvedRole = rawRole || (/^trung\s*tâm/i.test(String(teacherName).trim()) ? 'center' : 'teacher');
     return {
       ...course,
       teacher: {
+        ...baseCenter,
         ...course.teacher,
         role: resolvedRole,
         ...(resolvedAvatar ? { avatar: resolvedAvatar } : { avatar: '' }),
@@ -524,7 +526,18 @@ export const getCourses = () => {
             ? { isPhonePublic: persistedVisuals.isPhonePublic }
             : {}),
         ...(isCurrentUser && currentUser.foundedYear ? { foundedYear: currentUser.foundedYear } : {}),
-        ...(isCurrentUser && currentUser.licenseVerificationStatus ? { licenseVerificationStatus: currentUser.licenseVerificationStatus } : {}),
+        verificationStatus:
+          (isCurrentUser && currentUser.verificationStatus) ||
+          persistedVisuals.verificationStatus ||
+          course.teacher?.verificationStatus ||
+          baseCenter.licenseVerificationStatus ||
+          '',
+        licenseVerificationStatus:
+          (isCurrentUser && currentUser.licenseVerificationStatus) ||
+          persistedVisuals.licenseVerificationStatus ||
+          course.teacher?.licenseVerificationStatus ||
+          baseCenter.licenseVerificationStatus ||
+          '',
       },
     };
   });
@@ -745,6 +758,21 @@ export const updatePostMediaItem = (postId, mediaId, updater) => updatePost(post
     media: post.media ? updatedItems[0] : undefined,
   };
 });
+
+export const getAlbumMediaInteractions = () => storage.get(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, {});
+
+export const saveAlbumMediaInteraction = (mediaKey, data) => {
+  if (!mediaKey) return;
+  const current = storage.get(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, {});
+  const next = {
+    ...current,
+    [mediaKey]: {
+      ...(current[mediaKey] || {}),
+      ...data,
+    },
+  };
+  storage.set(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, next);
+};
 
 const hasProfileId = (item, profileId) => String(item?.authorId ?? item?.teacherId ?? '') === String(profileId);
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);

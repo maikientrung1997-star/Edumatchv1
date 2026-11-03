@@ -2933,19 +2933,29 @@
   gap: 5px;
   margin-top: 5px;
   color: var(--color-trust) !important;
+  font-family: var(--font-sans);
   font-size: var(--text-caption-xs) !important;
-  font-weight: 800;
+  font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
 }
+.teacher-profile-card__trust.is-new {
+  color: var(--edu-gold) !important;
+}
 .teacher-profile-card__verified,
-.center-verification-badge {
+.center-verification-badge,
+.teacher-profile-card__info .verified-provider-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 6px;
-  color: var(--edu-green);
-  font-size: var(--text-caption-xs);
-  font-weight: 800;
+  width: max-content;
+  margin-top: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--edu-green) !important;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs) !important;
+  font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
 }
 
@@ -2977,8 +2987,9 @@
   gap: 5px;
   margin-top: 6px;
   color: var(--color-trust) !important;
+  font-family: var(--font-sans);
   font-size: var(--text-caption-xs) !important;
-  font-weight: 800;
+  font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
 }
 button.teacher-cover__trust-count {
@@ -3005,8 +3016,9 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border-radius: 0;
   background: transparent;
   color: var(--edu-green);
-  font-size: var(--text-caption-xs);
-  font-weight: 800;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs) !important;
+  font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
 }
 .teacher-cover.has-custom-cover .teacher-cover__status-list {

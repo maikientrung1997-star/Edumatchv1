@@ -3,6 +3,7 @@
  */
 const overflowKey = (key) => `edumatch:overflow:${key}`;
 const getSessionStorage = () => (typeof window !== 'undefined' ? window.sessionStorage : null);
+const memoryOverflow = new Map();
 
 const parseStoredValue = (item, key) => {
   try {
@@ -16,6 +17,7 @@ const parseStoredValue = (item, key) => {
 export const storage = {
   get: (key, defaultValue = null) => {
     try {
+      if (memoryOverflow.has(key)) return memoryOverflow.get(key) ?? defaultValue;
       const overflow = getSessionStorage()?.getItem(overflowKey(key));
       if (overflow != null) return parseStoredValue(overflow, key) ?? defaultValue;
       const item = window.localStorage.getItem(key);
@@ -27,26 +29,31 @@ export const storage = {
   },
 
   set: (key, value) => {
+    const serialized = JSON.stringify(value);
     try {
-      window.localStorage.setItem(key, JSON.stringify(value));
+      window.localStorage.setItem(key, serialized);
       getSessionStorage()?.removeItem(overflowKey(key));
+      memoryOverflow.delete(key);
       return true;
     } catch (error) {
       try {
         const sessionStorage = getSessionStorage();
         if (!sessionStorage) throw error;
-        sessionStorage.setItem(overflowKey(key), JSON.stringify(value));
+        sessionStorage.setItem(overflowKey(key), serialized);
+        memoryOverflow.delete(key);
         console.warn(`LocalStorage is full for key "${key}"; using this browser session instead.`, error);
         return true;
       } catch (overflowError) {
-        console.error(`Error setting key "${key}" in browser storage:`, overflowError);
-        return false;
+        memoryOverflow.set(key, parseStoredValue(serialized, key) ?? value);
+        console.warn(`Browser storage is full for key "${key}"; using in-memory session storage.`, overflowError);
+        return true;
       }
     }
   },
 
   remove: (key) => {
     try {
+      memoryOverflow.delete(key);
       window.localStorage.removeItem(key);
       getSessionStorage()?.removeItem(overflowKey(key));
     } catch (error) {
@@ -56,7 +63,9 @@ export const storage = {
 
   clear: () => {
     try {
+      memoryOverflow.clear();
       window.localStorage.clear();
+      getSessionStorage()?.clear();
     } catch (error) {
       console.error('Error clearing localStorage:', error);
     }

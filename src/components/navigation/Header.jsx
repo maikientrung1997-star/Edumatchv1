@@ -32,6 +32,27 @@ const isApprovedVerificationNotification = (notification) =>
   (String(notification?.title || '').toLowerCase().includes('phê duyệt') ||
     String(notification?.description || '').toLowerCase().includes('phê duyệt'));
 
+const formatNotificationCopy = (notification, isCenterAccount) => {
+  if (
+    isCenterAccount &&
+    notification?.type === 'verification_result' &&
+    !isApprovedVerificationNotification(notification)
+  ) {
+    const rawDesc = String(notification?.description || '').trim();
+    const description = rawDesc.includes('liên hệ trực tiếp qua SĐT')
+      ? rawDesc
+      : `Hồ sơ chưa được xét duyệt${rawDesc ? `. Lý do: ${rawDesc}` : ''}. Đội ngũ EduMatch sẽ liên hệ trực tiếp qua SĐT để hướng dẫn.`;
+    return {
+      title: 'Hồ sơ xác thực chưa được xét duyệt',
+      description,
+    };
+  }
+  return {
+    title: notification?.title || 'Bạn có thông báo mới',
+    description: notification?.description || '',
+  };
+};
+
 const notificationDestination = (notification) => {
   if (isApprovedVerificationNotification(notification)) {
     return `${ROUTES.VERIFICATION}?celebrate=1`;
@@ -103,6 +124,7 @@ export const Header = ({ theme, onToggleTheme }) => {
 
     const showIncomingToast = (notification) => {
       const approved = isApprovedVerificationNotification(notification);
+      const copy = formatNotificationCopy(notification, isCenterAccount);
       if (notification?.type === 'verification_result') {
         window.dispatchEvent(new Event('edumatch:verification-updated'));
       }
@@ -125,8 +147,8 @@ export const Header = ({ theme, onToggleTheme }) => {
               }
             }}
           >
-            <strong>{notification.title || 'Bạn có thông báo mới'}</strong>
-            {notification.description && <p>{notification.description}</p>}
+            <strong>{copy.title}</strong>
+            {copy.description && <p>{copy.description}</p>}
           </div>
         ),
         {
@@ -173,7 +195,7 @@ export const Header = ({ theme, onToggleTheme }) => {
       window.clearInterval(pollInterval);
       unsubscribe();
     };
-  }, [isAuthenticated, user?.id, token, navigate]);
+  }, [isAuthenticated, user?.id, isCenterAccount, token, navigate]);
 
   useEffect(() => {
     const closeAccountMenu = (event) => {
@@ -296,16 +318,19 @@ export const Header = ({ theme, onToggleTheme }) => {
             {notificationOpen && <section className="notification-popover" aria-label="Danh sách thông báo">
               <header><div><strong>Thông báo</strong><span>{unreadNotifications ? `${unreadNotifications} chưa đọc` : 'Bạn đã đọc tất cả'}</span></div><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}><CheckCheck size={15} /> Đánh dấu đã đọc</button></header>
               <div className="notification-popover__list">
-                {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => <Link
-                  to={notificationDestination(notification)}
-                  key={notification.id}
-                  className={!notification.isRead ? 'is-unread' : ''}
-                  onClick={() => openNotification(notification.id)}
-                >
-                  {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className={`notification-type-icon${isApprovedVerificationNotification(notification) ? ' is-celebration' : ''}`}>{notificationIcon(notification.type, notification)}</span>}
-                  <div><strong>{notification.title}</strong>{notification.description && <p>{notification.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
-                  {!notification.isRead && <i aria-label="Chưa đọc" />}
-                </Link>) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
+                {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
+                  const copy = formatNotificationCopy(notification, isCenterAccount);
+                  return <Link
+                    to={notificationDestination(notification)}
+                    key={notification.id}
+                    className={!notification.isRead ? 'is-unread' : ''}
+                    onClick={() => openNotification(notification.id)}
+                  >
+                    {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className={`notification-type-icon${isApprovedVerificationNotification(notification) ? ' is-celebration' : ''}`}>{notificationIcon(notification.type, notification)}</span>}
+                    <div><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
+                    {!notification.isRead && <i aria-label="Chưa đọc" />}
+                  </Link>;
+                }) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
               </div>
             </section>}
           </div>}
@@ -399,15 +424,18 @@ export const Header = ({ theme, onToggleTheme }) => {
           {isAuthenticated && <button onClick={toggleNotifications}>Thông báo{unreadNotifications ? ` (${unreadNotifications})` : ''}</button>}
           {isAuthenticated && notificationOpen && <section className="mobile-notification-panel" aria-label="Danh sách thông báo">
             <header><strong>Thông báo</strong><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}>Đánh dấu đã đọc</button></header>
-            {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => <Link
-              to={notification.link || ROUTES.HOME}
-              key={notification.id}
-              className={!notification.isRead ? 'is-unread' : ''}
-              onClick={() => openNotification(notification.id)}
-            >
-              <span className="notification-type-icon">{notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : notificationIcon(notification.type)}</span>
-              <span><strong>{notification.title}</strong><small>{notificationTime(notification.createdAt)}</small></span>
-            </Link>) : <p>Chưa có thông báo nào.</p>}
+            {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
+              const copy = formatNotificationCopy(notification, isCenterAccount);
+              return <Link
+                to={notificationDestination(notification)}
+                key={notification.id}
+                className={!notification.isRead ? 'is-unread' : ''}
+                onClick={() => openNotification(notification.id)}
+              >
+                <span className="notification-type-icon">{notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : notificationIcon(notification.type, notification)}</span>
+                <span><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></span>
+              </Link>;
+            }) : <p>Chưa có thông báo nào.</p>}
           </section>}
           {isAuthenticated && (
             <Link

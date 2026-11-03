@@ -27,6 +27,8 @@ const persistProfileVisuals = (user) => {
       coverImage: user.coverImage || '',
       avatarVersion: user.avatarVersion || undefined,
       ...(typeof user.isPhonePublic === 'boolean' ? { isPhonePublic: user.isPhonePublic } : {}),
+      ...(user.verificationStatus ? { verificationStatus: user.verificationStatus } : {}),
+      ...(user.licenseVerificationStatus ? { licenseVerificationStatus: user.licenseVerificationStatus } : {}),
     },
   });
 };

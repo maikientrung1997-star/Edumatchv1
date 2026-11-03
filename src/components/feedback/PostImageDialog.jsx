@@ -112,7 +112,7 @@ export function PostImageDialog({
       </section>
       <aside className="post-image-dialog__panel">
         <header className="post-image-dialog__author">
-          <span><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></span>
+          {author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)} onClick={onAuthorClick || onClose} aria-label={author?.name || 'Trang cá nhân'}><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></Link> : <span><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></span>}
           <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)} onClick={onAuthorClick || onClose}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
           {canManageMedia && <ContentMenu id={`viewer-media-${activeMedia.id || activeIndex}`} openId={openMediaMenu} onToggle={setOpenMediaMenu} onEdit={() => setIsEditingMedia(true)} onDelete={requestDeleteMedia} label={activeMedia.type === 'video' ? 'video' : 'ảnh'} />}
           {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}

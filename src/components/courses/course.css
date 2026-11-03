@@ -185,24 +185,28 @@
   gap: 5px;
   margin-top: 6px;
   color: var(--color-trust);
+  font-family: var(--font-sans);
   font-size: var(--text-caption-xs);
-  font-weight: 800;
+  font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
 }
 .course-card__trust.is-new {
   color: var(--edu-gold);
 }
-.course-card__verified {
+.course-card__verified,
+.course-card__provider .verified-provider-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 6px;
+  margin-top: 5px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--edu-green);
+  font-family: var(--font-sans);
   font-size: var(--text-caption-xs);
   font-weight: 700;
   line-height: var(--text-caption-xs--line-height);
-}
-.course-card__verified {
-  color: var(--edu-green);
 }
 .course-card__avatar {
   display: grid;

@@ -36,7 +36,7 @@ export function CourseCard({ course, editable = false, sponsored = false }) {
         {teacherRole !== 'student' && <span className={`course-card__trust ${trustCount < 3 ? 'is-new' : ''}`}>
           {trustCount < 3 ? 'Mới trên EduMatch' : <><Heart size={13} fill="currentColor" /> {trustCount} tin tưởng</>}
         </span>}
-        <VerifiedBadge userId={course.teacher.id} />
+        <VerifiedBadge userId={course.teacher.id} provider={course.teacher} />
       </div>
       <div className="course-card__facts">
         <span><CalendarDays size={15} /> {paymentLabel(course.paymentType)}</span>

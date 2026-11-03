@@ -587,14 +587,31 @@ const queueMediaHydration = (keys, onHydrated) => {
 
 export const getCourseReviews = (courseId) => {
   const mediaKeys = new Set();
+  const seenIds = new Set();
   const reviews = read(STORAGE_KEYS.COURSE_REVIEWS, [])
     .filter((review) => review.courseId === courseId)
+    .filter((review) => {
+      const id = review?.id;
+      if (!id) return true;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    })
     .map((review) => {
       collectStoredMediaKeys(review.media, mediaKeys);
-      const replies = (review.replies || []).map((reply) => {
-        collectStoredMediaKeys(reply.media, mediaKeys);
-        return { ...reply, media: normalizeStoredMedia(reply.media) };
-      });
+      const seenReplyIds = new Set();
+      const replies = (review.replies || [])
+        .filter((reply) => {
+          const id = reply?.id;
+          if (!id) return true;
+          if (seenReplyIds.has(id)) return false;
+          seenReplyIds.add(id);
+          return true;
+        })
+        .map((reply) => {
+          collectStoredMediaKeys(reply.media, mediaKeys);
+          return { ...reply, media: normalizeStoredMedia(reply.media) };
+        });
       return { ...review, media: normalizeStoredMedia(review.media), replies };
     });
   queueMediaHydration(mediaKeys, notifyCourseReviewsChange);
@@ -602,17 +619,17 @@ export const getCourseReviews = (courseId) => {
 };
 
 export const addCourseReview = (review) => {
-  const saved = read(STORAGE_KEYS.COURSE_REVIEWS, []);
+  const saved = read(STORAGE_KEYS.COURSE_REVIEWS, []).filter((item) => item.id !== review.id);
   write(STORAGE_KEYS.COURSE_REVIEWS, [{ ...review, replies: review.replies || [] }, ...saved]);
   notifyCourseReviewsChange();
 };
 
 export const addCourseReviewReply = (reviewId, reply) => {
-  const next = read(STORAGE_KEYS.COURSE_REVIEWS, []).map((review) =>
-    review.id === reviewId
-      ? { ...review, replies: [...(review.replies || []), reply] }
-      : review,
-  );
+  const next = read(STORAGE_KEYS.COURSE_REVIEWS, []).map((review) => {
+    if (review.id !== reviewId) return review;
+    const existingReplies = (review.replies || []).filter((item) => item.id !== reply.id);
+    return { ...review, replies: [...existingReplies, reply] };
+  });
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
   notifyCourseReviewsChange();
   return next.find((review) => review.id === reviewId);

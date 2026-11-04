@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronLeft, ImagePlus, Images, Upload } from 'lucide-react';
 import { Modal } from '@/components/feedback/Modal';
 import './profileImageSourceDialog.css';
@@ -7,12 +7,13 @@ const imageItemsOnly = (media) => media.filter((item) => item?.src && item.type 
 
 export function ProfileImageSourceDialog({ open, variant, media = [], onClose, onChooseExisting, onUpload }) {
   const [screen, setScreen] = useState('choice');
+  const [prevOpenVariant, setPrevOpenVariant] = useState({ open, variant });
+  if (prevOpenVariant.open !== open || prevOpenVariant.variant !== variant) {
+    setPrevOpenVariant({ open, variant });
+    if (open) setScreen('choice');
+  }
   const images = useMemo(() => imageItemsOnly(media), [media]);
   const isAvatar = variant === 'avatar';
-
-  useEffect(() => {
-    if (open) setScreen('choice');
-  }, [open, variant]);
 
   const title = isAvatar ? 'Thay ảnh đại diện' : 'Thay ảnh bìa';
 

@@ -11,13 +11,15 @@ import {
   MessageCircle,
   Moon,
   Newspaper,
+  PartyPopper,
   Phone,
   Search,
+  ShieldCheck,
   Sun,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { DefaultRoleAvatar, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 import { useChat } from '@/hooks/useChat';
 import { ROUTES } from '@/constants/routes';
 import { accountNotificationService } from '@/services/accountNotificationService';
@@ -25,7 +27,42 @@ import { subscribeUserNotifications } from '@/services/pusherService';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/features/learning/marketplace';
 import toast from 'react-hot-toast';
 
-const notificationIcon = (type) => {
+const isApprovedVerificationNotification = (notification) =>
+  notification?.type === 'verification_result' &&
+  (String(notification?.title || '').toLowerCase().includes('phê duyệt') ||
+    String(notification?.description || '').toLowerCase().includes('phê duyệt'));
+
+const formatNotificationCopy = (notification, isCenterAccount) => {
+  if (
+    isCenterAccount &&
+    notification?.type === 'verification_result' &&
+    !isApprovedVerificationNotification(notification)
+  ) {
+    const rawDesc = String(notification?.description || '').trim();
+    const description = rawDesc.includes('liên hệ trực tiếp qua SĐT')
+      ? rawDesc
+      : `Hồ sơ chưa được xét duyệt${rawDesc ? `. Lý do: ${rawDesc}` : ''}. Đội ngũ EduMatch sẽ liên hệ trực tiếp qua SĐT để hướng dẫn.`;
+    return {
+      title: 'Hồ sơ xác thực chưa được xét duyệt',
+      description,
+    };
+  }
+  return {
+    title: notification?.title || 'Bạn có thông báo mới',
+    description: notification?.description || '',
+  };
+};
+
+const notificationDestination = (notification) => {
+  if (isApprovedVerificationNotification(notification)) {
+    return `${ROUTES.VERIFICATION}?celebrate=1`;
+  }
+  return notification?.link || ROUTES.HOME;
+};
+
+const notificationIcon = (type, notification) => {
+  if (isApprovedVerificationNotification(notification)) return <PartyPopper size={15} />;
+  if (type === 'verification_result') return <ShieldCheck size={15} />;
   if (type === 'post_like' || type === 'profile_like') return <Heart size={15} />;
   if (type === 'post_comment' || type === 'comment_reply' || type === 'course_comment') return <MessageCircle size={15} />;
   return <Info size={15} />;
@@ -60,10 +97,11 @@ export const Header = ({ theme, onToggleTheme }) => {
   const unreadNotifications = allNotifications.filter((notification) => !notification.isRead).length;
   const unreadMessageCount = isAuthenticated ? chatCounts.unread_messages : 0;
   const notificationOpen = notificationPanel.open && notificationPanel.locationKey === locationKey;
-  const userAvatarUrl = user?.avatar
-    ? (user.avatarVersion && !user.avatar.startsWith('data:image/') && !user.avatar.startsWith('blob:')
-        ? `${user.avatar}${user.avatar.includes('?') ? '&' : '?'}v=${encodeURIComponent(user.avatarVersion)}`
-        : user.avatar)
+  const resolvedUserAvatar = resolveAvatarSource(user?.avatar, user?.id);
+  const userAvatarUrl = resolvedUserAvatar
+    ? (user?.avatarVersion && !resolvedUserAvatar.startsWith('data:image/') && !resolvedUserAvatar.startsWith('blob:')
+        ? `${resolvedUserAvatar}${resolvedUserAvatar.includes('?') ? '&' : '?'}v=${encodeURIComponent(user.avatarVersion)}`
+        : resolvedUserAvatar)
     : '';
   const avatarKey = `${userAvatarUrl}-${user?.avatarVersion || ''}`;
   const [failedAvatarKey, setFailedAvatarKey] = useState(null);
@@ -82,14 +120,66 @@ export const Header = ({ theme, onToggleTheme }) => {
       return undefined;
     }
     let active = true;
-    accountNotificationService.list().then((items) => {
-      if (!active) return;
-      items.forEach((item) => receivedServerNotificationIds.current.add(item.id));
-      setServerNotifications((current) => {
-        const existing = current.userId === user.id ? current.items : [];
-        return { userId: user.id, items: [...existing, ...items.filter((item) => !existing.some((previous) => previous.id === item.id))] };
-      });
-    }).catch(() => { /* The next login still attempts the initial history load. */ });
+    let initialLoaded = false;
+
+    const showIncomingToast = (notification) => {
+      const approved = isApprovedVerificationNotification(notification);
+      const copy = formatNotificationCopy(notification, isCenterAccount);
+      if (notification?.type === 'verification_result') {
+        window.dispatchEvent(new Event('edumatch:verification-updated'));
+      }
+      toast(
+        (t) => (
+          <div
+            role="button"
+            tabIndex={0}
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              toast.dismiss(t.id);
+              window.dispatchEvent(new Event('edumatch:verification-celebrate'));
+              navigate(notificationDestination(notification));
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                toast.dismiss(t.id);
+                window.dispatchEvent(new Event('edumatch:verification-celebrate'));
+                navigate(notificationDestination(notification));
+              }
+            }}
+          >
+            <strong>{copy.title}</strong>
+            {copy.description && <p>{copy.description}</p>}
+          </div>
+        ),
+        {
+          icon: approved ? '🎉' : '🔔',
+          duration: 6000,
+        }
+      );
+    };
+
+    const fetchServerNotifications = () => {
+      accountNotificationService.list().then((items) => {
+        if (!active || !Array.isArray(items)) return;
+        const newlyArrived = [];
+        items.forEach((item) => {
+          if (!receivedServerNotificationIds.current.has(item.id)) {
+            receivedServerNotificationIds.current.add(item.id);
+            if (initialLoaded && !item.isRead) {
+              newlyArrived.push(item);
+            }
+          }
+        });
+        initialLoaded = true;
+        setServerNotifications({ userId: user.id, items });
+        newlyArrived.forEach(showIncomingToast);
+      }).catch(() => { /* The next login still attempts the initial history load. */ });
+    };
+
+    fetchServerNotifications();
+    window.addEventListener('focus', fetchServerNotifications);
+    const pollInterval = window.setInterval(fetchServerNotifications, 15000);
+
     const unsubscribe = subscribeUserNotifications(user.id, (notification) => {
       if (!notification?.id || receivedServerNotificationIds.current.has(notification.id)) return;
       receivedServerNotificationIds.current.add(notification.id);
@@ -97,16 +187,15 @@ export const Header = ({ theme, onToggleTheme }) => {
         userId: user.id,
         items: [notification, ...current.items.filter((item) => item.id !== notification.id)],
       }));
-      toast(<div><strong>{notification.title || 'Bạn có thông báo mới'}</strong>{notification.description && <p>{notification.description}</p>}</div>, {
-        icon: '🔔',
-        duration: 5000,
-      });
+      showIncomingToast(notification);
     });
     return () => {
       active = false;
+      window.removeEventListener('focus', fetchServerNotifications);
+      window.clearInterval(pollInterval);
       unsubscribe();
     };
-  }, [isAuthenticated, user?.id, token]);
+  }, [isAuthenticated, user?.id, isCenterAccount, token, navigate]);
 
   useEffect(() => {
     const closeAccountMenu = (event) => {
@@ -119,9 +208,14 @@ export const Header = ({ theme, onToggleTheme }) => {
   const openNotification = (notificationId) => {
     if (String(notificationId).startsWith('server-')) {
       const item = serverNotifications.items.find((record) => record.id === notificationId);
-      if (item) accountNotificationService.read(item.server_id).then(() => {
-        setServerNotifications((current) => ({ ...current, items: current.items.map((n) => n.id === notificationId ? { ...n, isRead: true } : n) }));
-      }).catch(() => {});
+      if (item) {
+        if (item.type === 'verification_result') {
+          window.dispatchEvent(new Event('edumatch:verification-celebrate'));
+        }
+        accountNotificationService.read(item.server_id).then(() => {
+          setServerNotifications((current) => ({ ...current, items: current.items.map((n) => n.id === notificationId ? { ...n, isRead: true } : n) }));
+        }).catch(() => {});
+      }
     } else markNotificationRead(notificationId);
     setNotificationPanel({ open: false, locationKey });
   };
@@ -224,16 +318,19 @@ export const Header = ({ theme, onToggleTheme }) => {
             {notificationOpen && <section className="notification-popover" aria-label="Danh sách thông báo">
               <header><div><strong>Thông báo</strong><span>{unreadNotifications ? `${unreadNotifications} chưa đọc` : 'Bạn đã đọc tất cả'}</span></div><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}><CheckCheck size={15} /> Đánh dấu đã đọc</button></header>
               <div className="notification-popover__list">
-                {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => <Link
-                  to={notification.link || ROUTES.HOME}
-                  key={notification.id}
-                  className={!notification.isRead ? 'is-unread' : ''}
-                  onClick={() => openNotification(notification.id)}
-                >
-                  {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className="notification-type-icon">{notificationIcon(notification.type)}</span>}
-                  <div><strong>{notification.title}</strong>{notification.description && <p>{notification.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
-                  {!notification.isRead && <i aria-label="Chưa đọc" />}
-                </Link>) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
+                {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
+                  const copy = formatNotificationCopy(notification, isCenterAccount);
+                  return <Link
+                    to={notificationDestination(notification)}
+                    key={notification.id}
+                    className={!notification.isRead ? 'is-unread' : ''}
+                    onClick={() => openNotification(notification.id)}
+                  >
+                    {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className={`notification-type-icon${isApprovedVerificationNotification(notification) ? ' is-celebration' : ''}`}>{notificationIcon(notification.type, notification)}</span>}
+                    <div><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
+                    {!notification.isRead && <i aria-label="Chưa đọc" />}
+                  </Link>;
+                }) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
               </div>
             </section>}
           </div>}
@@ -261,13 +358,13 @@ export const Header = ({ theme, onToggleTheme }) => {
                         onError={() => setFailedAvatarKey(avatarKey)}
                       />
                     ) : (
-                      <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} size={16} /></span>
+                      <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} name={user?.name} userId={user?.id} size={16} /></span>
                     )}
                   </span>
                   <span className="account-menu__name">{user?.name}</span>
                 </button>
                 {accountMenuOpen && <div className="account-menu__popover" role="menu" aria-label="Tùy chọn tài khoản">
-                  <Link role="menuitem" to={user.role === 'student' ? ROUTES.PROFILE : ROUTES.TEACHER_PROFILE(user.id)} onClick={(event) => { setAccountMenuOpen(false); if (user.role !== 'student') openOwnProfile(event); }}>{user?.name}</Link>
+            <Link role="menuitem" to={ROUTES.TEACHER_PROFILE(user.id)} onClick={(event) => { setAccountMenuOpen(false); openOwnProfile(event); }}>{user?.name}</Link>
                   <Link role="menuitem" to={`${ROUTES.PROFILE}?tab=security`} onClick={() => setAccountMenuOpen(false)}>Thông tin và bảo mật</Link>
                   <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); logout(); }}>Đăng xuất</button>
                 </div>}
@@ -327,20 +424,23 @@ export const Header = ({ theme, onToggleTheme }) => {
           {isAuthenticated && <button onClick={toggleNotifications}>Thông báo{unreadNotifications ? ` (${unreadNotifications})` : ''}</button>}
           {isAuthenticated && notificationOpen && <section className="mobile-notification-panel" aria-label="Danh sách thông báo">
             <header><strong>Thông báo</strong><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}>Đánh dấu đã đọc</button></header>
-            {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => <Link
-              to={notification.link || ROUTES.HOME}
-              key={notification.id}
-              className={!notification.isRead ? 'is-unread' : ''}
-              onClick={() => openNotification(notification.id)}
-            >
-              <span className="notification-type-icon">{notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : notificationIcon(notification.type)}</span>
-              <span><strong>{notification.title}</strong><small>{notificationTime(notification.createdAt)}</small></span>
-            </Link>) : <p>Chưa có thông báo nào.</p>}
+            {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
+              const copy = formatNotificationCopy(notification, isCenterAccount);
+              return <Link
+                to={notificationDestination(notification)}
+                key={notification.id}
+                className={!notification.isRead ? 'is-unread' : ''}
+                onClick={() => openNotification(notification.id)}
+              >
+                <span className="notification-type-icon">{notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : notificationIcon(notification.type, notification)}</span>
+                <span><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></span>
+              </Link>;
+            }) : <p>Chưa có thông báo nào.</p>}
           </section>}
           {isAuthenticated && (
             <Link
-              to={user.role === 'student' ? ROUTES.PROFILE : ROUTES.TEACHER_PROFILE(user.id)}
-              onClick={() => setMobileMenuOpen(false)}
+              to={ROUTES.TEACHER_PROFILE(user.id)}
+              onClick={(event) => { setMobileMenuOpen(false); openOwnProfile(event); }}
               className="mobile-navigation__profile-link"
             >
               <span className="account-menu__avatar" aria-hidden="true">
@@ -352,7 +452,7 @@ export const Header = ({ theme, onToggleTheme }) => {
                     onError={() => setFailedAvatarKey(avatarKey)}
                   />
                 ) : (
-                  <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} size={16} /></span>
+                  <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} name={user?.name} userId={user?.id} size={16} /></span>
                 )}
               </span>
               <span>Trang cá nhân ({user?.name})</span>

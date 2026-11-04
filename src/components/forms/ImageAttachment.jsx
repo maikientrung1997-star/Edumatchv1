@@ -66,8 +66,13 @@ export function MediaAttachment({ value, onChange, id, label = 'Ảnh / video', 
       }
       // Keep file bytes in IndexedDB. Saving Base64 data directly in localStorage
       // caused normal multi-image posts to exceed the browser storage quota.
-      const storedImage = await saveImageMedia(imageFile);
-      return { src: storedImage.src, storageKey: storedImage.storageKey, name: file.name, type: 'image' };
+      try {
+        const storedImage = await saveImageMedia(imageFile);
+        return { src: storedImage.src, storageKey: storedImage.storageKey, name: file.name, type: 'image' };
+      } catch {
+        const fallbackSrc = await readAsDataUrl(imageFile);
+        return { src: fallbackSrc, name: file.name, type: 'image' };
+      }
     };
 
     setIsPreparing(true);

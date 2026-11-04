@@ -25,7 +25,7 @@ import { chatService, chatError } from '@/services/chatService';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ROUTES } from '@/constants/routes';
 import { CourseCard } from '@/components/courses/CourseCard';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { useMasterData } from '@/hooks/useMasterData';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
@@ -148,7 +148,18 @@ function TutorCard({ tutor, saved, onSave, onOpen }) {
   return (
     <article className="tutor-card">
       <div className="tutor-top">
-        {tutor.image ? <img src={tutor.image} alt={tutor.name} width="68" height="76" loading="lazy" /> : <span className="tutor-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role={tutor.providerType === 'center' ? 'center' : 'teacher'} size={32} /></span>}
+        <RoleAvatar
+          src={tutor.image}
+          userId={tutor.id}
+          name={tutor.name}
+          role={tutor.providerType === 'center' ? 'center' : 'teacher'}
+          size={32}
+          alt={tutor.name}
+          width="68"
+          height="76"
+          loading="lazy"
+          fallbackClassName="tutor-avatar-fallback"
+        />
         <div className="tutor-identity">
           <h3>
             <Link className="tutor-name-link" to={ROUTES.TEACHER_PROFILE(tutor.id)}>
@@ -173,7 +184,7 @@ function TutorCard({ tutor, saved, onSave, onOpen }) {
         {tutor.providerType !== 'student' && <span className={`tutor-trust ${trustCount < 3 ? 'is-new' : ''}`}>
           {trustCount < 3 ? 'Mới trên EduMatch' : <><Heart size={13} fill="currentColor" /> {trustCount} tin tưởng</>}
         </span>}
-        <VerifiedBadge userId={tutor.id} />
+        <VerifiedBadge userId={tutor.id} provider={tutor} />
       </div>
       <p className="tutor-meta">
         <GraduationCap size={15} />
@@ -311,6 +322,7 @@ const profileCourses = profile
       const current = providers.get(key) || {
         id: key,
         name: provider.name,
+        role: provider.role || (provider.providerType === 'center' ? 'center' : 'teacher'),
         title: provider.role === 'center' ? '' : 'GV.',
         providerType: provider.role === 'center' ? 'center' : 'teacher',
         ratingSum: 0,
@@ -326,6 +338,7 @@ const profileCourses = profile
         phone: provider.phone || '',
         isPhonePublic: Boolean(provider.isPhonePublic),
         licenseVerificationStatus: provider.licenseVerificationStatus || '',
+        verificationStatus: provider.verificationStatus || provider.licenseVerificationStatus || '',
         courseId: course.id,
         experience: provider.experience || 'Đang cập nhật',
         foundedYear: provider.foundedYear || '',
@@ -335,6 +348,9 @@ const profileCourses = profile
         bio: provider.bio || '',
         methods: ['Lộ trình học theo khóa', 'Chủ động trao đổi lịch học'],
       };
+      if (provider.licenseVerificationStatus) current.licenseVerificationStatus = current.licenseVerificationStatus || provider.licenseVerificationStatus;
+      if (provider.verificationStatus) current.verificationStatus = current.verificationStatus || provider.verificationStatus;
+      if (provider.role) current.role = current.role || provider.role;
       current.subjects.push(course.subject || '');
       current.courseTitles.push(course.title || '');
       current.modes.add(mode);
@@ -361,6 +377,7 @@ const profileCourses = profile
       ? {
           id: user.id,
           name: user.name || 'Hồ sơ EduMatch',
+          role: user.role,
           title: user.role === 'center' ? '' : 'GV.',
           providerType: user.role,
           rating: 0,
@@ -377,6 +394,7 @@ const profileCourses = profile
           phone: user.phone || '',
           isPhonePublic: Boolean(user.isPhonePublic),
           licenseVerificationStatus: user.licenseVerificationStatus || '',
+          verificationStatus: user.licenseVerificationStatus || '',
           experience: user.experience || 'Đang cập nhật',
           foundedYear: user.foundedYear || '',
           price: 0,
@@ -389,8 +407,11 @@ const profileCourses = profile
     return [
       ...tutors.map((tutor) => ({
         ...tutor,
+        role: tutor.role || 'teacher',
         providerType: 'teacher',
         heartCount: Number(tutor.heartCount || 0),
+        verificationStatus: tutor.verificationStatus || tutor.licenseVerificationStatus || '',
+        licenseVerificationStatus: tutor.licenseVerificationStatus || '',
       })),
       ...courseProviders,
       ...(currentProvider && !courseProviders.some((provider) => String(provider.id) === String(currentProvider.id))
@@ -1113,17 +1134,29 @@ const profileCourses = profile
         {profile && (
           <div className="profile-detail">
             <div className="profile-detail-heading">
-              {profile.image ? <img src={profile.image} alt={profile.name} width="84" height="96" /> : <span className="profile-avatar-fallback" aria-hidden="true"><DefaultRoleAvatar role={profile.providerType === 'center' ? 'center' : 'teacher'} size={38} /></span>}
+              <RoleAvatar
+                src={profile.image}
+                userId={profile.id}
+                name={profile.name}
+                role={profile.providerType === 'center' ? 'center' : 'teacher'}
+                size={38}
+                alt={profile.name}
+                width="84"
+                height="96"
+                fallbackClassName="profile-avatar-fallback"
+              />
               <div>
                 <span className="subject-tag">{profile.subject}</span>
                 <h3><Link to={ROUTES.TEACHER_PROFILE(profile.id)} onClick={() => setProfile(null)}>{profile.title} {profile.name}</Link></h3>
                 {profile.reviews ? (
-                  <p><Star size={15} fill="currentColor" /> {profile.rating.toFixed(1)} <span>({profile.reviews} đánh giá)</span></p>
+                  <p><Star size={14} fill="currentColor" /> {profile.rating.toFixed(1)} <span>({profile.reviews} đánh giá)</span></p>
                 ) : null}
-                <p className={`profile-detail__trust ${profileTrustCount < 3 ? 'is-new' : ''}`}>
-                  {profileTrustCount < 3 ? 'Mới trên EduMatch' : <><Heart size={15} fill="currentColor" /> {profileTrustCount} lượt tin tưởng</>}
-                </p>
-                <VerifiedBadge userId={profile.id} />
+                <div className="profile-detail__credibility">
+                  <p className={`profile-detail__trust ${profileTrustCount < 3 ? 'is-new' : ''}`}>
+                    {profileTrustCount < 3 ? 'Mới trên EduMatch' : <><Heart size={13} fill="currentColor" /> {profileTrustCount} lượt tin tưởng</>}
+                  </p>
+                  <VerifiedBadge userId={profile.id} provider={profile} />
+                </div>
               </div>
             </div>
             <dl className="profile-detail__info">

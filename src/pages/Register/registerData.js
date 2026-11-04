@@ -171,8 +171,6 @@ export const teacherFields = [
     placeholder: "Bằng cấp/chứng chỉ",
     icon: Award,
     multiline: true,
-    maxLength: 200,
-    showCharacterCount: true,
   },
   {
     name: "experience",
@@ -180,8 +178,6 @@ export const teacherFields = [
     placeholder: "Kinh nghiệm giảng dạy",
     icon: ChartNoAxesColumnIncreasing,
     multiline: true,
-    maxLength: 500,
-    showCharacterCount: true,
   },
   {
     name: "biography",
@@ -293,9 +289,6 @@ export function validateRegistration(form, role, today = new Date()) {
       if (!form[name].trim())
         errors[name] = `Vui lòng nhập ${label.toLowerCase()}.`;
     });
-    if (form.qualification.length > 200) errors.qualification = "Bằng cấp/tiêu đề nghề nghiệp tối đa 200 ký tự.";
-    const years = Number.parseInt(form.experience, 10);
-    if (!Number.isInteger(years) || years < 0 || years > 60) errors.experience = "Nhập số năm kinh nghiệm từ 0 đến 60 (ví dụ: 5 năm).";
   } else if (role === "center") {
     if (!form.centerDescription.trim()) errors.centerDescription = "Vui lòng nhập thông tin mô tả về trung tâm.";
     if (!form.teachingField.trim()) errors.teachingField = "Vui lòng nhập lĩnh vực giảng dạy.";
@@ -318,14 +311,13 @@ export function buildRegistrationPayload(form, role) {
     password_confirmation: form.confirmPassword,
     role,
     fullName: (role === "center" ? form.centerName : form.name).trim(),
-    ...(["teacher", "center"].includes(role) && { isPhonePublic: form.isPhonePublic, show_phone: Boolean(form.isPhonePublic) }),
+    ...(role === "teacher" && { isPhonePublic: form.isPhonePublic, show_phone: Boolean(form.isPhonePublic) }),
   };
   if (role === "center") {
     return {
       ...data,
-      // `bio` belongs to the generic account profile, where the API limits text
-      // to 5,000 characters. A center's capability profile is intentionally
-      // unrestricted, so only send it through the center-specific description.
+      show_phone: Boolean(form.isPhonePublic),
+      showPhone: Boolean(form.isPhonePublic),
       centerDescription: profileText(form.centerDescription),
       center_description: profileText(form.centerDescription),
       description: profileText(form.centerDescription),
@@ -338,6 +330,8 @@ export function buildRegistrationPayload(form, role) {
         foundedYear: form.foundedYear,
         teachingField: profileText(form.teachingField),
         teaching_field: profileText(form.teachingField),
+        show_phone: Boolean(form.isPhonePublic),
+        showPhone: Boolean(form.isPhonePublic),
       },
     };
   }
@@ -349,7 +343,7 @@ export function buildRegistrationPayload(form, role) {
     ...(role === "teacher" && {
       qualifications: profileText(form.qualification),
       headline: form.qualification.trim(),
-      experience_years: Number.parseInt(form.experience, 10) || 0,
+      experience_years: Math.min(60, Math.max(0, Number.parseInt(form.experience, 10) || 0)),
       show_phone: Boolean(form.isPhonePublic),
       experience: profileText(form.experience),
       bio: profileText(form.biography),
@@ -367,7 +361,7 @@ export function mapRegistrationErrors(serverErrors = {}, role = 'student') {
     full_name: 'name', fullName: 'name',
     date_of_birth: 'dateOfBirth', dob: 'dateOfBirth',
     password_confirmation: 'confirmPassword',
-    headline: 'qualification', experience_years: 'experience', founded_year: 'foundedYear', teaching_field: 'teachingField',
+    headline: 'qualification', qualifications: 'qualification', experience_years: 'experience', founded_year: 'foundedYear', teaching_field: 'teachingField',
     ...(role === 'center'
       ? {
           name: 'centerName',
@@ -377,6 +371,8 @@ export function mapRegistrationErrors(serverErrors = {}, role = 'student') {
           center_description: 'centerDescription',
           'centerProfile.description': 'centerDescription',
           'center_profile.description': 'centerDescription',
+          show_phone: 'isPhonePublic',
+          'centerProfile.show_phone': 'isPhonePublic',
         }
       : role === 'teacher'
         ? { bio: 'biography', show_phone: 'isPhonePublic' }

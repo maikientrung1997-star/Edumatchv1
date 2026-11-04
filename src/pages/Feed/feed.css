@@ -396,6 +396,7 @@
   gap: 2px;
   min-width: 0;
 }
+.community-post__header .content-menu,
 .community-post__header .content-owner-actions {
   display: flex;
   align-items: center;

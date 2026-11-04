@@ -20,4 +20,5 @@ export const STORAGE_KEYS = {
   CHAT_WIDGET: 'edumatch:chat-widget',
   ONLINE_PRESENCE: 'edumatch:online-presence',
   REGISTERED_ACCOUNTS: 'edumatch:registered-accounts',
+  ALBUM_MEDIA_INTERACTIONS: 'edumatch:album-media-interactions',
 };

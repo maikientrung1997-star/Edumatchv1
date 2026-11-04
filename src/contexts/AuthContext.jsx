@@ -26,6 +26,9 @@ const persistProfileVisuals = (user) => {
       avatar: user.avatar || '',
       coverImage: user.coverImage || '',
       avatarVersion: user.avatarVersion || undefined,
+      ...(typeof user.isPhonePublic === 'boolean' ? { isPhonePublic: user.isPhonePublic } : {}),
+      ...(user.verificationStatus ? { verificationStatus: user.verificationStatus } : {}),
+      ...(user.licenseVerificationStatus ? { licenseVerificationStatus: user.licenseVerificationStatus } : {}),
     },
   });
 };
@@ -40,27 +43,31 @@ const mergePersistedProfileVisuals = (remoteUser) => {
     ? cachedUser
     : {};
   const persistedVisuals = getPersistedProfileVisuals(remoteUser.id);
-  const savedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const rawSavedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const savedAvatar = /^blob:/i.test(String(rawSavedAvatar)) ? '' : rawSavedAvatar;
   const savedAvatarVersion = persistedVisuals.avatarVersion || cachedVisuals.avatarVersion;
   const hasLocalAvatar = Boolean(savedAvatar) && (
-    savedAvatar.startsWith('data:image/') || savedAvatar.startsWith('blob:') || savedAvatarVersion
+    savedAvatar.startsWith('data:image/') || savedAvatarVersion
   );
 
   const preferredAvatar = hasLocalAvatar
-    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/') && !savedAvatar.startsWith('blob:')
+    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/')
         ? withImageVersion(savedAvatar, savedAvatarVersion)
         : savedAvatar)
     : (remoteUser.avatar || savedAvatar);
 
-  const preferredCoverImage = persistedVisuals.coverImage || cachedVisuals.coverImage || remoteUser.coverImage || '';
+    const preferredCoverImage = remoteUser.coverImage || persistedVisuals.coverImage || cachedVisuals.coverImage || '';
+  const preferredPhonePublic = typeof persistedVisuals.isPhonePublic === 'boolean'
+    ? persistedVisuals.isPhonePublic
+    : (typeof cachedVisuals.isPhonePublic === 'boolean' ? cachedVisuals.isPhonePublic : undefined);
 
   return {
     ...remoteUser,
     avatar: preferredAvatar,
     coverImage: preferredCoverImage,
     avatarVersion: savedAvatarVersion || remoteUser.avatarVersion || undefined,
-    ...(!remoteUser.phoneVisibilityProvided && typeof cachedVisuals.isPhonePublic === 'boolean'
-      ? { isPhonePublic: cachedVisuals.isPhonePublic }
+    ...(!remoteUser.phoneVisibilityProvided && typeof preferredPhonePublic === 'boolean'
+      ? { isPhonePublic: preferredPhonePublic }
       : {}),
   };
 };
@@ -149,7 +156,13 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService[method](data);
-      const hydratedUser = mergePersistedProfileVisuals(response.user);
+      let hydratedUser = mergePersistedProfileVisuals(response.user);
+      const payloadPhonePublic = typeof data?.isPhonePublic === 'boolean'
+        ? data.isPhonePublic
+        : (typeof data?.show_phone === 'boolean' ? data.show_phone : undefined);
+      if (typeof payloadPhonePublic === 'boolean' && (!hydratedUser?.phoneVisibilityProvided || typeof hydratedUser?.isPhonePublic !== 'boolean')) {
+        hydratedUser = { ...hydratedUser, isPhonePublic: payloadPhonePublic, phoneVisibilityProvided: true };
+      }
       setToken(response.token);
       setUser(hydratedUser);
       storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);

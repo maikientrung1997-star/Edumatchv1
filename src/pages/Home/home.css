@@ -1341,8 +1341,10 @@
   gap: 5px;
   margin-top: 8px;
   color: var(--color-trust);
-  font-size: var(--text-micro);
-  font-weight: 800;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs);
+  font-weight: 700;
+  line-height: var(--text-caption-xs--line-height);
 }
 .tutor-trust.is-new {
   color: var(--color-badge-gold);
@@ -1350,16 +1352,23 @@
 .tutor-credibility {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   min-height: 38px;
 }
+.tutor-credibility .verified-provider-badge,
 .tutor-verification-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 7px;
+  margin-top: 5px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--edu-green);
-  font-size: var(--text-micro);
-  font-weight: 800;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs);
+  font-weight: 700;
+  line-height: var(--text-caption-xs--line-height);
 }
 .save-button {
   position: absolute;
@@ -2043,14 +2052,43 @@
 .profile-detail-heading p span {
   color: var(--edu-muted);
 }
+.profile-detail__credibility {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 6px;
+}
+.profile-detail-heading p.profile-detail__trust,
+.profile-detail__trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--color-trust, #e53935) !important;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs) !important;
+  font-weight: 700;
+  line-height: var(--text-caption-xs--line-height);
+}
+.profile-detail-heading p.profile-detail__trust.is-new,
+.profile-detail__trust.is-new {
+  color: var(--color-badge-gold, #c77700) !important;
+}
+.profile-detail-heading .verified-provider-badge,
 .profile-detail__verification {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 7px;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--edu-green);
-  font-size: var(--text-caption);
-  font-weight: 800;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs) !important;
+  font-weight: 700;
+  line-height: var(--text-caption-xs--line-height);
 }
 .profile-facts {
   display: grid;
@@ -2469,6 +2507,14 @@
 .edu-site[data-theme="dark"] .tutor-rating,
 .edu-site[data-theme="dark"] .profile-detail-heading p {
   color: var(--color-badge-gold);
+}
+.edu-site[data-theme="dark"] .profile-detail-heading p.profile-detail__trust,
+.edu-site[data-theme="dark"] .profile-detail__trust {
+  color: var(--color-trust, #efa8b8) !important;
+}
+.edu-site[data-theme="dark"] .profile-detail-heading p.profile-detail__trust.is-new,
+.edu-site[data-theme="dark"] .profile-detail__trust.is-new {
+  color: var(--edu-gold) !important;
 }
 .edu-site[data-theme="dark"] .bottom-cta {
   background-image:

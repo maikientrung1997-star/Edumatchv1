@@ -4,7 +4,6 @@ import { getMediaUrl, hydrateMedia, saveImageMedia } from '@/utils/mediaLibrary'
 import tutoringHero from '@/assets/tutoring-hero.webp';
 import studyTogether from '@/assets/register-student.webp';
 import teacherCommunity from '@/assets/vietnamese-teachers-avatar-strip.png';
-import fullCenterAvatar from '@/assets/full-center-avatar.svg';
 import fullCenterCover from '@/assets/backgroup.webp';
 
 const centerProfiles = {
@@ -61,7 +60,6 @@ const centerProfiles = {
     id: 'center-trung-tam-day-du',
     name: 'Trung Tâm Đầy Đủ',
     role: 'center',
-    avatar: fullCenterAvatar,
     coverImage: fullCenterCover,
     foundedYear: '2014',
     licenseVerificationStatus: 'verified',
@@ -448,12 +446,25 @@ const queueLegacyPostImageMigration = (posts) => {
   }).catch(() => {}).finally(() => candidates.forEach((candidate) => legacyImageMigrations.delete(candidate.key)));
 };
 
+const normalizeStoredMedia = (media) => media?.storageKey
+  ? { ...media, src: getMediaUrl(media.storageKey, media.src) }
+  : media;
+
+const normalizeDiscussionComments = (comments) => (Array.isArray(comments) ? comments : []).map((comment) => ({
+  ...comment,
+  ...(comment?.media ? { media: normalizeStoredMedia(comment.media) } : {}),
+  replies: (Array.isArray(comment?.replies) ? comment.replies : []).map((reply) => ({
+    ...reply,
+    ...(reply?.media ? { media: normalizeStoredMedia(reply.media) } : {}),
+  })),
+}));
+
 const normalizePostMediaItem = (postId, item, index) => ({
   ...item,
   ...(item?.storageKey ? { src: getMediaUrl(item.storageKey, item.src) } : {}),
   id: item?.id || `${postId}-media-${index + 1}`,
   likes: Array.isArray(item?.likes) ? item.likes : [],
-  comments: Array.isArray(item?.comments) ? item.comments : [],
+  comments: normalizeDiscussionComments(item?.comments),
 });
 
 export const getPostMediaItems = (post) => {
@@ -467,36 +478,69 @@ export const getPostMediaItems = (post) => {
 };
 
 const normalizePostMedia = (post) => {
+  if (!post) return post;
   const mediaItems = getPostMediaItems(post);
-  if (!mediaItems.length) return post;
+  const comments = normalizeDiscussionComments(post.comments);
+  if (!mediaItems.length) {
+    return {
+      ...post,
+      comments,
+    };
+  }
 
   return {
     ...post,
+    comments,
     mediaItems,
-    media: post.media || mediaItems[0],
+    media: post.media ? normalizePostMediaItem(post?.id || 'post', post.media, 0) : mediaItems[0],
   };
 };
 
 export const getCourses = () => {
   const saved = read(STORAGE_KEYS.COURSES, []);
   const currentUser = read(STORAGE_KEYS.USER_INFO, null);
-  const hydratedSavedCourses = saved.map((course) =>
-    currentUser?.id != null && course.teacher?.id != null && String(course.teacher.id) === String(currentUser.id)
-      ? {
-          ...course,
-          teacher: {
-            ...course.teacher,
-            ...(currentUser.avatar ? { avatar: currentUser.avatar } : {}),
-            ...(currentUser.phone ? { phone: currentUser.phone } : {}),
-            ...(typeof currentUser.isPhonePublic === 'boolean'
-              ? { isPhonePublic: currentUser.isPhonePublic }
-              : {}),
-            ...(currentUser.foundedYear ? { foundedYear: currentUser.foundedYear } : {}),
-            ...(currentUser.licenseVerificationStatus ? { licenseVerificationStatus: currentUser.licenseVerificationStatus } : {}),
-          },
-        }
-      : course
-  );
+  const visualsByUser = read(STORAGE_KEYS.PROFILE_VISUALS, {}) || {};
+  const hydratedSavedCourses = saved.map((course) => {
+    const teacherId = course.teacher?.id;
+    const baseCenter = Object.values(centerProfiles).find((c) => String(c.id) === String(teacherId)) || {};
+    const isCurrentUser = currentUser?.id != null && teacherId != null && String(teacherId) === String(currentUser.id);
+    const persistedVisuals = teacherId != null ? (visualsByUser[String(teacherId)] || {}) : {};
+    const persistedAvatar = persistedVisuals.avatar && !/^blob:/i.test(String(persistedVisuals.avatar))
+      ? persistedVisuals.avatar
+      : '';
+    const resolvedAvatar = (isCurrentUser && currentUser.avatar) || persistedAvatar || course.teacher?.avatar || baseCenter.coverImage || '';
+    const teacherName = (isCurrentUser && currentUser.name) || course.teacher?.name || baseCenter.name || '';
+    const rawRole = (isCurrentUser && currentUser.role) || course.teacher?.role || baseCenter.role || '';
+    const resolvedRole = rawRole || (/^trung\s*tâm/i.test(String(teacherName).trim()) ? 'center' : 'teacher');
+    return {
+      ...course,
+      teacher: {
+        ...baseCenter,
+        ...course.teacher,
+        role: resolvedRole,
+        ...(resolvedAvatar ? { avatar: resolvedAvatar } : { avatar: '' }),
+        ...(isCurrentUser && currentUser.phone ? { phone: currentUser.phone } : {}),
+        ...(isCurrentUser && typeof currentUser.isPhonePublic === 'boolean'
+          ? { isPhonePublic: currentUser.isPhonePublic }
+          : typeof persistedVisuals.isPhonePublic === 'boolean'
+            ? { isPhonePublic: persistedVisuals.isPhonePublic }
+            : {}),
+        ...(isCurrentUser && currentUser.foundedYear ? { foundedYear: currentUser.foundedYear } : {}),
+        verificationStatus:
+          (isCurrentUser && currentUser.verificationStatus) ||
+          persistedVisuals.verificationStatus ||
+          course.teacher?.verificationStatus ||
+          baseCenter.licenseVerificationStatus ||
+          '',
+        licenseVerificationStatus:
+          (isCurrentUser && currentUser.licenseVerificationStatus) ||
+          persistedVisuals.licenseVerificationStatus ||
+          course.teacher?.licenseVerificationStatus ||
+          baseCenter.licenseVerificationStatus ||
+          '',
+      },
+    };
+  });
   return [...hydratedSavedCourses, ...sampleCourses];
 };
 
@@ -530,10 +574,6 @@ export const syncTeacherCourseProfile = (teacherId, profileUpdates) => {
   return next;
 };
 
-const normalizeStoredMedia = (media) => media?.storageKey
-  ? { ...media, src: getMediaUrl(media.storageKey, media.src) }
-  : media;
-
 const collectStoredMediaKeys = (media, keys) => {
   if (media?.storageKey) keys.add(media.storageKey);
 };
@@ -547,14 +587,31 @@ const queueMediaHydration = (keys, onHydrated) => {
 
 export const getCourseReviews = (courseId) => {
   const mediaKeys = new Set();
+  const seenIds = new Set();
   const reviews = read(STORAGE_KEYS.COURSE_REVIEWS, [])
     .filter((review) => review.courseId === courseId)
+    .filter((review) => {
+      const id = review?.id;
+      if (!id) return true;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    })
     .map((review) => {
       collectStoredMediaKeys(review.media, mediaKeys);
-      const replies = (review.replies || []).map((reply) => {
-        collectStoredMediaKeys(reply.media, mediaKeys);
-        return { ...reply, media: normalizeStoredMedia(reply.media) };
-      });
+      const seenReplyIds = new Set();
+      const replies = (review.replies || [])
+        .filter((reply) => {
+          const id = reply?.id;
+          if (!id) return true;
+          if (seenReplyIds.has(id)) return false;
+          seenReplyIds.add(id);
+          return true;
+        })
+        .map((reply) => {
+          collectStoredMediaKeys(reply.media, mediaKeys);
+          return { ...reply, media: normalizeStoredMedia(reply.media) };
+        });
       return { ...review, media: normalizeStoredMedia(review.media), replies };
     });
   queueMediaHydration(mediaKeys, notifyCourseReviewsChange);
@@ -562,17 +619,17 @@ export const getCourseReviews = (courseId) => {
 };
 
 export const addCourseReview = (review) => {
-  const saved = read(STORAGE_KEYS.COURSE_REVIEWS, []);
+  const saved = read(STORAGE_KEYS.COURSE_REVIEWS, []).filter((item) => item.id !== review.id);
   write(STORAGE_KEYS.COURSE_REVIEWS, [{ ...review, replies: review.replies || [] }, ...saved]);
   notifyCourseReviewsChange();
 };
 
 export const addCourseReviewReply = (reviewId, reply) => {
-  const next = read(STORAGE_KEYS.COURSE_REVIEWS, []).map((review) =>
-    review.id === reviewId
-      ? { ...review, replies: [...(review.replies || []), reply] }
-      : review,
-  );
+  const next = read(STORAGE_KEYS.COURSE_REVIEWS, []).map((review) => {
+    if (review.id !== reviewId) return review;
+    const existingReplies = (review.replies || []).filter((item) => item.id !== reply.id);
+    return { ...review, replies: [...existingReplies, reply] };
+  });
   write(STORAGE_KEYS.COURSE_REVIEWS, next);
   notifyCourseReviewsChange();
   return next.find((review) => review.id === reviewId);
@@ -633,26 +690,36 @@ export const getPosts = (authorId) => {
   const saved = read(STORAGE_KEYS.TEACHER_POSTS, []);
   queueLegacyPostImageMigration(saved);
   const currentUser = read(STORAGE_KEYS.USER_INFO, null);
+  const visualsByUser = read(STORAGE_KEYS.PROFILE_VISUALS, {}) || {};
   const savedById = new Map(saved.map((post) => [post.id, post]));
   const sampleIds = new Set(fullCenterPosts.map((post) => post.id));
   const posts = [
     ...saved.filter((post) => !sampleIds.has(post.id)),
     ...fullCenterPosts.map((post) => savedById.get(post.id) || post),
   ].map(normalizePostMedia).map((post) => {
-    if (!currentUser?.id || !hasProfileId(post, currentUser.id)) return post;
+    const postOwnerId = post?.authorId ?? post?.teacherId;
+    const isCurrentUser = Boolean(currentUser?.id && hasProfileId(post, currentUser.id));
+    const persistedVisuals = postOwnerId != null ? (visualsByUser[String(postOwnerId)] || {}) : {};
+    const persistedAvatar = persistedVisuals.avatar && !/^blob:/i.test(String(persistedVisuals.avatar))
+      ? persistedVisuals.avatar
+      : '';
+    if (!isCurrentUser && !persistedAvatar) return post;
     const profileUpdates = {
-      ...(currentUser.name ? { name: currentUser.name } : {}),
-      ...(currentUser.avatar ? { avatar: currentUser.avatar } : {}),
+      ...(isCurrentUser && currentUser.name ? { name: currentUser.name } : {}),
+      ...((isCurrentUser && currentUser.avatar) || persistedAvatar
+        ? { avatar: (isCurrentUser && currentUser.avatar) || persistedAvatar }
+        : {}),
     };
+    const targetProfileId = isCurrentUser ? currentUser.id : postOwnerId;
     const mediaItems = getPostMediaItems(post).map((item) => ({
       ...item,
-      comments: synchronizeDiscussionAuthors(item.comments, currentUser.id, profileUpdates),
+      comments: synchronizeDiscussionAuthors(item.comments, targetProfileId, profileUpdates),
     }));
     return {
       ...post,
       ...(profileUpdates.name ? { authorName: profileUpdates.name, author: profileUpdates.name } : {}),
       ...(profileUpdates.avatar ? { authorAvatar: profileUpdates.avatar } : {}),
-      comments: synchronizeDiscussionAuthors(post.comments, currentUser.id, profileUpdates),
+      comments: synchronizeDiscussionAuthors(post.comments, targetProfileId, profileUpdates),
       mediaItems,
       ...(post.media ? { media: mediaItems[0] || post.media } : {}),
     };
@@ -709,6 +776,21 @@ export const updatePostMediaItem = (postId, mediaId, updater) => updatePost(post
   };
 });
 
+export const getAlbumMediaInteractions = () => storage.get(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, {});
+
+export const saveAlbumMediaInteraction = (mediaKey, data) => {
+  if (!mediaKey) return;
+  const current = storage.get(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, {});
+  const next = {
+    ...current,
+    [mediaKey]: {
+      ...(current[mediaKey] || {}),
+      ...data,
+    },
+  };
+  storage.set(STORAGE_KEYS.ALBUM_MEDIA_INTERACTIONS, next);
+};
+
 const hasProfileId = (item, profileId) => String(item?.authorId ?? item?.teacherId ?? '') === String(profileId);
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const synchronizeDiscussionAuthors = (items, profileId, updates) => (items || []).map((item) => {
@@ -717,6 +799,7 @@ const synchronizeDiscussionAuthors = (items, profileId, updates) => (items || []
     ...item,
     ...(matches && hasOwn(updates, 'name') ? { authorName: updates.name, author: updates.name } : {}),
     ...(matches && hasOwn(updates, 'avatar') ? { authorAvatar: updates.avatar } : {}),
+    ...(item?.media ? { media: normalizeStoredMedia(item.media) } : {}),
     replies: synchronizeDiscussionAuthors(item.replies, profileId, updates),
   };
 });

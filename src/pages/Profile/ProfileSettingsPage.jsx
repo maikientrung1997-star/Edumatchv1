@@ -9,7 +9,7 @@ import { fieldErrors, requestError } from '@/utils/formErrors';
 import { getTodayDate } from '@/pages/Register/registerData';
 import { getPostMediaItems, getPosts, syncTeacherCourseProfile } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
-import { DefaultRoleAvatar } from '@/components/common/DefaultRoleAvatar';
+import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ProfileImageCropDialog } from '@/components/profile/ProfileImageCropDialog';
 import { SecurityForm } from './SecurityForm';
 import '@/components/auth/account.css';
@@ -72,7 +72,6 @@ export function ProfileSettingsPage() {
   const [retry, setRetry] = useState(0);
   const [avatarFile, setAvatarFile] = useState(null);
   const [preview, setPreview] = useState('');
-  const [failedAvatarSource, setFailedAvatarSource] = useState('');
   const [avatarError, setAvatarError] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarCropDraft, setAvatarCropDraft] = useState(null);
@@ -258,7 +257,6 @@ export function ProfileSettingsPage() {
     setAvatarError('');
     setAvatarFile(file);
     setPreview(image);
-    setFailedAvatarSource('');
     updateUser({ avatar: image, avatarVersion });
     if (['teacher', 'center'].includes(user?.role)) {
       syncTeacherCourseProfile(user.id, { avatar: image });
@@ -352,11 +350,7 @@ export function ProfileSettingsPage() {
       <div className="profile-settings-layout">
         <aside className="profile-settings-sidebar">
           <div className="profile-settings-avatar">
-            {avatarSource && failedAvatarSource !== avatarSource ? (
-              <img src={avatarSource} alt={`Ảnh đại diện của ${user.name}`} onError={() => setFailedAvatarSource(avatarSource)} />
-            ) : (
-              <DefaultRoleAvatar role={user.role} size={42} />
-            )}
+            <RoleAvatar src={avatarSource} userId={user.id} name={user.name} role={user.role} size={42} alt={`Ảnh đại diện của ${user.name}`} />
             <button type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
               {avatarBusy ? <LoaderCircle className="profile-settings-avatar__spinner" size={17} /> : <Camera size={17} />}
             </button>
@@ -392,7 +386,7 @@ export function ProfileSettingsPage() {
               aria-current={tab === 'profile' ? 'page' : undefined}
               onClick={() => selectTab('profile')}
             >
-              <UserRound size={17} /> Hồ sơ năng lực
+              <UserRound size={17} /> {isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}
             </button>
             <button
               type="button"
@@ -411,7 +405,7 @@ export function ProfileSettingsPage() {
               <div className="profile-section-heading">
                 <UserRound size={23} />
                 <div>
-                  <h2>Hồ sơ năng lực</h2>
+                  <h2>{isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}</h2>
                 </div>
               </div>
               {message && (
@@ -485,9 +479,9 @@ export function ProfileSettingsPage() {
                   {errors.teaching_field && <small className="account-error">{errors.teaching_field}</small>}
                 </label>}
                 <label className="account-field">
-                  <span>{isStudent ? 'Giới thiệu & mục tiêu học tập' : 'Hồ sơ năng lực'}</span>
+                  <span>{isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}</span>
                   <textarea
-                    aria-label="Hồ sơ năng lực"
+                    aria-label={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}
                     name="bio"
                     value={form.bio}
                     readOnly
@@ -507,8 +501,8 @@ export function ProfileSettingsPage() {
           )}
         </section>
       </div>
-      <Modal open={isBioEditorOpen} onClose={() => setIsBioEditorOpen(false)} title={isStudent ? 'Giới thiệu & mục tiêu học tập' : 'Hồ sơ năng lực'} size="xl" className="profile-bio-editor" footer={<button type="button" className="profile-bio-editor__done" onClick={() => setIsBioEditorOpen(false)}>Xong</button>}>
-        <textarea autoFocus name="bio" value={form.bio} onChange={change} rows="18" placeholder="Chia sẻ nội dung bạn muốn học viên biết..." aria-label="Hồ sơ năng lực" />
+      <Modal open={isBioEditorOpen} onClose={() => setIsBioEditorOpen(false)} title={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'} size="xl" className="profile-bio-editor" footer={<button type="button" className="profile-bio-editor__done" onClick={() => setIsBioEditorOpen(false)}>Xong</button>}>
+        <textarea autoFocus name="bio" value={form.bio} onChange={change} rows="18" placeholder="Chia sẻ nội dung bạn muốn cộng đồng biết..." aria-label={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'} />
       </Modal>
       <Modal open={isAvatarAlbumOpen} onClose={() => setIsAvatarAlbumOpen(false)} title="Chọn ảnh đại diện từ album" description="Chọn một ảnh bạn đã đăng trên bảng tin hoặc trang cá nhân." size="lg" className="profile-avatar-album">
         {avatarAlbumItems.length ? <div className="profile-avatar-album__grid">{avatarAlbumItems.map((image, index) => <button type="button" key={`${image.id || image.src}-${index}`} onClick={() => chooseAvatarFromAlbum(image)}><img src={image.src} alt={`Ảnh trong album ${index + 1}`} /></button>)}</div> : <p className="profile-avatar-album__empty">Bạn chưa có ảnh nào trong album. Hãy tải ảnh lên để làm ảnh đại diện.</p>}

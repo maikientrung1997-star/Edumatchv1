@@ -1,2 +1,19 @@
-.verified-provider-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; line-height: 1.5; color: #0878b2; padding: 4px 8px; border-radius: 6px; background: #eaf6fd; vertical-align: middle; }
-.verified-provider-badge svg { flex-shrink: 0; }
+.verified-provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption-xs);
+  font-weight: 700;
+  line-height: var(--text-caption-xs--line-height);
+  color: var(--edu-green, #087563);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  vertical-align: middle;
+}
+.verified-provider-badge svg {
+  flex-shrink: 0;
+  color: currentColor;
+}
+

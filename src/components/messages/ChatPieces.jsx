@@ -9,6 +9,7 @@ import { STICKER_PACKS } from '@/constants/stickers';
 import { ChatLoading } from './ChatLoading';
 import { EmojiPickerBoundary } from './EmojiPickerBoundary';
 import { Modal } from '@/components/feedback/Modal';
+import { DefaultRoleAvatar, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
@@ -26,10 +27,10 @@ export function ZaloStickerIcon({ size = 20, className = '' }) {
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
-  const source = chatAvatarUrl(person?.avatar_url || person?.avatar);
+  const source = resolveAvatarSource(chatAvatarUrl(person?.avatar_url || person?.avatar), person?.id);
   const [failedSource, setFailedSource] = useState(null);
   return <span className={`em-avatar ${large ? 'em-avatar--large' : ''} ${group ? 'em-avatar--group' : ''}`}>
-    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person.name}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <span className="em-avatar__initial">{person?.name?.slice(0, 1)?.toUpperCase() || '?'}</span>}
+    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />}
     {!group && presenceReady && online.has(String(person?.id)) && <i aria-label="Đang hoạt động"/>}
   </span>;
 }

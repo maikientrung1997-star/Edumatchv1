@@ -84,7 +84,6 @@ const hydratePublicProfileVisuals = (source, requestedId) => {
   const savedAvatar = /^blob:/i.test(String(localVisuals.avatar || '')) ? '' : (localVisuals.avatar || '');
   const savedCoverImage = /^blob:/i.test(String(localVisuals.coverImage || '')) ? '' : (localVisuals.coverImage || '');
   const hasLocallyStoredAvatar = /^data:image\//i.test(savedAvatar);
-  const hasLocallyStoredCover = /^data:image\//i.test(savedCoverImage);
   return {
     ...profile,
     id: profileId,
@@ -93,7 +92,7 @@ const hydratePublicProfileVisuals = (source, requestedId) => {
     // On the same device, a just-uploaded image is a more reliable source than
     // that broken remote URL. Visitors on another device still use the API URL.
     avatar: hasLocallyStoredAvatar ? savedAvatar : profile.avatar || savedAvatar,
-    coverImage: hasLocallyStoredCover ? savedCoverImage : profile.coverImage || savedCoverImage,
+    coverImage: profile.coverImage || savedCoverImage,
   };
 };
 const ProfileAvatar = ({ src, alt, role, size, userId, name }) => (
@@ -561,8 +560,10 @@ export function TeacherProfilePage() {
           // make the avatar disappear from the interface.
           console.warn('API avatar upload failed, keeping local avatar:', error);
         }
-      } else {
-        updateUser({ coverImage: image });
+    } else {
+      const res = await profileService.uploadCover(file);
+      if (!res?.user) throw new Error('Không nhận được dữ liệu ảnh bìa từ máy chủ.');
+      updateUser({ ...res.user, coverImage: res.user.coverImage || image });
       }
       setProfileImageCropDraft(null);
       toast.success(field === 'avatar' ? 'Đã cập nhật ảnh đại diện.' : 'Đã cập nhật ảnh bìa.');

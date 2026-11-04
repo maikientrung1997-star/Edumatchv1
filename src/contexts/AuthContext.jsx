@@ -56,7 +56,7 @@ const mergePersistedProfileVisuals = (remoteUser) => {
         : savedAvatar)
     : (remoteUser.avatar || savedAvatar);
 
-  const preferredCoverImage = persistedVisuals.coverImage || cachedVisuals.coverImage || remoteUser.coverImage || '';
+    const preferredCoverImage = remoteUser.coverImage || persistedVisuals.coverImage || cachedVisuals.coverImage || '';
   const preferredPhonePublic = typeof persistedVisuals.isPhonePublic === 'boolean'
     ? persistedVisuals.isPhonePublic
     : (typeof cachedVisuals.isPhonePublic === 'boolean' ? cachedVisuals.isPhonePublic : undefined);

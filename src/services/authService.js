@@ -26,9 +26,9 @@ const resolveAssetUrl = (value) => {
         (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
         parsed.pathname.startsWith('/storage/')
       ) {
-        const avatarFilename = parsed.pathname.match(/^\/storage\/avatars\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i)?.[1];
-        const rewrittenPath = avatarFilename
-          ? `/api/media/avatars/${encodeURIComponent(avatarFilename)}`
+        const publicMedia = parsed.pathname.match(/^\/storage\/(avatars|covers)\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i);
+        const rewrittenPath = publicMedia
+          ? `/api/media/${publicMedia[1].toLowerCase()}/${encodeURIComponent(publicMedia[2])}`
           : parsed.pathname;
         return new URL(`${rewrittenPath}${parsed.search}`, apiOrigin).toString();
       }
@@ -39,14 +39,14 @@ const resolveAssetUrl = (value) => {
   }
 
   const normalized = stringValue.replace(/\\/g, '/');
-  const avatarFilename = normalized.replace(/^\//, '').match(/^(?:storage\/)?avatars\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i)?.[1];
-  if (avatarFilename) {
-    const mediaPath = `/api/media/avatars/${encodeURIComponent(avatarFilename)}`;
+  const publicMedia = normalized.replace(/^\//, '').match(/^(?:storage\/)?(avatars|covers)\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i);
+  if (publicMedia) {
+    const mediaPath = `/api/media/${publicMedia[1].toLowerCase()}/${encodeURIComponent(publicMedia[2])}`;
     return apiOrigin ? new URL(mediaPath, apiOrigin).toString() : mediaPath;
   }
 
   let pathWithStorage = normalized;
-  if (!/^\/?storage\//i.test(normalized) && /^(?:avatars|uploads|profiles|images)\//i.test(normalized.replace(/^\//, ''))) {
+  if (!/^\/?storage\//i.test(normalized) && /^(?:avatars|covers|uploads|profiles|images)\//i.test(normalized.replace(/^\//, ''))) {
     pathWithStorage = `/storage/${normalized.replace(/^\//, '')}`;
   } else if (!pathWithStorage.startsWith('/')) {
     pathWithStorage = `/${pathWithStorage}`;
@@ -93,16 +93,20 @@ export function normalizeAuthUser(user) {
     user.student_profile?.avatar_url ||
     '';
   const rawCoverImage =
-    user.coverImage ||
+  user.cover_image_url ||
+  user.coverImage ||
     user.cover_image ||
     user.cover_url ||
     user.banner ||
     user.banner_url ||
+  profile.cover_image_url ||
     profile.coverImage ||
     profile.cover_image ||
     profile.cover_url ||
+  user.center?.cover_image_url ||
     user.center?.cover_image ||
     user.center?.cover_url ||
+  user.teacher_profile?.cover_image_url ||
     user.teacher_profile?.cover_image ||
     user.teacher_profile?.cover_url ||
     '';

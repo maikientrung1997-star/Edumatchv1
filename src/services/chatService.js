@@ -39,6 +39,10 @@ export const chatService = {
     return api.post(`/chat/conversations/${id}/messages`, data, { headers: { ...sessionConfig().headers, 'Content-Type': undefined }, timeout: 120000 });
   },
   read: (id, lastMessageId) => api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig()),
+  markUnread: (id, unread = true) => {
+    if (!unread) return api.post(`/chat/conversations/${id}/read`, {}, sessionConfig()).catch(() => {});
+    return api.post(`/chat/conversations/${id}/unread`, {}, sessionConfig()).catch(() => {});
+  },
   react: async (id, emoji) => (await api.post(`/chat/messages/${id}/reactions`, { emoji }, sessionConfig())).data,
   media: (id, params) => sharedGet(`/chat/conversations/${id}/media`, parameters(params)),
   saveNote: (id, notes, expectedToken = storage.get(STORAGE_KEYS.ACCESS_TOKEN)) => {

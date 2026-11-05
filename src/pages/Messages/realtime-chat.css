@@ -1,4 +1,5 @@
-.em-avatar > img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.em-avatar { border-radius: 50% !important; overflow: hidden !important; aspect-ratio: 1 / 1; flex-shrink: 0; }
+.em-avatar > img { width: 100%; height: 100%; border-radius: 50% !important; object-fit: cover !important; aspect-ratio: 1 / 1; display: block; }
 .em-avatar__initial { display:grid; width:100%; height:100%; place-items:center; border-radius:50%; background:var(--color-tag); color:var(--color-primary); font-weight:700; }
 .em-inbox__heading { flex-wrap:wrap; }
 .em-inbox__heading > .em-count { margin-left:auto; }
@@ -51,7 +52,9 @@
 .em-group-results { max-height:250px; overflow:auto; display:grid; gap:5px; }
 .em-group-results > button { display:flex; gap:12px; padding:10px; border:1px solid var(--color-line); border-radius:8px; text-align:left; align-items:center; }
 .em-group-results > button[aria-pressed=true] { border-color:var(--color-primary); background:var(--color-soft); }
-.em-group-results > button > span { flex:1; }
+.em-group-results > button > .em-avatar { flex: 0 0 42px !important; width: 42px !important; height: 42px !important; min-width: 42px !important; min-height: 42px !important; border-radius: 50% !important; overflow: hidden !important; aspect-ratio: 1 / 1 !important; }
+.em-group-results > button > .em-avatar img { width: 100% !important; height: 100% !important; border-radius: 50% !important; object-fit: cover !important; aspect-ratio: 1 / 1 !important; }
+.em-group-results > button > .em-group-results__info, .em-group-results > button > span:not(.em-avatar) { flex:1; min-width: 0; }
 .em-group-results small { display:block; color:var(--color-muted); font-size:11px; }
 .em-primary { padding:10px 14px; border:0; border-radius:9px; background:var(--color-primary); color:var(--color-on-primary,#fff); }
 .em-primary:disabled { opacity:.55; }
@@ -216,3 +219,1048 @@
 .em-emoji-error strong { color:var(--color-ink); }
 .em-emoji-error p { padding:0; }
 .em-emoji-error button { justify-self:start; padding:7px 12px; border:1px solid var(--color-line); border-radius:8px; background:var(--color-soft); color:var(--color-primary); font-weight:600; }
+
+/* -------------------------------------------------------------
+   1. Vị trí & Căn lề tin nhắn (Zero-Shift Layout Stability)
+   - Căn lề chuẩn: tin nhắn của bạn sát lề phải, tin nhắn đối phương sát lề trái
+   - Dành đủ khoảng trống cho thanh thao tác nhanh bên cạnh không bị tràn viền
+   ------------------------------------------------------------- */
+.em-message {
+  position: relative;
+  max-width: min(72%, calc(100% - 96px));
+}
+
+.em-message--own {
+  padding-right: 0;
+  box-sizing: border-box;
+  max-width: min(72%, calc(100% - 96px));
+}
+
+.em-message__content {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.em-message--own .em-message__content {
+  align-items: flex-end;
+}
+
+/* -------------------------------------------------------------
+   2. Thanh thao tác tin nhắn (Actions Bar: Cảm xúc, Trả lời, Chuyển tiếp)
+   - Tin nhắn đối phương (bên trái): thanh thao tác ở bên PHẢI bubble (left: calc(100% + 8px))
+   - Tin nhắn của bạn (bên phải): thanh thao tác ở bên TRÁI bubble (right: calc(100% + 8px))
+   - Chỉ xuất hiện khi giữ chuột trên tin nhắn khoảng ~350ms
+   - Khi chuột rời đi: biến mất ngay lập tức (delay 0s)
+   ------------------------------------------------------------- */
+.em-message-actions-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 5px;
+  border-radius: 999px;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-line, #e2e8f0);
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.12);
+  z-index: 30;
+  white-space: nowrap;
+
+  /* Bình thường ẩn hoàn toàn */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease 0s, visibility 0.15s ease 0s;
+}
+
+.em-message:not(.em-message--own) .em-message-actions-bar {
+  left: calc(100% + 8px);
+  right: auto;
+}
+
+.em-message--own .em-message-actions-bar {
+  right: calc(100% + 8px);
+  left: auto;
+}
+
+/* Khi giữ chuột trên tin nhắn khoảng ~350ms mới hiện */
+.em-message:hover .em-message-actions-bar {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.18s ease 350ms, visibility 0.18s ease 350ms;
+}
+
+.em-action-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted, #64748b);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, transform 0.12s;
+}
+
+.em-action-icon-btn:hover {
+  background: var(--color-soft, #f1f5f9);
+  color: var(--color-primary, #0f766e);
+  transform: scale(1.15);
+}
+
+.em-action-icon-btn.em-reaction-trigger:hover {
+  color: #f59e0b;
+}
+
+/* Nút icon cảm xúc & menu popover chọn biểu tượng */
+.em-reaction-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.em-reaction-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-line, #e2e8f0);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  z-index: 35;
+  white-space: nowrap;
+
+  /* Bình thường popover ẩn */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.92);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+
+/* Với tin nhắn của bạn (ở phía phải màn hình), bung popover sang trái để không bị tràn viền */
+.em-message--own .em-reaction-popover {
+  left: auto;
+  right: -6px;
+}
+
+/* Cầu nối trong suốt để di chuột từ nút trigger lên popover không bị ngắt quãng */
+.em-reaction-popover::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
+/* Lia chuột vào icon mặt cười sẽ bung ra danh sách 6 emoji */
+.em-reaction-anchor:hover .em-reaction-popover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.em-reaction-popover button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s, background-color 0.12s;
+}
+
+.em-reaction-popover button:hover {
+  transform: scale(1.3);
+  background: var(--color-soft, #f1f5f9);
+}
+
+/* -------------------------------------------------------------
+   3. Biểu tượng cảm xúc gắn vào góc khung tin nhắn (Phong cách Facebook Messenger)
+   - Nằm trực tiếp trên góc dưới của bong bóng tin nhắn (bottom-right)
+   - Nền trắng/surface bo tròn viên thuốc nhỏ, có viền mỏng và bóng đổ nhẹ
+   ------------------------------------------------------------- */
+.em-message.has-reactions {
+  margin-bottom: 9px;
+}
+
+.em-message.has-reactions .em-bubble,
+.em-message.has-reactions .em-sticker-art {
+  min-width: 48px;
+}
+
+.em-message-reactions-badge {
+  position: absolute;
+  bottom: -8px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px;
+  border-radius: 999px;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-line, #e2e8f0);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+  z-index: 15;
+  line-height: 1;
+}
+
+.em-reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink, #0f172a);
+  cursor: pointer;
+  line-height: 1;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.em-reaction-badge:hover {
+  transform: scale(1.18);
+  background: var(--color-soft, #f1f5f9);
+}
+
+.em-reaction-badge.is-active {
+  background: var(--color-tag, #e6f4ea);
+}
+
+.em-reaction-badge__emoji {
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.em-reaction-badge__count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted, #64748b);
+  line-height: 1;
+  padding-right: 1px;
+}
+
+/* -------------------------------------------------------------
+   4. Chân tin nhắn (Footer: Trạng thái tin nhắn mới nhất)
+   - Cố định, không gây giật rung layout
+   ------------------------------------------------------------- */
+.em-message__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  margin-top: 3px;
+  color: var(--color-faint);
+  font-size: var(--text-caption-xs);
+}
+
+.em-message--own .em-message__foot {
+  justify-content: flex-end;
+}
+
+.em-message__foot.is-empty {
+  display: none;
+}
+
+.em-message__time-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.em-message:not(.em-message--own) .em-message__time-info {
+  margin-left: 2px;
+}
+
+/* -------------------------------------------------------------
+   3. Tooltip hiển thị giờ khi giữ chuột (Hover Timestamp Tooltip)
+   - Neo phía trên khung tin nhắn (bottom: calc(100% + 6px))
+   - Tuyệt đối không bao giờ che chữ hoặc nội dung bên trong tin nhắn
+   - Có mũi tên chỉ nhẹ xuống bubble, tự động ẩn khi lia chuột
+   ------------------------------------------------------------- */
+.em-message-hover-time {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 25;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  animation: em-fade-in 0.15s ease-out;
+}
+
+.em-message--own .em-message-hover-time {
+  right: 4px;
+}
+
+.em-message:not(.em-message--own) .em-message-hover-time {
+  left: 4px;
+}
+
+.em-message-hover-time::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  border: 4px solid transparent;
+}
+
+.em-message--own .em-message-hover-time::after {
+  right: 12px;
+  border-top-color: rgba(15, 23, 42, 0.88);
+}
+
+.em-message:not(.em-message--own) .em-message-hover-time::after {
+  left: 12px;
+  border-top-color: rgba(15, 23, 42, 0.88);
+}
+
+@media (max-width: 640px) {
+  .em-action-icon-btn {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.em-group-selected-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.em-group-selected-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-muted, #64748b);
+}
+
+/* -------------------------------------------------------------
+   Forwarded message tag
+   ------------------------------------------------------------- */
+.em-forwarded-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted, #64748b);
+}
+
+.em-message--own .em-forwarded-tag {
+  align-self: flex-end;
+}
+
+/* -------------------------------------------------------------
+   Quoted message reply bubble
+   ------------------------------------------------------------- */
+.em-reply-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 5px;
+  padding: 6px 10px;
+  border: 0;
+  border-left: 3px solid var(--color-primary, #0084ff);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary, #0084ff) 10%, var(--color-surface, #ffffff));
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.em-reply-quote:hover {
+  background: color-mix(in srgb, var(--color-primary, #0084ff) 18%, var(--color-surface, #ffffff));
+}
+
+.em-message--own .em-reply-quote {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--color-primary, #0084ff) 12%, var(--color-surface, #ffffff));
+}
+
+.em-reply-quote__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-primary, #0084ff);
+}
+
+.em-reply-quote__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.em-reply-quote__body strong {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary, #0084ff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-reply-quote__body span {
+  font-size: 12px;
+  color: var(--color-ink, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+/* -------------------------------------------------------------
+   Smooth scroll highlight pulse for quoted message
+   ------------------------------------------------------------- */
+.em-message.is-highlighted .em-bubble,
+.em-message.is-highlighted .em-file,
+.em-message.is-highlighted .em-real-image {
+  animation: em-highlight-pulse 1.4s ease-in-out;
+}
+
+@keyframes em-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 132, 255, 0);
+  }
+  25% {
+    box-shadow: 0 0 0 4px rgba(0, 132, 255, 0.5);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 132, 255, 0.25);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 132, 255, 0);
+    transform: scale(1);
+  }
+}
+
+/* -------------------------------------------------------------
+   Reply preview bar above composer
+   ------------------------------------------------------------- */
+.em-composer-reply-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--color-soft, #f8fafc);
+  border-top: 1px solid var(--color-line, #e2e8f0);
+  border-left: 3px solid var(--color-primary, #0084ff);
+  margin-bottom: 4px;
+  border-radius: 8px 8px 0 0;
+}
+
+.em-composer-reply-bar__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--color-primary, #0084ff);
+}
+
+.em-composer-reply-bar__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.em-composer-reply-bar__text strong {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary, #0084ff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-composer-reply-bar__text span {
+  font-size: 12px;
+  color: var(--color-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+
+.em-composer-reply-bar__close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted, #64748b);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.em-composer-reply-bar__close:hover {
+  background: var(--color-line, #e2e8f0);
+  color: var(--color-ink, #0f172a);
+}
+
+/* -------------------------------------------------------------
+   Forward message modal
+   ------------------------------------------------------------- */
+.em-forward-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.em-forward-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--color-soft, #f8fafc);
+  border: 1px solid var(--color-line, #e2e8f0);
+  color: var(--color-primary, #0084ff);
+}
+
+.em-forward-preview__content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.em-forward-preview__content small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted, #64748b);
+}
+
+.em-forward-preview__content p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-ink, #0f172a);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.em-forward-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-line, #e2e8f0);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-muted, #64748b);
+}
+
+.em-forward-search:focus-within {
+  border-color: var(--color-primary, #0084ff);
+}
+
+.em-forward-search input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-ink, #0f172a);
+}
+
+.em-forward-search button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted, #64748b);
+  cursor: pointer;
+}
+
+.em-forward-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.em-forward-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background-color 0.12s;
+}
+
+.em-forward-item:hover {
+  background: var(--color-soft, #f8fafc);
+}
+
+.em-forward-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.em-forward-item__info strong {
+  font-size: 13px;
+  color: var(--color-ink, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-forward-item__info small {
+  font-size: 11px;
+  color: var(--color-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-forward-item__btn {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-primary, #0084ff);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.em-forward-item__btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.em-forward-item__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.em-forward-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-muted, #64748b);
+}
+
+/* -------------------------------------------------------------
+   Conversation Tags in Inbox and Filter
+   ------------------------------------------------------------- */
+.em-contact__tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.em-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--tag-color, #0f766e) 14%, var(--color-surface, #ffffff));
+  color: var(--tag-color, #0f766e);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #0f766e) 30%, transparent);
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-filter__separator {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-muted, #64748b);
+  border-top: 1px solid var(--color-line, #e2e8f0);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.em-filter__tag-item {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: var(--color-ink, #0f172a);
+  cursor: pointer;
+}
+
+.em-filter__tag-item:hover {
+  background: var(--color-soft, #f8fafc);
+}
+
+.em-filter__tag-item.is-active {
+  background: var(--color-soft, #f8fafc);
+  font-weight: 700;
+  color: var(--color-primary, #0084ff);
+}
+
+.em-tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------
+   Tag bar wrapper
+   ------------------------------------------------------------- */
+.chat-tag-bar-wrap {
+  position: relative;
+  border-bottom: 1px solid var(--color-line, #e2e8f0);
+  background: var(--color-surface, #ffffff);
+  z-index: 5;
+}
+
+.chat-tag-bar-wrap .chat-tag-bar {
+  border-top: 0 !important;
+}
+
+.chat-tag-pill {
+  cursor: pointer;
+}
+
+/* -------------------------------------------------------------
+   Floating chat mini mode & Composer 1-line enforcement
+   ------------------------------------------------------------- */
+.em-composer textarea::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-chat.em-mini {
+  display: flex;
+  flex-direction: column;
+}
+
+.floating-chat.em-mini .em-history {
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.floating-chat.em-mini .em-composer {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-line, #e2e8f0);
+}
+
+.floating-chat.em-mini .em-composer__row {
+  align-items: center;
+}
+
+.floating-chat.em-mini .em-composer__field {
+  min-height: 36px;
+  align-items: center;
+  padding: 2px 6px;
+  gap: 2px;
+}
+
+.floating-chat.em-mini .em-composer textarea {
+  min-height: 22px;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+.floating-chat.em-mini .em-composer textarea:focus {
+  white-space: pre-wrap;
+  overflow-y: auto;
+}
+
+.floating-chat.em-mini .em-composer textarea::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-chat.em-mini .em-composer__field > .em-icon,
+.floating-chat.em-mini .em-emoji-anchor > .em-icon,
+.floating-chat.em-mini .em-sticker-anchor > .em-icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+/* Trong khung chat nổi thu nhỏ (FloatingChat mini), tối ưu chiều rộng tin nhắn và nút thao tác để không bị tràn viền */
+.floating-chat.em-mini .em-message,
+.floating-chat.em-mini .em-message--own {
+  max-width: calc(100% - 88px) !important;
+}
+
+.floating-chat.em-mini .em-message-actions-bar {
+  padding: 2px 4px;
+  gap: 2px;
+}
+
+.floating-chat.em-mini .em-message--own .em-message-actions-bar {
+  right: calc(100% + 5px);
+  left: auto;
+}
+
+.floating-chat.em-mini .em-message:not(.em-message--own) .em-message-actions-bar {
+  left: calc(100% + 5px);
+  right: auto;
+}
+
+.floating-chat.em-mini .em-action-icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.floating-chat.em-mini .em-action-icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Bung popover cảm xúc về bên phải để không bị che khuất lề trái trong khung chat nhỏ */
+.floating-chat.em-mini .em-message--own .em-reaction-popover {
+  left: 0;
+  right: auto;
+}
+
+/* -------------------------------------------------------------
+   Đánh dấu chưa đọc trong danh sách hội thoại
+   ------------------------------------------------------------- */
+.em-contact-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 12px;
+  transition: background-color 0.12s ease;
+}
+
+.em-contact-item:hover {
+  background: var(--color-soft, #f8fafc);
+}
+
+.em-contact-item > .em-contact {
+  flex: 1;
+  min-width: 0;
+  border-radius: 12px;
+}
+
+.em-contact-item.is-selected > .em-contact {
+  background: var(--color-soft, #f1f5f9);
+}
+
+.em-contact-item.is-unread .em-contact__copy strong {
+  font-weight: 700;
+  color: var(--color-ink, #0f172a);
+}
+
+.em-contact-item.is-unread .em-contact__copy span {
+  font-weight: 600;
+  color: var(--color-ink, #0f172a);
+}
+
+.em-contact-action-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-line, #e2e8f0);
+  border-radius: 50%;
+  background: var(--color-surface, #ffffff);
+  color: var(--color-muted, #64748b);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.12s, color 0.12s, transform 0.12s;
+  z-index: 5;
+}
+
+.em-contact-item:hover .em-contact-action-btn,
+.em-contact-action-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.em-contact-action-btn:hover {
+  background: var(--color-tag, #e6f4ea);
+  border-color: var(--color-primary, #0f766e);
+  color: var(--color-primary, #0f766e);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.em-contact-action-btn.is-unread {
+  color: var(--color-primary, #0f766e);
+  background: var(--color-tag, #e6f4ea);
+  border-color: var(--color-primary, #0f766e);
+}
+
+/* Nút đánh dấu chưa đọc trong phần chi tiết hội thoại */
+.em-details-quick-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.em-details-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--color-line, #e2e8f0);
+  border-radius: 8px;
+  background: var(--color-surface, #ffffff);
+  color: var(--color-ink, #0f172a);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.em-details-action-btn:hover {
+  background: var(--color-soft, #f8fafc);
+  border-color: var(--color-primary, #0f766e);
+  color: var(--color-primary, #0f766e);
+}
+
+/* -------------------------------------------------------------
+   Liên kết trang cá nhân thành viên trong nhóm học tập
+   ------------------------------------------------------------- */
+.em-member-item-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--color-ink, #0f172a);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.em-member-item-link:hover {
+  background: var(--color-soft, #f8fafc);
+}
+
+.em-member-item-link:hover .em-member-item-info strong {
+  color: var(--color-primary, #0f766e);
+}
+
+.em-member-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.em-member-item-info strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s;
+}
+
+.em-member-item-info small {
+  font-size: 11px;
+  color: var(--color-muted, #64748b);
+  line-height: 1.3;
+}
+
+.em-self-badge {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--color-primary, #0f766e);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.em-member-arrow {
+  color: var(--color-muted, #94a3b8);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.em-member-item-link:hover .em-member-arrow {
+  opacity: 1;
+  transform: translate(1px, -1px);
+  color: var(--color-primary, #0f766e);
+}
+
+.em-group-sender-link {
+  text-decoration: none;
+  color: var(--color-muted, #64748b);
+  font-weight: 600;
+  transition: color 0.12s;
+}
+
+.em-group-sender-link:hover {
+  color: var(--color-primary, #0f766e);
+  text-decoration: underline;
+}
+
+.em-avatar-link {
+  display: inline-flex;
+  border-radius: 50%;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.em-avatar-link:hover {
+  opacity: 0.85;
+}

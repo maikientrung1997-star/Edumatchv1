@@ -258,9 +258,10 @@ html:has(.em-messenger) {
   flex-shrink: 0;
   width: 46px;
   height: 46px;
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   background: var(--color-tag);
   color: var(--color-primary);
+  overflow: hidden;
 }
 .em-avatar__photo {
   display: block;
@@ -425,7 +426,7 @@ html:has(.em-messenger) {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  max-width: 89%;
+  max-width: min(72%, calc(100% - 96px));
 }
 .em-message > .em-avatar {
   width: 35px;
@@ -449,7 +450,7 @@ html:has(.em-messenger) {
 }
 .em-message--own {
   align-self: flex-end;
-  max-width: 85%;
+  max-width: min(72%, calc(100% - 96px));
 }
 .em-message--own .em-bubble {
   background: var(--color-tag);

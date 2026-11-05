@@ -23,7 +23,84 @@
 .em-real-image img { display:block; width:100%; max-height:300px; object-fit:contain; }
 .em-real-image.is-compact { min-width:0; min-height:70px; width:100%; max-width:none; margin:0; }
 .em-real-image.is-compact img { height:82px; object-fit:cover; }
-.em-lightbox-image { display:block; max-width:100%; max-height:75vh; object-fit:contain; margin:auto; }
+.em-lightbox-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  max-height: 75vh;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.em-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  margin: auto;
+  border-radius: 8px;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.em-lightbox-loading {
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+.em-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #374151;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(4px);
+}
+
+.em-lightbox-nav:hover {
+  background: #ffffff;
+  color: var(--color-primary, #0f766e);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.em-lightbox-nav--prev {
+  left: 12px;
+}
+
+.em-lightbox-nav--next {
+  right: 12px;
+}
+
+.em-lightbox-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-muted, #64748b);
+  font-weight: 500;
+}
+
+.em-lightbox-hint {
+  font-size: 12px;
+  color: var(--color-muted, #94a3b8);
+}
 .em-file-list { display:grid; gap:8px; }
 .em-file { text-align:left; }
 .em-file span { min-width:0; }
@@ -252,7 +329,8 @@
    - Tin nhắn đối phương (bên trái): thanh thao tác ở bên PHẢI bubble (left: calc(100% + 8px))
    - Tin nhắn của bạn (bên phải): thanh thao tác ở bên TRÁI bubble (right: calc(100% + 8px))
    - Chỉ xuất hiện khi giữ chuột trên tin nhắn khoảng ~350ms
-   - Khi chuột rời đi: biến mất ngay lập tức (delay 0s)
+   - Hitbox liền mạch ::before giúp lia chuột từ bubble sang thanh công cụ không bị mất
+   - Có độ trễ buffer 200ms khi rời đi để chống giật/nhấp nháy
    ------------------------------------------------------------- */
 .em-message-actions-bar {
   position: absolute;
@@ -273,7 +351,17 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.15s ease 0s, visibility 0.15s ease 0s;
+  /* Đệm trễ 200ms khi chuột rời khỏi để chuyển động mượt mà không bị ngắt */
+  transition: opacity 0.2s ease 0.2s, visibility 0.2s ease 0.2s;
+}
+
+/* Cầu nối hitbox vô hình giữa tin nhắn và thanh công cụ để con chuột lia qua không bị mất */
+.em-message-actions-bar::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  bottom: -12px;
+  z-index: -1;
 }
 
 .em-message:not(.em-message--own) .em-message-actions-bar {
@@ -281,17 +369,38 @@
   right: auto;
 }
 
+.em-message:not(.em-message--own) .em-message-actions-bar::before {
+  left: -16px;
+  right: -8px;
+}
+
 .em-message--own .em-message-actions-bar {
   right: calc(100% + 8px);
   left: auto;
 }
 
+.em-message--own .em-message-actions-bar::before {
+  right: -16px;
+  left: -8px;
+}
+
 /* Khi giữ chuột trên tin nhắn khoảng ~350ms mới hiện */
-.em-message:hover .em-message-actions-bar {
+.em-message:hover .em-message-actions-bar,
+.em-message-actions-bar:hover,
+.em-message-actions-bar:focus-within {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
   transition: opacity 0.18s ease 350ms, visibility 0.18s ease 350ms;
+}
+
+/* Khi con chuột đã chạm vào thanh thao tác thì giữ hiển thị cố định lập tức */
+.em-message-actions-bar:hover,
+.em-message-actions-bar:focus-within {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transition: none !important;
 }
 
 .em-action-icon-btn {

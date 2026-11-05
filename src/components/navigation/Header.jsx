@@ -95,7 +95,8 @@ export const Header = ({ theme, onToggleTheme }) => {
   const teachingDestination = isEducationProvider ? ROUTES.CREATE_COURSE : ROUTES.REGISTER;
   const teachingLabel = isEducationProvider ? 'Thêm khóa học' : 'Đăng ký dạy';
   const unreadNotifications = allNotifications.filter((notification) => !notification.isRead).length;
-  const unreadMessageCount = isAuthenticated ? chatCounts.unread_messages : 0;
+  // Hiển thị số người/hội thoại có tin nhắn mới (chưa đọc), thay vì tổng số tin nhắn
+  const unreadConversationCount = isAuthenticated ? (chatCounts.unread || 0) : 0;
   const notificationOpen = notificationPanel.open && notificationPanel.locationKey === locationKey;
   const resolvedUserAvatar = resolveAvatarSource(user?.avatar, user?.id);
   const userAvatarUrl = resolvedUserAvatar
@@ -301,7 +302,7 @@ export const Header = ({ theme, onToggleTheme }) => {
           )}
           {isAuthenticated && (
             <Link to={ROUTES.MESSAGES} className="teacher-action-link">
-              <MessageCircle size={15} /> Tin nhắn {unreadMessageCount > 0 && <b className="message-count">{unreadMessageCount > 99 ? '99+' : unreadMessageCount}</b>}
+              <MessageCircle size={15} /> Tin nhắn {unreadConversationCount > 0 && <b className="message-count">{unreadConversationCount > 99 ? '99+' : unreadConversationCount}</b>}
             </Link>
           )}
           {isAuthenticated && <div className="notification-menu">
@@ -420,7 +421,11 @@ export const Header = ({ theme, onToggleTheme }) => {
           ) : (
             <button onClick={() => openDialog('consultation')}>Tư vấn miễn phí</button>
           )}
-          {isAuthenticated && <Link to={ROUTES.MESSAGES} onClick={() => setMobileMenuOpen(false)}>Tin nhắn</Link>}
+          {isAuthenticated && (
+            <Link to={ROUTES.MESSAGES} onClick={() => setMobileMenuOpen(false)}>
+              Tin nhắn {unreadConversationCount > 0 && `(${unreadConversationCount > 99 ? '99+' : unreadConversationCount})`}
+            </Link>
+          )}
           {isAuthenticated && <button onClick={toggleNotifications}>Thông báo{unreadNotifications ? ` (${unreadNotifications})` : ''}</button>}
           {isAuthenticated && notificationOpen && <section className="mobile-notification-panel" aria-label="Danh sách thông báo">
             <header><strong>Thông báo</strong><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}>Đánh dấu đã đọc</button></header>

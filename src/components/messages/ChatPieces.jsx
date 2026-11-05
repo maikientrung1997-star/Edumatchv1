@@ -1,6 +1,6 @@
-import { Fragment, lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, CheckCheck, Clock3, Download, FileText, Forward, Image, Paperclip, Reply, Send, Smile, Users, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronLeft, ChevronRight, Clock3, Download, FileText, Forward, Image, Paperclip, Reply, Send, Smile, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
@@ -90,6 +90,16 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
   const replyHighlightTimer = useRef(null);
   const { messages, receipts, detail, hasOlder, loadOlder, react, retryMessage, typingIds } = thread;
   const last = messages[messages.length - 1];
+
+  const allImageAttachments = useMemo(() => {
+    const list = [];
+    messages.forEach((m) => {
+      m.attachments?.forEach((a) => {
+        if (a.is_image) list.push(a);
+      });
+    });
+    return list;
+  }, [messages]);
 
   const handleMessageMouseMove = (e, message, isLatest) => {
     // Khi di chuyển chuột khỏi vị trí: ẩn tooltip thời gian ngay lập tức
@@ -254,7 +264,20 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
                 message.body && <div className="em-bubble">{message.body}</div>
               )}
               {message.metadata?.formula && <pre className="em-formula">{message.metadata.formula}</pre>}
-              {message.attachments?.map((attachment) => <ChatAttachmentView key={attachment.id} attachment={attachment} onPreview={onPreview}/>)}
+              {message.attachments?.map((attachment) => (
+                <ChatAttachmentView
+                  key={attachment.id}
+                  attachment={attachment}
+                  onPreview={(previewData) => {
+                    const idx = allImageAttachments.findIndex((a) => a.id === attachment.id);
+                    onPreview?.({
+                      ...previewData,
+                      index: idx >= 0 ? idx : 0,
+                      items: allImageAttachments,
+                    });
+                  }}
+                />
+              ))}
 
               {/* Thanh thao tác nhanh bên phải tin nhắn: Icon cảm xúc, Trả lời, Chuyển tiếp */}
               <div
@@ -262,6 +285,7 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
                 role="toolbar"
                 aria-label="Thao tác tin nhắn"
                 onMouseEnter={handleMessageMouseLeave}
+                onMouseMove={(e) => e.stopPropagation()}
               >
                 {typeof message.id === 'number' && (
                   <div className="em-reaction-anchor">
@@ -572,6 +596,135 @@ export function PrivateChatNote({ conversationId, initialNotes = '', onSaved }) 
   </section>;
 }
 
+function ChatLightboxInner({ image, onClose }) {
+  const items = useMemo(() => {
+    if (!image) return [];
+    if (Array.isArray(image.items) && image.items.length > 0) return image.items;
+    return [image];
+  }, [image]);
+
+  const [index, setIndex] = useState(() => (image?.index !== undefined && image.index >= 0 ? image.index : 0));
+  const blobUrlsRef = useRef(new Map());
+  const [loadedUrls, setLoadedUrls] = useState(() => ({
+    ...(image?.id && image?.url ? { [image.id]: image.url } : {}),
+  }));
+
+  const currentItem = items[index] || image;
+  const currentId = currentItem?.id;
+  const directUrl = currentItem?.url;
+  const currentUrl = directUrl || loadedUrls[currentId] || (index === (image?.index ?? 0) ? image?.url : '');
+  const loading = Boolean(currentId && !currentUrl);
+
+  useEffect(() => {
+    if (!currentId || directUrl || loadedUrls[currentId]) return;
+
+    let active = true;
+    chatService.attachment(currentId, true).then((blob) => {
+      if (active) {
+        const objectUrl = URL.createObjectURL(blob);
+        blobUrlsRef.current.set(currentId, objectUrl);
+        setLoadedUrls((prev) => ({ ...prev, [currentId]: objectUrl }));
+      }
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [currentId, directUrl, loadedUrls]);
+
+  // Clean up objectUrls only on unmount
+  useEffect(() => {
+    const urls = blobUrlsRef.current;
+    return () => {
+      urls.forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch (e) { void e; }
+      });
+      urls.clear();
+    };
+  }, []);
+
+  const total = items.length;
+  const handlePrev = useCallback(() => {
+    if (total <= 1) return;
+    setIndex((curr) => (curr > 0 ? curr - 1 : total - 1));
+  }, [total]);
+
+  const handleNext = useCallback(() => {
+    if (total <= 1) return;
+    setIndex((curr) => (curr < total - 1 ? curr + 1 : 0));
+  }, [total]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePrev, handleNext]);
+
+  const currentName = currentItem?.file_name || currentItem?.name || image.name || 'Ảnh đã chia sẻ';
+  const title = total > 1
+    ? `Ảnh (${index + 1}/${total}): ${currentName}`
+    : currentName;
+
+  return (
+    <Modal open onClose={onClose} title={title} size="xl">
+      <div className="em-lightbox-container">
+        {total > 1 && (
+          <button
+            type="button"
+            className="em-lightbox-nav em-lightbox-nav--prev"
+            onClick={handlePrev}
+            title="Ảnh trước (Phím ←)"
+            aria-label="Ảnh trước"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+
+        {loading ? (
+          <div className="em-lightbox-loading">
+            <ChatLoading variant="details" />
+          </div>
+        ) : (
+          currentUrl && <img src={currentUrl} alt={currentName} className="em-lightbox-image" />
+        )}
+
+        {total > 1 && (
+          <button
+            type="button"
+            className="em-lightbox-nav em-lightbox-nav--next"
+            onClick={handleNext}
+            title="Ảnh tiếp theo (Phím →)"
+            aria-label="Ảnh tiếp theo"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+      </div>
+      {total > 1 && (
+        <div className="em-lightbox-counter">
+          <span>{index + 1} / {total}</span>
+          <small className="em-lightbox-hint"> · Sử dụng phím mũi tên ← → hoặc bấm nút để chuyển ảnh</small>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function ChatLightbox({ image, onClose }) {
-  return <Modal open={Boolean(image)} onClose={onClose} title={image?.name || 'Ảnh đã chia sẻ'} size="xl">{image && <img src={image.url} alt={image.name} className="em-lightbox-image"/>}</Modal>;
+  if (!image) return null;
+  return (
+    <ChatLightboxInner
+      key={`${image.id || image.url}:${image.index ?? 0}`}
+      image={image}
+      onClose={onClose}
+    />
+  );
 }

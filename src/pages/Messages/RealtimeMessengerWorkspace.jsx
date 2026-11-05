@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Check, ChevronLeft, FileText, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, MapPin, MessageCircle, PanelRight, Phone, Plus, Search, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -100,7 +100,6 @@ function GroupDialog({ onClose, onCreated }) {
       open
       onClose={() => !loading && onClose()}
       title="Tạo nhóm học tập"
-      description="Chọn thành viên tham gia nhóm (không giới hạn số lượng)."
       size="md"
     >
       <form className="em-group-form" onSubmit={submit}>
@@ -223,7 +222,14 @@ function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia })
     finally { setLoadingMore(false); }
   };
   return <section className="em-detail-section em-shared-section"><h3><ImageIcon size={18}/>Ảnh & tệp đã chia sẻ</h3><div className="em-tabs"><button type="button" className={type === 'image' ? 'is-active' : ''} onClick={() => setType('image')}>Ảnh</button><button type="button" className={type === 'file' ? 'is-active' : ''} onClick={() => setType('file')}>File</button></div>
-    {data ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{data.items.map((item) => <ChatAttachmentView key={item.id} attachment={item} compact onPreview={onPreview}/>)}</div>{!data.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{data.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <ChatLoading variant={type === 'image' ? 'media' : 'files'}/>}
+    {data ? <><div className={type === 'image' ? 'em-media' : 'em-file-list'}>{data.items.map((item, idx) => (
+      <ChatAttachmentView
+        key={item.id}
+        attachment={item}
+        compact
+        onPreview={(previewData) => onPreview?.({ ...previewData, index: idx, items: data.items.filter((m) => m.is_image) })}
+      />
+    ))}</div>{!data.items.length && <p className="em-muted">Chưa có {type === 'image' ? 'ảnh' : 'tệp'} được chia sẻ.</p>}{data.more && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Xem thêm</button>}</> : <ChatLoading variant={type === 'image' ? 'media' : 'files'}/>}
     {error && <p className="em-error" role="alert">{error}</p>}
   </section>;
 }
@@ -243,17 +249,15 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
   useEffect(() => {
     if (user?.id && conversationId) {
       setChatWidget(user.id, String(conversationId), { isClosed: false, isMinimized: false });
-      const currentConv = conversations.find((c) => Number(c.id) === Number(conversationId));
-      if (currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread)) {
-        chat.markUnread(conversationId, false);
-      }
     }
-  }, [conversationId, user?.id, conversations, chat]);
+  }, [conversationId, user?.id]);
 
-  const handleMarkUnreadInChat = () => {
-    chat.markUnread(conversationId, true);
-    toast.success('Đã đánh dấu là chưa đọc', { icon: '✉️' });
-    onBack();
+  const currentConv = conversations.find((c) => Number(c.id) === Number(conversationId));
+  const isUnread = Boolean(currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread));
+
+  const handleToggleUnreadInChat = () => {
+    const nextUnread = !isUnread;
+    chat.markUnread(conversationId, nextUnread);
   };
 
   return <>
@@ -263,12 +267,12 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
           {detail && (
             <button
               type="button"
-              className="em-icon"
-              aria-label="Đánh dấu chưa đọc"
-              title="Đánh dấu chưa đọc"
-              onClick={handleMarkUnreadInChat}
+              className={`em-icon ${isUnread ? 'is-unread is-active' : ''}`}
+              aria-label={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
+              title={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
+              onClick={handleToggleUnreadInChat}
             >
-              <Mail size={18}/>
+              {isUnread ? <MailCheck size={18} style={{ color: 'var(--color-primary, #0f766e)' }} /> : <Mail size={18}/>}
             </button>
           )}
           <button
@@ -310,10 +314,10 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
           <button
             type="button"
             className="em-details-action-btn"
-            onClick={handleMarkUnreadInChat}
+            onClick={handleToggleUnreadInChat}
           >
-            <Mail size={15}/>
-            <span>Đánh dấu chưa đọc</span>
+            {isUnread ? <MailCheck size={15} style={{ color: 'var(--color-primary, #0f766e)' }} /> : <Mail size={15}/>}
+            <span>{isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}</span>
           </button>
         </div>
         {partner && <>
@@ -392,7 +396,30 @@ export function MessengerWorkspace() {
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(() => {
+    try {
+      return localStorage.getItem('edumatch:messenger:info-open') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleInfo = () => {
+    setInfoOpen((curr) => {
+      const next = !curr;
+      try {
+        localStorage.setItem('edumatch:messenger:info-open', String(next));
+      } catch (err) {
+        void err;
+      }
+      return next;
+    });
+  };
+
+  const handleBack = () => {
+    setParams({});
+    setMobileView('list');
+  };
 
   const [convTags, setConvTags] = useState(() => getAllUserConversationTags(user?.id));
   const [tagLibrary, setTagLibrary] = useState(() => getMessageTags(user?.id));
@@ -416,17 +443,23 @@ export function MessengerWorkspace() {
     return () => media.removeEventListener('change', onChange);
   }, []);
   const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
-  const { upsert } = chat;
+  const { upsert, conversations, markUnread } = chat;
 
+  const lastOpenedIdRef = useRef(null);
   useEffect(() => {
     if (user?.id && selectedId) {
       setChatWidget(user.id, String(selectedId), { isClosed: false, isMinimized: false });
-      const currentConv = chat.conversations.find((c) => Number(c.id) === Number(selectedId));
-      if (currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread)) {
-        chat.markUnread(selectedId, false);
+      if (lastOpenedIdRef.current !== selectedId) {
+        lastOpenedIdRef.current = selectedId;
+        const currentConv = conversations.find((c) => Number(c.id) === Number(selectedId));
+        if (currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread)) {
+          markUnread(selectedId, false);
+        }
       }
+    } else {
+      lastOpenedIdRef.current = null;
     }
-  }, [user?.id, selectedId, chat]);
+  }, [user?.id, selectedId, conversations, markUnread]);
   // The inbox is loaded once by ChatProvider and kept current by websocket events.
   // Tabs, type filter and name search run on that in-memory list (no request); only looking up *new* people hits the API.
   useEffect(() => {
@@ -442,7 +475,6 @@ export function MessengerWorkspace() {
     upsert({ ...conversation, unread_count: 0, is_manual_unread: false });
     setParams({ conversation: conversation.id });
     setMobileView('chat');
-    setInfoOpen(false);
     if (user?.id) {
       setChatWidget(user.id, String(conversation.id), { isClosed: false, isMinimized: false });
     }
@@ -477,7 +509,7 @@ export function MessengerWorkspace() {
     return true;
   });
 
-  return <section className={`em-messenger ${mobileView === 'chat' ? 'em-messenger--chat' : ''} ${infoOpen ? 'em-messenger--info' : ''}`} aria-label="Tin nhắn EduMatch">
+  return <section className={`em-messenger ${mobileView === 'chat' ? 'em-messenger--chat' : ''} ${selectedId && infoOpen ? 'em-messenger--info' : ''}`} aria-label="Tin nhắn EduMatch">
     <aside className="em-inbox" aria-label="Danh sách hội thoại">
       <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div>
         {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
@@ -533,7 +565,7 @@ export function MessengerWorkspace() {
         {visible.map((conversation) => {
           const tags = convTags[String(conversation.id)] || [];
           const isSelected = selectedId === conversation.id;
-          const isUnread = (conversation.unread_count || 0) > 0;
+          const isUnread = (conversation.unread_count || 0) > 0 || Boolean(conversation.is_manual_unread);
           return (
             <div
               key={conversation.id}
@@ -561,7 +593,7 @@ export function MessengerWorkspace() {
                 </span>
                 <span className="em-contact__meta">
                   <time>{chatTime(conversation.last_message_at)}</time>
-                  {isUnread && <b>{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</b>}
+                  {isUnread && <b>{conversation.unread_count > 99 ? '99+' : (conversation.unread_count || 1)}</b>}
                 </span>
               </button>
               <button
@@ -571,10 +603,8 @@ export function MessengerWorkspace() {
                 aria-label={isUnread ? 'Đánh dấu là đã đọc' : 'Đánh dấu là chưa đọc'}
                 onClick={(e) => {
                   e.stopPropagation();
-                  chat.markUnread(conversation.id, !isUnread);
-                  toast.success(isUnread ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc', {
-                    icon: isUnread ? '✓' : '✉️',
-                  });
+                  const nextUnread = !isUnread;
+                  chat.markUnread(conversation.id, nextUnread);
                 }}
               >
                 {isUnread ? <MailCheck size={16} /> : <Mail size={16} />}
@@ -586,7 +616,24 @@ export function MessengerWorkspace() {
         {chat.page < chat.lastPage && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Tải thêm hội thoại</button>}
       </div>
     </aside>
-    {selectedId && (wide || mobileView === 'chat') ? <ActiveThread key={`${user?.id}:${selectedId}`} conversationId={selectedId} theme={theme} onBack={() => setMobileView('list')} infoOpen={infoOpen} onInfo={() => setInfoOpen((value) => !value)} user={user}/> : <section className="em-chat em-no-selection em-welcome"><div className="em-welcome__mark" aria-hidden="true"><MessageCircle size={38} strokeWidth={1.5}/></div><h2>Cuộc trò chuyện của bạn</h2><p>Chọn một hội thoại hoặc tìm người dùng<br/>để bắt đầu kết nối trên EduMatch.</p><span className="em-welcome__hint"><Search size={14}/>Tìm kiếm theo tên, email hoặc số điện thoại</span></section>}
+    {selectedId && (wide || mobileView === 'chat') ? (
+      <ActiveThread
+        key={`${user?.id}:${selectedId}`}
+        conversationId={selectedId}
+        theme={theme}
+        onBack={handleBack}
+        infoOpen={infoOpen}
+        onInfo={handleToggleInfo}
+        user={user}
+      />
+    ) : (
+      <section className="em-chat em-no-selection em-welcome">
+        <div className="em-welcome__mark" aria-hidden="true"><MessageCircle size={38} strokeWidth={1.5}/></div>
+        <h2>Cuộc trò chuyện của bạn</h2>
+        <p>Chọn một hội thoại hoặc tìm người dùng<br/>để bắt đầu kết nối trên EduMatch.</p>
+        <span className="em-welcome__hint"><Search size={14}/>Tìm kiếm theo tên, email hoặc số điện thoại</span>
+      </section>
+    )}
     {groupOpen && <GroupDialog onClose={() => setGroupOpen(false)} onCreated={(conversation) => { setGroupOpen(false); open(conversation); }}/>}
   </section>;
 }

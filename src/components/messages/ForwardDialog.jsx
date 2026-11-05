@@ -20,7 +20,11 @@ export function ForwardDialog({ message, conversations = [], onClose, onForwarde
     if (sendingId) return;
     setSendingId(conversation.id);
     try {
-      const body = message.body || (message.text || '');
+      const body =
+        (message.body || (message.text || '')).trim() ||
+        (message.metadata?.sticker ? `[Nhãn dán: ${message.metadata.sticker.name || 'Sticker'}]` : '') ||
+        (message.attachments?.length ? `[Chuyển tiếp ${message.attachments.length} tệp: ${message.attachments.map((a) => a.file_name).join(', ')}]` : '') ||
+        '[Tin nhắn chuyển tiếp]';
       const metadata = {
         forwarded: true,
         ...(message.metadata?.formula ? { formula: message.metadata.formula } : {}),

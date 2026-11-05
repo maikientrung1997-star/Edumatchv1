@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Maximize2, MessageCircle, Minus, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,8 +22,10 @@ function ServerChatWindow({ conversationId, onMinimize, onClose }) {
 
   const conv = conversations.find((c) => Number(c.id) === Number(conversationId));
 
+  const readDoneRef = useRef(false);
   useEffect(() => {
-    if (conversationId && conv && ((conv.unread_count || 0) > 0 || conv.is_manual_unread)) {
+    if (!readDoneRef.current && conversationId && conv && ((conv.unread_count || 0) > 0 || conv.is_manual_unread)) {
+      readDoneRef.current = true;
       markUnread?.(conversationId, false);
     }
   }, [conversationId, conv, markUnread]);

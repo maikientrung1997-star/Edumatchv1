@@ -38,10 +38,16 @@ export const chatService = {
     files.forEach((file) => data.append('files[]', file));
     return api.post(`/chat/conversations/${id}/messages`, data, { headers: { ...sessionConfig().headers, 'Content-Type': undefined }, timeout: 120000 });
   },
-  read: (id, lastMessageId) => api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig()),
+  read: (id, lastMessageId) => {
+    if (!lastMessageId || Number(lastMessageId) <= 0) return Promise.resolve({ data: {} });
+    return api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig());
+  },
   markUnread: (id, unread = true) => {
-    if (!unread) return api.post(`/chat/conversations/${id}/read`, {}, sessionConfig()).catch(() => {});
-    return api.post(`/chat/conversations/${id}/unread`, {}, sessionConfig()).catch(() => {});
+    if (!unread && id) {
+      // Khi đánh dấu đã đọc mà không có last_message_id, không gọi API để tránh lỗi 422
+      return Promise.resolve({ data: {} });
+    }
+    return Promise.resolve({ data: {} });
   },
   react: async (id, emoji) => (await api.post(`/chat/messages/${id}/reactions`, { emoji }, sessionConfig())).data,
   media: (id, params) => sharedGet(`/chat/conversations/${id}/media`, parameters(params)),

@@ -84,7 +84,7 @@ export function ForwardDialog({ message, conversations = [], onClose, onForwarde
           {filtered.length > 0 ? (
             filtered.map((conv) => (
               <div key={conv.id} className="em-forward-item">
-                <ChatAvatar person={conv.partner} group={conv.type === 'group'} />
+                <ChatAvatar person={conv.type === 'group' ? conv : conv.partner} group={conv.type === 'group'} />
                 <div className="em-forward-item__info">
                   <strong>{conv.name}</strong>
                   <small>{conv.type === 'group' ? `${conv.member_count} thành viên` : (conv.preview || 'Cuộc trò chuyện')}</small>

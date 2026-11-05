@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Check, ChevronLeft, FileText, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, MapPin, MessageCircle, PanelRight, Phone, Plus, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Camera, Check, ChevronLeft, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, MessageCircle, PanelRight, Plus, Search, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,8 +20,49 @@ import './messages.css';
 import './messenger-workspace.css';
 import './realtime-chat.css';
 
+async function optimizeAvatar(file, maxDimension = 600) {
+  if (!file || !file.type.startsWith('image/')) return file;
+  try {
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const { width, height } = img;
+          const maxDim = Math.max(width, height);
+          const scale = maxDim > maxDimension ? maxDimension / maxDim : 1;
+          const targetW = Math.max(1, Math.round(width * scale));
+          const targetH = Math.max(1, Math.round(height * scale));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], (file.name || 'avatar').replace(/\.[^/.]+$/, '') + '.jpg', { type: 'image/jpeg' }));
+            } else {
+              resolve(file);
+            }
+          }, 'image/jpeg', 0.88);
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  } catch {
+    return file;
+  }
+}
+
 function GroupDialog({ onClose, onCreated }) {
   const [title, setTitle] = useState('');
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const avatarInputRef = useRef(null);
   const [query, setQuery] = useState('');
   const search = useDebounce(query.trim(), 300);
   const [results, setResults] = useState({ query: '', items: [] });
@@ -29,6 +70,27 @@ function GroupDialog({ onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { conversations } = useChat();
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview && avatarPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+    };
+  }, [avatarPreview]);
+
+  const handleAvatarSelect = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).');
+      return;
+    }
+    setError('');
+    const optimized = await optimizeAvatar(file);
+    setAvatarFile(optimized);
+    setAvatarPreview(URL.createObjectURL(optimized));
+  };
 
   // Danh sách những người đã từng nhắn tin trước đó
   const recentPartners = useMemo(() => {
@@ -90,7 +152,7 @@ function GroupDialog({ onClose, onCreated }) {
     event.preventDefault();
     if (loading || !title.trim() || !members.length) return;
     setLoading(true); setError('');
-    try { onCreated(await chatService.createGroup(title.trim(), members.map((member) => member.id))); }
+    try { onCreated(await chatService.createGroup(title.trim(), members.map((member) => member.id), avatarFile)); }
     catch (failure) { setError(chatError(failure)); }
     finally { setLoading(false); }
   };
@@ -103,6 +165,57 @@ function GroupDialog({ onClose, onCreated }) {
       size="md"
     >
       <form className="em-group-form" onSubmit={submit}>
+        <div className="em-group-avatar-picker-wrap">
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarSelect}
+            disabled={loading}
+          />
+          <div className="em-group-avatar-picker">
+            <button
+              type="button"
+              className="em-group-avatar-btn"
+              onClick={() => avatarInputRef.current?.click()}
+              title={avatarPreview ? 'Nhấn để thay đổi ảnh nhóm' : 'Nhấn để thêm ảnh nhóm'}
+              aria-label="Chọn ảnh đại diện nhóm"
+              disabled={loading}
+            >
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Xem trước ảnh nhóm" className="em-group-avatar-img" />
+              ) : (
+                <span className="em-group-avatar-placeholder">
+                  <Users size={32} />
+                </span>
+              )}
+              <span className="em-group-avatar-badge" aria-hidden="true">
+                <Camera size={14} />
+              </span>
+            </button>
+            {avatarPreview && (
+              <button
+                type="button"
+                className="em-group-avatar-remove"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAvatarFile(null);
+                  setAvatarPreview(null);
+                  if (avatarInputRef.current) avatarInputRef.current.value = '';
+                }}
+                title="Bỏ ảnh đã chọn"
+                aria-label="Bỏ ảnh đã chọn"
+                disabled={loading}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <span className="em-group-avatar-hint">
+            {avatarPreview ? 'Nhấn vào ảnh để thay đổi' : 'Thêm ảnh đại diện nhóm (tùy chọn)'}
+          </span>
+        </div>
         <label>
           Tên nhóm
           <input
@@ -241,6 +354,8 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
   const [preview, setPreview] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [forwarding, setForwarding] = useState(null);
+  const [avatarUpdating, setAvatarUpdating] = useState(false);
+  const groupAvatarFileRef = useRef(null);
   const detail = thread.detail;
   const partner = detail?.partner;
   const onlineNow = partner && presenceReady && online.has(String(partner.id));
@@ -260,9 +375,34 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
     chat.markUnread(conversationId, nextUnread);
   };
 
+  const handleGroupAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).');
+      return;
+    }
+    setAvatarUpdating(true);
+    const toastId = toast.loading('Đang xử lý và tải ảnh lên...');
+    try {
+      const optimized = await optimizeAvatar(file);
+      const updated = await chatService.updateGroupAvatar(conversationId, optimized);
+      if (updated?.data) {
+        chat.upsert(updated.data);
+      }
+      await thread.refresh();
+      toast.success('Đã cập nhật ảnh đại diện nhóm!', { id: toastId });
+    } catch (failure) {
+      toast.error(chatError(failure) || 'Không thể cập nhật ảnh nhóm.', { id: toastId });
+    } finally {
+      setAvatarUpdating(false);
+      if (groupAvatarFileRef.current) groupAvatarFileRef.current.value = '';
+    }
+  };
+
   return <>
     <section className="em-chat" aria-label={`Trò chuyện với ${detail?.name || 'người dùng'}`}>
-      <div className="em-chat__head"><ChatIcon label="Quay lại danh sách hội thoại" onClick={onBack}><ChevronLeft size={23}/></ChatIcon>{detail ? <><ChatAvatar person={partner} group={detail.type === 'group'}/><button type="button" className="em-chat__identity" onClick={onInfo}><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : onlineText}</span></button></> : <ChatHeaderLoading/>}
+      <div className="em-chat__head"><ChatIcon label="Quay lại danh sách hội thoại" onClick={onBack}><ChevronLeft size={23}/></ChatIcon>{detail ? <><ChatAvatar person={detail.type === 'group' ? detail : partner} group={detail.type === 'group'}/><button type="button" className="em-chat__identity" onClick={onInfo}><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : onlineText}</span></button></> : <ChatHeaderLoading/>}
         <div className="em-chat__actions">
           {detail && (
             <button
@@ -309,28 +449,51 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
       <div className="em-details__top"><h2>Thông tin hội thoại</h2><ChatIcon label="Đóng thông tin" onClick={onInfo}><X size={20}/></ChatIcon></div>
       {infoOpen && !detail && <div className="em-details__content"><ChatLoading variant="details"/></div>}
       {detail && infoOpen && <div className="em-details__content">
-        <div className="em-profile"><ChatAvatar person={partner} group={detail.type === 'group'} large/><div className="em-profile__identity"><h2>{detail.name}</h2><span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span></div></div>
-        <div className="em-details-quick-actions">
-          <button
-            type="button"
-            className="em-details-action-btn"
-            onClick={handleToggleUnreadInChat}
-          >
-            {isUnread ? <MailCheck size={15} style={{ color: 'var(--color-primary, #0f766e)' }} /> : <Mail size={15}/>}
-            <span>{isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}</span>
-          </button>
+        <div className="em-profile">
+          {detail.type === 'group' ? (
+            <div className="em-group-avatar-editor">
+              <input
+                ref={groupAvatarFileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleGroupAvatarChange}
+                disabled={avatarUpdating}
+              />
+              <button
+                type="button"
+                className="em-avatar-upload-trigger"
+                onClick={() => groupAvatarFileRef.current?.click()}
+                title="Nhấn để đổi ảnh đại diện nhóm"
+                aria-label="Đổi ảnh đại diện nhóm"
+                disabled={avatarUpdating}
+              >
+                <ChatAvatar person={detail} group large />
+                <span className="em-avatar-upload-badge" aria-hidden="true">
+                  <Camera size={14} />
+                </span>
+                <span className="em-avatar-upload-overlay" aria-hidden="true">
+                  <Camera size={18} />
+                  <small>Đổi ảnh</small>
+                </span>
+              </button>
+            </div>
+          ) : (
+            <ChatAvatar person={partner} large />
+          )}
+          <div className="em-profile__identity">
+            <h2>{detail.name}</h2>
+            <span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span>
+          </div>
         </div>
-        {partner && <>
-          <dl className="em-profile-facts">
-            <div><Users size={18}/><dt>Vai trò</dt><dd>{chatRole(partner.role)}</dd></div>
-            {partner.location && <div><MapPin size={18}/><dt>Khu vực</dt><dd>{partner.location}</dd></div>}
-            {partner.headline && <div><FileText size={18}/><dt>Chuyên môn</dt><dd>{partner.headline}</dd></div>}
-            {partner.phone && <div><Phone size={18}/><dt>Số điện thoại</dt><dd><a href={`tel:${partner.phone}`}>{partner.phone}</a></dd></div>}
-            {partner.interests?.length > 0 && <div><MessageCircle size={18}/><dt>Mối quan tâm</dt><dd>{partner.interests.map((item) => [item.subject, item.level, item.goals].filter(Boolean).join(' · ')).join('; ')}</dd></div>}
-          </dl>
-          {partner.bio && <div className="em-profile-bio"><h3>Giới thiệu</h3><p className="em-real-bio">{partner.bio}</p></div>}
-          {partner.profile_url && <div className="em-profile-actions"><Link to={partner.profile_url}>Xem hồ sơ<ArrowUpRight size={17}/></Link></div>}
-        </>}
+        {partner && (partner.profile_url || partner.id) && (
+          <div className="em-profile-actions">
+            <Link to={partner.profile_url || ROUTES.TEACHER_PROFILE(partner.id)}>
+              <span>Xem hồ sơ</span>
+              <ArrowUpRight size={16}/>
+            </Link>
+          </div>
+        )}
         {detail.type === 'group' && (
           <section className="em-detail-section">
             <h3>Thành viên ({detail.participants?.length || 0})</h3>
@@ -577,7 +740,7 @@ export function MessengerWorkspace() {
                 aria-pressed={isSelected}
                 onClick={() => open(conversation)}
               >
-                <ChatAvatar person={conversation.partner} group={conversation.type === 'group'}/>
+                <ChatAvatar person={conversation.type === 'group' ? conversation : conversation.partner} group={conversation.type === 'group'}/>
                 <span className="em-contact__copy">
                   <strong>{conversation.name}</strong>
                   <span>{conversation.preview}</span>

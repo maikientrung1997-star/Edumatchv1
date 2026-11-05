@@ -11,7 +11,28 @@
 .em-connection { margin:0 16px 10px; padding:8px; background:var(--color-soft); border-radius:8px; color:var(--color-muted); font-size:12px; }
 .em-connection button, .em-load-more, .em-retry { color:var(--color-primary); text-decoration:underline; padding:6px; background:transparent; border:0; }
 .em-thread-status { padding:12px 20px; }
-.em-message__body { position:relative; min-width:0; }
+.em-message__body {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.em-message--own .em-message__body {
+  align-items: flex-end;
+}
+.em-message:not(.em-message--own) .em-message__body {
+  align-items: flex-start;
+}
+.em-group-sender {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-muted, #64748b);
+  margin-bottom: 3px;
+  margin-left: 2px;
+  line-height: 1.3;
+}
 .em-bubble { overflow-wrap:anywhere; white-space:pre-wrap; }
 .em-reaction-picker { display:flex; flex-wrap:wrap; gap:3px; opacity:0; transition:opacity .12s; }
 .em-message:hover .em-reaction-picker, .em-message:focus-within .em-reaction-picker { opacity:1; }
@@ -187,9 +208,9 @@
 .em-profile-bio { margin-top:20px; padding:14px; border-radius:12px; background:var(--color-soft); }
 .em-details .em-profile-bio h3 { margin-bottom:6px; color:var(--color-ink); font-size:12px; font-weight:600; }
 .em-details .em-real-bio { padding:0; color:var(--color-muted); font-size:12px; line-height:1.8; }
-.em-details .em-profile-actions { display:block; margin-top:16px; padding:0 0 24px; }
-.em-details .em-profile-actions a { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:42px; padding:10px 14px; border:1px solid var(--color-line); border-radius:10px; background:var(--color-surface); font-size:13px; font-weight:600; text-decoration:none; }
-.em-details .em-profile-actions a:hover { background:var(--color-tag); border-color:var(--color-line-strong); }
+.em-details .em-profile-actions { display:block; margin-top:16px; padding:0 0 20px; }
+.em-details .em-profile-actions a { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:40px; padding:9px 14px; border:1px solid var(--color-line); border-radius:10px; background:var(--color-surface); color:var(--color-ink); font-size:13px; font-weight:600; text-decoration:none; transition:background .15s, border-color .15s, color .15s; }
+.em-details .em-profile-actions a:hover { background:var(--color-soft); border-color:var(--color-primary); color:var(--color-primary); }
 .em-details .em-detail-section { padding:22px 0; }
 .em-details .em-detail-section h3 { display:flex; align-items:center; gap:8px; margin-bottom:14px; color:var(--color-ink); font-size:13px; font-weight:600; line-height:1.6; }
 .em-details .em-detail-section h3 > svg { flex-shrink:0; color:var(--color-muted); }
@@ -315,13 +336,17 @@
 
 .em-message__content {
   position: relative;
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   max-width: 100%;
 }
 
 .em-message--own .em-message__content {
   align-items: flex-end;
+}
+
+.em-message:not(.em-message--own) .em-message__content {
+  align-items: flex-start;
 }
 
 /* -------------------------------------------------------------
@@ -670,20 +695,79 @@
 }
 
 /* -------------------------------------------------------------
-   Forwarded message tag
+   Forwarded message banner (Phong cách Facebook Messenger)
    ------------------------------------------------------------- */
-.em-forwarded-tag {
+.em-forwarded-banner {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 3px;
-  font-size: 11px;
-  font-weight: 700;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--color-muted, #64748b);
+  line-height: 1.3;
+  user-select: none;
+  width: fit-content;
+}
+
+.em-forwarded-icon {
+  flex-shrink: 0;
   color: var(--color-muted, #64748b);
 }
 
-.em-message--own .em-forwarded-tag {
+.em-message--own .em-forwarded-banner {
   align-self: flex-end;
+  margin-left: auto;
+  margin-right: 4px;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.em-message:not(.em-message--own) .em-forwarded-banner {
+  align-self: flex-start;
+  margin-right: auto;
+  margin-left: 4px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+/* -------------------------------------------------------------
+   YouTube Video Card & Link Styling inside message bubbles
+   ------------------------------------------------------------- */
+.em-bubble-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+  font-weight: 500;
+  transition: opacity 0.15s ease;
+}
+
+.em-bubble-link:hover {
+  opacity: 0.8;
+}
+
+.em-message:not(.em-message--own) .em-bubble-link {
+  color: var(--color-primary, #0f766e);
+}
+
+.em-youtube-card {
+  margin-top: 8px;
+  width: 100%;
+  max-width: 440px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-line, #e2e8f0);
+  background: #000000;
+  aspect-ratio: 16 / 9;
+}
+
+.em-youtube-embed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 /* -------------------------------------------------------------
@@ -1372,4 +1456,175 @@
 
 .em-avatar-link:hover {
   opacity: 0.85;
+}
+
+/* Tải / đổi ảnh đại diện nhóm khi tạo nhóm */
+.em-group-avatar-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 0 14px;
+}
+
+.em-group-avatar-picker {
+  position: relative;
+  display: inline-block;
+}
+
+.em-group-avatar-btn {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 2px dashed var(--color-line, #cbd5e1);
+  background: var(--color-soft, #f8fafc);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: visible;
+  transition: all 0.15s ease;
+}
+
+.em-group-avatar-btn:hover {
+  border-color: var(--color-primary, #0f766e);
+  background: var(--color-tag, #e6fffa);
+}
+
+.em-group-avatar-btn:focus-visible {
+  outline: 2px solid var(--color-primary, #0f766e);
+  outline-offset: 2px;
+}
+
+.em-group-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.em-group-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary, #0f766e);
+  width: 100%;
+  height: 100%;
+}
+
+.em-group-avatar-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-primary, #0f766e);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface, #ffffff);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.em-group-avatar-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #ffffff;
+  border: 2px solid var(--color-surface, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform 0.1s ease;
+}
+
+.em-group-avatar-remove:hover {
+  transform: scale(1.1);
+}
+
+.em-group-avatar-hint {
+  font-size: 12px;
+  color: var(--color-muted, #64748b);
+}
+
+/* Đổi ảnh đại diện nhóm trong khung chi tiết hội thoại */
+.em-group-avatar-editor {
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.em-avatar-upload-trigger {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: visible;
+}
+
+.em-avatar-upload-trigger:focus-visible {
+  outline: 2px solid var(--color-primary, #0f766e);
+  outline-offset: 4px;
+}
+
+.em-avatar-upload-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-primary, #0f766e);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface, #ffffff);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s ease;
+}
+
+.em-avatar-upload-trigger:hover .em-avatar-upload-badge {
+  transform: scale(1.1);
+}
+
+.em-avatar-upload-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.55);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.em-avatar-upload-overlay small {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.em-avatar-upload-trigger:hover .em-avatar-upload-overlay {
+  opacity: 1;
 }

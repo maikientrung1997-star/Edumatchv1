@@ -29,10 +29,21 @@ export function ZaloStickerIcon({ size = 20, className = '' }) {
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
-  const source = resolveAvatarSource(chatAvatarUrl(person?.avatar_url || person?.avatar), person?.id);
+  const rawUrl = chatAvatarUrl(person?.avatar_url || person?.avatar);
+  const source = group ? resolveAvatarSource(rawUrl) : resolveAvatarSource(rawUrl, person?.id);
   const [failedSource, setFailedSource] = useState(null);
   return <span className={`em-avatar ${large ? 'em-avatar--large' : ''} ${group ? 'em-avatar--group' : ''}`}>
-    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />}
+    {group ? (
+      source && failedSource !== source ? (
+        <img key={source} src={source} alt={`Ảnh ${person?.name || person?.title || 'nhóm'}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/>
+      ) : (
+        <Users size={large ? 32 : 25}/>
+      )
+    ) : source && failedSource !== source ? (
+      <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/>
+    ) : (
+      <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />
+    )}
     {!group && presenceReady && online.has(String(person?.id)) && <i aria-label="Đang hoạt động"/>}
   </span>;
 }
@@ -75,6 +86,35 @@ export function ChatAttachmentView({ attachment, compact = false, onPreview }) {
     {url ? <img src={url} alt={attachment.file_name}/> : <span className={`em-image-placeholder ${error ? 'is-error' : 'em-skeleton'}`}><Image size={20}/><span className={error ? '' : 'sr-only'}>{error ? 'Không tải được ảnh' : 'Đang tải ảnh...'}</span></span>}
   </button>;
   return <button type="button" className="em-file" onClick={download}><FileText size={23}/><span><strong>{attachment.file_name}</strong><small>{Math.max(1, Math.ceil(attachment.file_size / 1024))} KB</small></span><Download size={17}/></button>;
+}
+
+function extractYouTubeId(text) {
+  if (!text || typeof text !== 'string') return null;
+  const match = text.match(/(?:https?:\/\/)?(?:www\.|m\.)?(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/i);
+  return match ? match[1] : null;
+}
+
+function renderMessageBody(text) {
+  if (!text || typeof text !== 'string') return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="em-bubble-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
 }
 
 export function ChatHistory({ thread, onPreview, compact = false, onReply, onForward }) {
@@ -181,6 +221,7 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
     {!messages.length && !thread.loading && <div className="em-empty"><h3>Bắt đầu cuộc trò chuyện</h3><p>Gửi một lời chào hoặc chia sẻ tài liệu học tập.</p></div>}
     {messages.map((message, index) => {
       const own = Number(message.sender_user_id) === Number(user.id);
+      const youtubeId = message.body ? extractYouTubeId(message.body) : null;
       const otherMembers = detail?.participants?.filter((member) => Number(member.id) !== Number(user.id)) || [];
       const read = typeof message.id === 'number' && otherMembers.length > 0 && otherMembers.every((member) => Number(receipts[member.id] || 0) >= message.id);
       const day = chatDay(message.sent_at);
@@ -229,9 +270,10 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
               </small>
             )}
             {message.metadata?.forwarded && (
-              <small className="em-forwarded-tag">
-                <Forward size={12} /> Đã chuyển tiếp
-              </small>
+              <div className="em-forwarded-banner">
+                <Forward size={13} className="em-forwarded-icon" />
+                <span>{own ? 'Bạn đã chuyển tiếp một tin nhắn' : 'Đã chuyển tiếp một tin nhắn'}</span>
+              </div>
             )}
             {(message.metadata?.reply_to || message.metadata?.reply_to_id) && (
               <button
@@ -261,7 +303,19 @@ export function ChatHistory({ thread, onPreview, compact = false, onReply, onFor
                   </div>
                 </div>
               ) : (
-                message.body && <div className="em-bubble">{message.body}</div>
+                message.body && <div className="em-bubble">{renderMessageBody(message.body)}</div>
+              )}
+              {youtubeId && (
+                <div className="em-youtube-card">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${youtubeId}`}
+                    title="YouTube video"
+                    className="em-youtube-embed"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                </div>
               )}
               {message.metadata?.formula && <pre className="em-formula">{message.metadata.formula}</pre>}
               {message.attachments?.map((attachment) => (

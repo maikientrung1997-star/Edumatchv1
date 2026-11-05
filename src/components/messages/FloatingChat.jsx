@@ -49,7 +49,7 @@ function ServerChatWindow({ conversationId, onMinimize, onClose }) {
   return (
     <aside className="floating-chat em-mini" aria-label={`Cửa sổ trò chuyện với ${contactName}`}>
       <header className="floating-chat__head">
-        <ChatAvatar person={partner} group={isGroup} />
+        <ChatAvatar person={isGroup ? detail : partner} group={isGroup} />
         <div className="floating-chat__head-info">
           <strong className="floating-chat__title" title={contactName}>
             {contactName}
@@ -130,7 +130,7 @@ function MinimizedChatItem({ widget, conversations, onRestore, onClose }) {
         title={`Mở chat với ${contactName}`}
       >
         <span className="floating-chat__minimized-avatar">
-          <ChatAvatar person={partner} group={isGroup} />
+          <ChatAvatar person={isGroup ? conv : partner} group={isGroup} />
         </span>
       </button>
       <button

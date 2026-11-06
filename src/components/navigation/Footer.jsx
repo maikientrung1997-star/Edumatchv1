@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, BookOpen, GraduationCap, Mail, MessageCircle } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
+import './footer.css';
 
 export const Footer = () => {
   const homeSection = (section) => `${ROUTES.HOME}#${section}`;

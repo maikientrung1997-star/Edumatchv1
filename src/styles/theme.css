@@ -111,11 +111,18 @@
 }
 @media (max-width: 767px) {
   :root {
-    --app-page-gutter: 32px;
+    --app-page-gutter: 24px;
+    --edu-auth-card-width: 100%;
     --edu-auth-card-padding: 20px;
     --edu-auth-page-padding: 24px;
     --edu-font-auth-heading: 26px;
     --edu-font-auth-hero: 28px;
+  }
+}
+@media (max-width: 359px) {
+  :root {
+    --app-page-gutter: 16px;
+    --edu-auth-card-padding: 16px;
   }
 }
 

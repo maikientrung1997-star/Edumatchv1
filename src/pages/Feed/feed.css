@@ -811,15 +811,30 @@
     display: none;
   }
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .feed-page {
-    padding: 30px 0 55px;
+    padding: 20px 0 45px;
   }
   .feed-page__container {
-    width: calc(100% - 32px);
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 16px !important;
+    box-sizing: border-box !important;
   }
   .community-post {
-    padding: 17px;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 16px 14px;
+    border-radius: 14px;
+  }
+  .community-post__actions {
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+  }
+  .community-post__actions button {
+    font-size: 13px !important;
+    min-height: 44px !important;
+    justify-content: center !important;
   }
   .community-post__header {
     align-items: flex-start;
@@ -838,6 +853,10 @@
   }
   .feed-comment__reply {
     margin-left: 7px;
+  }
+  .feed-comment__bubble {
+    max-width: calc(100% - 40px) !important;
+    word-break: break-word !important;
   }
   .feed-reply-form {
     gap: 6px;

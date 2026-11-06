@@ -587,15 +587,36 @@
   }
 }
 @media (width < 768px) {
+  .register-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px 36px !important;
+    box-sizing: border-box !important;
+    gap: 24px !important;
+  }
+  .register-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px !important;
+    box-sizing: border-box !important;
+    border-radius: 16px !important;
+  }
+  .register-roles {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
   .register-page {
     background-attachment: scroll;
   }
   .register-role,
   .register-page--teacher .register-role {
     flex-direction: column;
-    gap: 6px;
-    font-size: var(--text-control);
-    min-height: 64px;
+    gap: 4px;
+    font-size: 11.5px !important;
+    padding: 8px 4px !important;
+    min-height: 56px !important;
+    text-align: center !important;
+    word-break: break-word !important;
   }
   .register-control {
     padding-inline: 12px;

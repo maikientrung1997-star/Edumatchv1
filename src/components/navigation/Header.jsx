@@ -24,6 +24,7 @@ import { useChat } from '@/hooks/useChat';
 import { ROUTES } from '@/constants/routes';
 import { accountNotificationService } from '@/services/accountNotificationService';
 import { subscribeUserNotifications } from '@/services/pusherService';
+import { soundService } from '@/services/soundService';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/features/learning/marketplace';
 import toast from 'react-hot-toast';
 
@@ -189,6 +190,7 @@ export const Header = ({ theme, onToggleTheme }) => {
         items: [notification, ...current.items.filter((item) => item.id !== notification.id)],
       }));
       showIncomingToast(notification);
+      soundService.playNotificationSound();
     });
     return () => {
       active = false;

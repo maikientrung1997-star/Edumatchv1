@@ -5,6 +5,7 @@ import { chatService, chatError } from '@/services/chatService';
 import { createThreadStore } from '@/services/chatThreadStore';
 import { mergeConversations } from '@/utils/chatState';
 import { getMarkedUnreadConversations, setMarkedUnreadConversation } from '@/features/learning/marketplace';
+import { soundService } from '@/services/soundService';
 import { ChatContext } from '@/contexts/ChatStateContext';
 
 // How long to wait for the realtime subscription before loading the inbox over HTTP anyway.
@@ -144,7 +145,10 @@ export function ChatProvider({ children }) {
     const update = (event) => {
       if (!active || !event?.conversation?.id) return;
       ingest({ data: [event.conversation], meta: { counts: event.counts, revision: event.revision } });
-      if (event.conversation.last_sender_user_id !== userId && event.conversation.unread_count > 0) dispatch({ type: 'incoming', userId, id: event.conversation.id });
+      if (event.conversation.last_sender_user_id !== userId && event.conversation.unread_count > 0) {
+        dispatch({ type: 'incoming', userId, id: event.conversation.id });
+        soundService.playMessageSound();
+      }
     };
     const presence = presenceLease.channel;
     const here = (members) => dispatch({ type: 'presence', userId, ids: Object.keys(members.members || {}) });

@@ -417,7 +417,7 @@ export const Header = ({ theme, onToggleTheme }) => {
           </Link>
           <Link to={ROUTES.FEED} onClick={() => setMobileMenuOpen(false)}>Bảng Tin</Link>
           <Link to={teachingDestination} onClick={() => setMobileMenuOpen(false)}>{teachingLabel}</Link>
-          {isEducationProvider && <Link to={ROUTES.VERIFICATION} onClick={() => setMobileMenuOpen(false)}>Xác minh hồ sơ</Link>}
+          {isCenterAccount && <Link to={ROUTES.VERIFICATION} onClick={() => setMobileMenuOpen(false)}>Xác minh hồ sơ</Link>}
           {isCenterAccount ? (
             <Link to={ROUTES.CENTER_SUPPORT} onClick={() => setMobileMenuOpen(false)}>Tư vấn miễn phí</Link>
           ) : (

@@ -80,7 +80,7 @@ export function ProfileSettingsPage() {
   const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
   const avatarInput = useRef(null);
   const isStudent = user.role === 'student';
-  const hasSubmittedVerification = Boolean(user?.verificationStatus && user.verificationStatus !== 'unverified');
+  const hasSubmittedVerification = Boolean(user?.role === 'center' && user?.verificationStatus && user.verificationStatus !== 'unverified');
   const avatarAlbumItems = getPosts()
     .filter((post) => String(post.authorId || post.teacherId) === String(user.id))
     .flatMap((post) => getPostMediaItems(post))
@@ -376,7 +376,7 @@ export function ProfileSettingsPage() {
             </p>
           )}
           {avatarBusy && <small aria-live="polite">Đang cập nhật ảnh đại diện…</small>}
-          {['teacher', 'center'].includes(user.role) && <Link className="profile-sidebar-link" to={ROUTES.VERIFICATION}><ShieldCheck size={16} /><span>{hasSubmittedVerification ? 'Hồ Sơ Xác Minh' : 'Xác Minh Hồ Sơ'}</span></Link>}
+          {user.role === 'center' && <Link className="profile-sidebar-link" to={ROUTES.VERIFICATION}><ShieldCheck size={16} /><span>{hasSubmittedVerification ? 'Hồ Sơ Xác Minh' : 'Xác Minh Hồ Sơ'}</span></Link>}
           {!isStudent && <Link className="profile-sidebar-link" to={ROUTES.TEACHER_PROFILE(user.id)}><UserRound size={16} /><span>Xem hồ sơ cá nhân</span></Link>}
         </aside>
         <section className="profile-settings-panel">

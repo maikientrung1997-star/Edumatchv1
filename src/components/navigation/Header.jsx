@@ -90,6 +90,20 @@ export const Header = ({ theme, onToggleTheme }) => {
   const [serverNotifications, setServerNotifications] = useState({ userId: null, items: [] });
   const receivedServerNotificationIds = useRef(new Set());
   const accountMenuRef = useRef(null);
+  const headerRef = useRef(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    const site = header?.closest('.edu-site');
+    if (!header || !site) return;
+    const measure = () => site.style.setProperty('--edu-header-height', `${Math.ceil(header.getBoundingClientRect().height)}px`);
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    measure();
+    return () => {
+      observer.disconnect();
+      site.style.removeProperty('--edu-header-height');
+    };
+  }, []);
   const allNotifications = [...(serverNotifications.userId === user?.id ? serverNotifications.items : []), ...notifications]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const isEducationProvider = isAuthenticated && ['teacher', 'center'].includes(user?.role);
@@ -261,7 +275,7 @@ export const Header = ({ theme, onToggleTheme }) => {
   };
 
   return (
-    <header className="edu-header">
+    <header className="edu-header" ref={headerRef}>
       <a className="skip-link" href="#khoa-hoc">
         Đi đến nội dung chính
       </a>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   GraduationCap,
   Headphones,
   Heart,
@@ -39,8 +40,10 @@ import heroImage from '@/assets/tutoring-hero.webp';
 import heroImageMobile from '@/assets/tutoring-hero-720.webp';
 import communityTeacherStrip from '@/assets/vietnamese-teachers-avatar-strip.png';
 import { subjects as subjectStyles, tutors } from './homeData';
+import { useDiscoveryFeed, useDiscoveryNavigation } from './useDiscoveryFeed';
 import './home.css';
 import '@/components/courses/course.css';
+import './discovery.css';
 
 const initialFilters = { subject: '', mode: '', province: '', ward: '', provider: '', description: '' };
 const initialCourseFilters = { subject: '', mode: '', province: '', ward: '', description: '' };
@@ -84,6 +87,7 @@ const inferredGender = (provider) => {
   if (match?.title === 'Thầy') return 'male';
   return provider?.gender || '';
 };
+const courseModeLabel = { 'in-person': 'truc tiep', online: 'truc tuyen', recorded: 'video quay san' };
 const scrollTo = (element, block = 'start') =>
   element?.scrollIntoView({
     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
@@ -95,7 +99,7 @@ function SectionHeading({ title, description, children, onMobileViewAll, mobileV
     <div className="section-heading">
       <div className="section-heading__header-row">
         <div className="section-heading__text">
-          <h2>{title}</h2>
+          <h2 tabIndex={-1}>{title}</h2>
           {description && <p>{description}</p>}
         </div>
         {onMobileViewAll && (
@@ -113,6 +117,29 @@ function SectionHeading({ title, description, children, onMobileViewAll, mobileV
       {children}
     </div>
   );
+}
+
+function DiscoveryHeader({ enabled, active, queryKey, children }) {
+  const headerRef = useRef(null);
+  const previousQuery = useRef(queryKey);
+  useLayoutEffect(() => {
+    const changed = previousQuery.current !== queryKey;
+    previousQuery.current = queryKey;
+    if (enabled && active && changed) {
+      // Keep the new results in view even if filtering shrinks a long section.
+      headerRef.current?.parentElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  }, [enabled, active, queryKey]);
+  return enabled ? <div ref={headerRef} className="discovery-section__header">{children}</div> : children;
+}
+
+function DiscoveryMore({ feed: { count, sentinelRef, showMore }, total, label }) {
+  if (!total) return null;
+  return count < total ? (
+    <div ref={sentinelRef} className="discovery-more">
+      <button type="button" onClick={showMore}>Xem thêm {label}<ChevronDown size={16} /></button>
+    </div>
+  ) : <p className="discovery-end" role="status">Bạn đã xem hết {label}.</p>;
 }
 
 function FilterField({ label, icon: Icon, id, name, value, onChange, children }) {
@@ -289,6 +316,7 @@ export const Home = () => {
   const hasDescriptionQuery = hasNeedQuery || hasCourseQuery;
   const isSearchResults = location.pathname === ROUTES.SEARCH_RESULTS;
   const currentView = params.get('view');
+  const isDiscoveryHome = !isSearchResults && !(isMobile && ['courses', 'tutors'].includes(currentView));
   const openMobileView = (viewType) => {
     setParams((current) => {
       const next = new URLSearchParams(current);
@@ -338,6 +366,11 @@ const profileCourses = profile
   const filterRef = useRef(null);
   const courseRef = useRef(null);
   const sponsoredRef = useRef(null);
+  const discoveryEndRef = useRef(null);
+  const discovery = useDiscoveryNavigation(isDiscoveryHome, courseRef, resultsRef, sponsoredRef);
+  const [sponsoredFilters, setSponsoredFilters] = useState({ description: '', mode: '' });
+  const [appliedSponsoredFilters, setAppliedSponsoredFilters] = useState({ description: '', mode: '' });
+  const [sponsoredSort, setSponsoredSort] = useState('top-rated');
   const otherSubjectInputRef = useRef(null);
   const visibleCourseFilters = hasDescriptionQuery ? { ...courseFilters, description: descriptionQuery } : courseFilters;
   const activeCourseFilters = hasDescriptionQuery ? { ...appliedCourseFilters, description: descriptionQuery } : appliedCourseFilters;
@@ -368,7 +401,7 @@ const profileCourses = profile
         (!activeCourseFilters.mode || courseMode === activeCourseFilters.mode) &&
         (!activeCourseFilters.province || normalize(`${course.province || ''} ${course.location || ''}`).includes(normalize(activeCourseFilters.province))) &&
         (!activeCourseFilters.ward || normalize(`${course.ward || ''} ${course.district || ''} ${course.location || ''}`).includes(normalize(activeCourseFilters.ward))) &&
-        matchesDescription(`${courseSearchText} ${courseMode === 'in-person' ? 'truc tiep' : courseMode === 'online' ? 'truc tuyen' : 'video quay san'}`, activeCourseFilters.description, inferredGender(course.teacher))
+        matchesDescription(`${courseSearchText} ${courseModeLabel[courseMode]}`, activeCourseFilters.description, inferredGender(course.teacher))
       );
     })
     .sort((first, second) => {
@@ -397,6 +430,18 @@ const profileCourses = profile
   const visibleSponsoredCourses = showAllSponsored
     ? sponsoredCourses.slice((sponsoredPage - 1) * sponsoredPageSize, sponsoredPage * sponsoredPageSize)
     : sponsoredCourses.slice(0, 3);
+  const discoverySponsoredCourses = sponsoredCourses.filter((course) => {
+    const mode = ['in-person', 'recorded'].includes(course.learningMode) ? course.learningMode : 'online';
+    const description = [
+      course.title, course.description, course.subject, course.teacher?.name,
+      course.location, course.province, course.ward, course.district, course.schedule, courseModeLabel[mode],
+    ].filter(Boolean).join(' ');
+    return (!appliedSponsoredFilters.mode || mode === appliedSponsoredFilters.mode)
+      && matchesDescription(description, appliedSponsoredFilters.description, inferredGender(course.teacher));
+  });
+  if (sponsoredSort === 'newest') {
+    discoverySponsoredCourses.sort((first, second) => new Date(second.createdAt || 0) - new Date(first.createdAt || 0));
+  }
   const searchableTutors = (() => {
     const providers = new Map();
 
@@ -562,10 +607,22 @@ const profileCourses = profile
   const visibleTutors = showAll
     ? filteredTutors.slice((tutorPage - 1) * tutorPageSize, tutorPage * tutorPageSize)
     : filteredTutors.slice(0, 8);
-  const mobileCourses = useMobileResults(rankedCourses.length, JSON.stringify([currentView, activeCourseFilters, courseSort]), isPhone && currentView === 'courses');
-  const mobileTutors = useMobileResults(filteredTutors.length, JSON.stringify([currentView, activeTutorFilters, query, savedOnly, trustFirst]), isPhone && currentView === 'tutors');
-  const mobileCourseResults = isPhone ? rankedCourses.slice(0, mobileCourses.count) : paginatedMobileCourses;
-  const mobileTutorResults = isPhone ? filteredTutors.slice(0, mobileTutors.count) : paginatedMobileTutors;
+  const { count: mobileCourseCount, sentinelRef: mobileCourseSentinelRef, showMore: showMoreMobileCourses } = useMobileResults(rankedCourses.length, JSON.stringify([currentView, activeCourseFilters, courseSort]), isPhone && currentView === 'courses');
+  const { count: mobileTutorCount, sentinelRef: mobileTutorSentinelRef, showMore: showMoreMobileTutors } = useMobileResults(filteredTutors.length, JSON.stringify([currentView, activeTutorFilters, query, savedOnly, trustFirst]), isPhone && currentView === 'tutors');
+  const mobileCourseResults = isPhone ? rankedCourses.slice(0, mobileCourseCount) : paginatedMobileCourses;
+  const mobileTutorResults = isPhone ? filteredTutors.slice(0, mobileTutorCount) : paginatedMobileTutors;
+  const discoveryBatchSize = isMobile ? 8 : 9;
+  const courseQueryKey = JSON.stringify([activeCourseFilters, courseSort]);
+  const tutorQueryKey = JSON.stringify([activeTutorFilters, query, savedOnly, trustFirst]);
+  const sponsoredQueryKey = JSON.stringify([appliedSponsoredFilters, sponsoredSort]);
+  const homeCourses = useDiscoveryFeed(rankedCourses.length, courseQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('khoa-hoc'), discoveryBatchSize);
+  const homeTutors = useDiscoveryFeed(filteredTutors.length, tutorQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('giao-vien'), isMobile ? 8 : 12);
+  const homeSponsored = useDiscoveryFeed(discoverySponsoredCourses.length, sponsoredQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('khoa-hoc-tai-tro'), discoveryBatchSize);
+  const continuation = {
+    'khoa-hoc': 'Tiếp tục khám phá giáo viên',
+    'giao-vien': 'Khám phá khóa học tài trợ',
+    'khoa-hoc-tai-tro': 'Tiếp tục khám phá',
+  }[discovery.activeSection];
   const { administrativeProvinces, wardOptions, error: areaError } = useAdministrativeOptions(filters.province);
   const { administrativeProvinces: courseProvinces, wardOptions: courseWardOptions, error: courseAreaError } = useAdministrativeOptions(courseFilters.province);
   const registerForTutor = async (tutor) => {
@@ -705,7 +762,7 @@ const profileCourses = profile
   };
 
   return (
-    <div className={`edu-home ${isSearchResults ? 'edu-home--search-results' : ''}`}>
+    <div className={`edu-home ${isSearchResults ? 'edu-home--search-results' : ''} ${isDiscoveryHome ? 'edu-home--discovery' : ''}`}>
       {catalog.error && <p className="edu-container account-error" role="alert">{catalog.error}</p>}
       {isMobile && currentView === 'courses' ? (
         <div className="edu-container mobile-listing-page">
@@ -727,7 +784,7 @@ const profileCourses = profile
           </div>
 
           <form
-            className="mobile-filter-row"
+            className="mobile-filter-row mobile-filter-row--courses"
             onSubmit={(event) => {
               event.preventDefault();
               setAppliedCourseFilters(courseFilters);
@@ -760,7 +817,27 @@ const profileCourses = profile
               <option value="in-person">Trực tiếp</option>
               <option value="recorded">Video</option>
             </select>
-            <select
+            {isPhone ? (
+              <div className="mobile-course-sort" role="group" aria-label="Sắp xếp khóa học">
+                {[
+                  ['newest', 'Mới nhất'],
+                  ['top-rated', 'Theo đánh giá'],
+                ].map(([value, label]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    aria-pressed={courseSort === value}
+                    onClick={() => {
+                      setCourseSort(value);
+                      setCoursePage(1);
+                    }}
+                  >
+                    {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : <select
               value={courseSort}
               onChange={(event) => {
                 setCourseSort(event.target.value);
@@ -771,13 +848,13 @@ const profileCourses = profile
             >
               <option value="newest">Mới nhất</option>
               <option value="top-rated">Đánh giá</option>
-            </select>
+            </select>}
             <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm">
               <Search size={15} />
             </button>
           </form>
 
-          <div className="mobile-listing-meta">
+          <div className="mobile-listing-meta mobile-course-count">
             <span>Hiển thị <strong>{mobileCourseResults.length}</strong> / <strong>{rankedCourses.length}</strong> khóa học</span>
             {!isPhone && <span className="mobile-listing-page-info">Trang {coursePage} / {totalMobileCoursePages}</span>}
           </div>
@@ -799,8 +876,8 @@ const profileCourses = profile
             </div>
           )}
 
-          {isPhone && mobileCourses.count < rankedCourses.length && <div ref={mobileCourses.sentinelRef} className="mobile-results-more"><button type="button" onClick={mobileCourses.showMore}>Xem thêm khóa học</button></div>}
-          {isPhone && rankedCourses.length > 0 && mobileCourses.count >= rankedCourses.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả khóa học</p>}
+          {isPhone && mobileCourseCount < rankedCourses.length && <div ref={mobileCourseSentinelRef} className="mobile-results-more"><button type="button" onClick={showMoreMobileCourses}>Xem thêm khóa học</button></div>}
+          {isPhone && rankedCourses.length > 0 && mobileCourseCount >= rankedCourses.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả khóa học</p>}
           {!isPhone && totalMobileCoursePages > 1 && (
             <div className="mobile-pagination-nav" aria-label="Điều hướng danh sách khóa học">
               <button
@@ -986,8 +1063,8 @@ const profileCourses = profile
             </div>
           )}
 
-          {isPhone && mobileTutors.count < filteredTutors.length && <div ref={mobileTutors.sentinelRef} className="mobile-results-more"><button type="button" onClick={mobileTutors.showMore}>Xem thêm hồ sơ</button></div>}
-          {isPhone && filteredTutors.length > 0 && mobileTutors.count >= filteredTutors.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả hồ sơ</p>}
+          {isPhone && mobileTutorCount < filteredTutors.length && <div ref={mobileTutorSentinelRef} className="mobile-results-more"><button type="button" onClick={showMoreMobileTutors}>Xem thêm hồ sơ</button></div>}
+          {isPhone && filteredTutors.length > 0 && mobileTutorCount >= filteredTutors.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả hồ sơ</p>}
           {!isPhone && totalMobileTutorPages > 1 && (
             <div className="mobile-pagination-nav" aria-label="Điều hướng danh sách giáo viên">
               <button
@@ -1079,7 +1156,7 @@ const profileCourses = profile
                 className="edu-button"
                 size="lg"
                 onClick={() => {
-                  scrollTo(courseRef.current, 'center');
+                  scrollTo(courseRef.current);
                 }}
               >
                 <Search size={19} />
@@ -1090,7 +1167,7 @@ const profileCourses = profile
                 className="edu-button edu-button-outline"
                 size="lg"
                 onClick={() => {
-                  scrollTo(filterRef.current, 'center');
+                  scrollTo(resultsRef.current);
                   document.getElementById('subject-filter')?.focus({ preventScroll: true });
                 }}
               >
@@ -1147,10 +1224,11 @@ const profileCourses = profile
 
       <div className="edu-container home-content">
         <section id="khoa-hoc" className={`home-section course-section ${showAllCourses ? 'is-expanded' : ''}`} ref={courseRef} aria-labelledby="courses-heading">
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'khoa-hoc'} queryKey={courseQueryKey}>
           <SectionHeading
             title={<span id="courses-heading">{isSearchResults ? <>Khóa học <span className="accent-text">phù hợp</span></> : <>Lựa chọn <span className="accent-text">khóa học phù hợp</span></>}</span>}
             description={isSearchResults ? 'Các khóa học được lọc theo mô tả nhu cầu của bạn.' : undefined}
-            onMobileViewAll={rankedCourses.length > 0 ? () => openMobileView('courses') : undefined}
+            onMobileViewAll={!isDiscoveryHome && rankedCourses.length > 0 ? () => openMobileView('courses') : undefined}
           >
             {!isMobile && (
               <fieldset className="course-sort" aria-label="Sắp xếp khóa học">
@@ -1181,7 +1259,7 @@ const profileCourses = profile
 
           {isMobile ? (
             <form
-              className="mobile-filter-row"
+              className="mobile-filter-row mobile-filter-row--courses"
               onSubmit={(event) => {
                 event.preventDefault();
                 setAppliedCourseFilters(courseFilters);
@@ -1214,10 +1292,10 @@ const profileCourses = profile
                 <option value="in-person">Trực tiếp</option>
                 <option value="recorded">Video</option>
               </select>
-              {isPhone ? <div className="mobile-filter-row__sort" role="group" aria-label="Sắp xếp khóa học">
-                {[['newest', 'Mới nhất'], ['top-rated', 'Đánh giá']].map(([value, label]) => (
+              {isPhone ? <div className="mobile-course-sort" role="group" aria-label="Sắp xếp khóa học">
+                {[['newest', 'Mới nhất'], ['top-rated', 'Theo đánh giá']].map(([value, label]) => (
                   <button key={value} type="button" aria-pressed={courseSort === value} onClick={() => { setCourseSort(value); setCoursePage(1); }}>
-                    {label}
+                    {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}{label}
                   </button>
                 ))}
               </div> : <select value={courseSort} onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }} className="mobile-filter-row__select" aria-label="Sắp xếp">
@@ -1281,12 +1359,13 @@ const profileCourses = profile
               </Button>
             </form>
           )}
+          </DiscoveryHeader>
             <div
-              className={`course-grid ${isMobile ? 'course-grid--mobile-scroll' : ''}`}
-              tabIndex={isMobile ? 0 : undefined}
-              aria-label={isMobile ? 'Danh sách khóa học. Dùng phím mũi tên trái hoặc phải để xem thêm khóa học.' : undefined}
+              className={`course-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : isMobile ? 'course-grid--mobile-scroll' : ''}`}
+              tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined}
+              aria-label="Danh sách khóa học"
               onKeyDown={(event) => {
-                if (!isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
                 event.preventDefault();
                 event.currentTarget.scrollBy({
                   left: (event.key === 'ArrowRight' ? 1 : -1) * Math.round(event.currentTarget.clientWidth * 0.86),
@@ -1294,8 +1373,9 @@ const profileCourses = profile
                 });
               }}
             >
-            {(isMobile ? (isPhone ? rankedCourses : rankedCourses.slice(0, 4)) : visibleCourses).map((course) => <CourseCard key={course.id} course={course} />)}
+            {(isDiscoveryHome ? rankedCourses.slice(0, homeCourses.count) : isMobile ? (isPhone ? rankedCourses : rankedCourses.slice(0, 4)) : visibleCourses).map((course) => <CourseCard key={course.id} course={course} />)}
           </div>
+          {isDiscoveryHome && <DiscoveryMore feed={homeCourses} total={rankedCourses.length} label="khóa học" />}
           {rankedCourses.length === 0 && (
             <div className="search-empty course-search__empty">
               <Search size={30} />
@@ -1306,7 +1386,7 @@ const profileCourses = profile
               </Button>
             </div>
           )}
-          {!isMobile && rankedCourses.length > 6 && (
+          {!isDiscoveryHome && !isMobile && rankedCourses.length > 6 && (
             <div className="course-pagination" aria-label="Điều hướng danh sách khóa học">
               {!showAllCourses ? (
                 <button type="button" className="course-pagination__all" onClick={() => { setShowAllCourses(true); setCoursePage(1); }}>
@@ -1334,6 +1414,7 @@ const profileCourses = profile
           ref={resultsRef}
           aria-labelledby="tutors-heading"
         >
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'giao-vien'} queryKey={tutorQueryKey}>
           <SectionHeading
             title={
               <span id="tutors-heading">
@@ -1341,7 +1422,7 @@ const profileCourses = profile
               </span>
             }
             description={isSearchResults ? 'Những hồ sơ được lọc theo cùng mô tả nhu cầu của bạn.' : undefined}
-            onMobileViewAll={filteredTutors.length > 0 ? () => openMobileView('tutors') : undefined}
+            onMobileViewAll={!isDiscoveryHome && filteredTutors.length > 0 ? () => openMobileView('tutors') : undefined}
           >
             {!isMobile && (
               <button
@@ -1414,6 +1495,7 @@ const profileCourses = profile
                 onClick={() => setTrustFirst((c) => !c)}
                 title="Ưu tiên nhiều tin tưởng"
                 aria-label="Ưu tiên nhiều tin tưởng"
+                aria-pressed={trustFirst}
               >
                 <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} />
               </button>
@@ -1508,13 +1590,14 @@ const profileCourses = profile
               </div>
             </div>
           )}
-          <div className={`tutors-grid ${isMobile ? 'tutors-grid--mobile-scroll' : ''}`} tabIndex={isMobile ? 0 : undefined} aria-label="Danh sách giáo viên và trung tâm" onKeyDown={(event) => {
-            if (!isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+          </DiscoveryHeader>
+          <div className={`tutors-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : isMobile ? 'tutors-grid--mobile-scroll' : ''}`} tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined} aria-label="Danh sách giáo viên và trung tâm" onKeyDown={(event) => {
+            if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
             if (event.target !== event.currentTarget) return;
             event.preventDefault();
             event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
           }}>
-            {(isMobile ? (isPhone ? filteredTutors : filteredTutors.slice(0, 4)) : visibleTutors).map((tutor) => (
+            {(isDiscoveryHome ? filteredTutors.slice(0, homeTutors.count) : isMobile ? (isPhone ? filteredTutors : filteredTutors.slice(0, 4)) : visibleTutors).map((tutor) => (
               <TutorCard
                 key={tutor.id}
                 tutor={tutor}
@@ -1535,7 +1618,8 @@ const profileCourses = profile
               />
             ))}
           </div>
-          {isMobile && !isPhone && filteredTutors.length > 0 && (
+          {isDiscoveryHome && <DiscoveryMore feed={homeTutors} total={filteredTutors.length} label="hồ sơ" />}
+          {!isDiscoveryHome && isMobile && !isPhone && filteredTutors.length > 0 && (
             <div className="mobile-view-all-wrap">
               <button
                 type="button"
@@ -1556,14 +1640,14 @@ const profileCourses = profile
               </Button>
             </div>
           )}
-          {!isMobile && filteredTutors.length > 8 && !showAll && (
+          {!isDiscoveryHome && !isMobile && filteredTutors.length > 8 && !showAll && (
             <div className="course-pagination" aria-label="Mở rộng danh sách giáo viên và trung tâm">
               <button type="button" className="course-pagination__all" onClick={() => { setShowAll(true); setTutorPage(1); }}>
                 Xem tất cả giáo viên <ArrowRight size={16} />
               </button>
             </div>
           )}
-          {!isMobile && filteredTutors.length > 8 && showAll && (
+          {!isDiscoveryHome && !isMobile && filteredTutors.length > 8 && showAll && (
             <div className="course-pagination" aria-label="Điều hướng danh sách giáo viên và trung tâm">
               <button type="button" onClick={() => { setShowAll(false); setTutorPage(1); }}>Thu gọn danh sách</button>
               <div className="course-pagination__pages">
@@ -1653,6 +1737,7 @@ const profileCourses = profile
           ref={sponsoredRef}
           aria-labelledby="sponsored-courses-heading"
         >
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'khoa-hoc-tai-tro'} queryKey={sponsoredQueryKey}>
           <SectionHeading
             title={
               <span id="sponsored-courses-heading">
@@ -1660,21 +1745,60 @@ const profileCourses = profile
               </span>
             }
             description="Khám phá những khóa học nổi bật đang được giới thiệu trên EduMatch."
-            onMobileViewAll={isMobile ? () => openMobileView('courses') : undefined}
+            onMobileViewAll={!isDiscoveryHome && isMobile ? () => openMobileView('courses') : undefined}
           >
             <span className="sponsored-caption">
               <Star size={15} fill="currentColor" />
               Được tài trợ
             </span>
           </SectionHeading>
-          <div className="course-grid sponsored-course-grid" tabIndex={isMobile ? 0 : undefined} aria-label="Khóa học được tài trợ" onKeyDown={(event) => {
-            if (!isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+          {isDiscoveryHome && <form
+            className={isMobile ? 'mobile-filter-row mobile-filter-row--courses' : 'course-search discovery-sponsored-search'}
+            aria-label="Tìm kiếm khóa học được tài trợ"
+            onSubmit={(event) => { event.preventDefault(); setAppliedSponsoredFilters(sponsoredFilters); }}
+          >
+            {isMobile ? <>
+              <div className="mobile-filter-row__input">
+                <Search size={15} aria-hidden="true" />
+                <input name="description" aria-label="Mô tả khóa học tài trợ" placeholder="Tìm khóa học, mô tả..." value={sponsoredFilters.description} onChange={(event) => setSponsoredFilters((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+              <select className="mobile-filter-row__select" name="mode" aria-label="Hình thức học tài trợ" value={sponsoredFilters.mode} onChange={(event) => {
+                const mode = event.target.value;
+                setSponsoredFilters((current) => ({ ...current, mode }));
+                setAppliedSponsoredFilters((current) => ({ ...current, mode }));
+              }}>
+                <option value="">Hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Trực tiếp</option>
+                <option value="recorded">Video</option>
+              </select>
+            </> : <>
+              <DescriptionFilterField value={sponsoredFilters.description} onChange={(event) => setSponsoredFilters((current) => ({ ...current, description: event.target.value }))} />
+              <FilterField id="sponsored-mode" label="Hình thức học" icon={Monitor} name="mode" value={sponsoredFilters.mode} onChange={(event) => setSponsoredFilters((current) => ({ ...current, mode: event.target.value }))}>
+                <option value="">Tất cả hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Học trực tiếp</option>
+                <option value="recorded">Video quay sẵn</option>
+              </FilterField>
+            </>}
+            <div className="mobile-course-sort discovery-sponsored-sort" role="group" aria-label="Sắp xếp khóa học tài trợ">
+              {[['newest', 'Mới nhất'], ['top-rated', 'Theo đánh giá']].map(([value, label]) => <button key={value} type="button" aria-pressed={sponsoredSort === value} onClick={() => setSponsoredSort(value)}>
+                {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}{label}
+              </button>)}
+            </div>
+            <button type="submit" className={isMobile ? 'mobile-filter-row__btn' : 'edu-button course-search__submit'} aria-label="Tìm kiếm khóa học tài trợ"><Search size={isMobile ? 15 : 18} />{!isMobile && 'Tìm kiếm khóa học'}</button>
+          </form>}
+          </DiscoveryHeader>
+          <div className={`course-grid sponsored-course-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : ''}`} tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined} aria-label="Khóa học được tài trợ" onKeyDown={(event) => {
+            if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
             event.preventDefault();
             event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
           }}>
-            {(isPhone ? sponsoredCourses : visibleSponsoredCourses).map((course) => <CourseCard key={course.id} course={course} sponsored />)}
+            {(isDiscoveryHome ? discoverySponsoredCourses.slice(0, homeSponsored.count) : isPhone ? sponsoredCourses : visibleSponsoredCourses).map((course) => <CourseCard key={course.id} course={course} sponsored />)}
           </div>
-          {sponsoredCourses.length > 3 && (
+          {isDiscoveryHome && <DiscoveryMore feed={homeSponsored} total={discoverySponsoredCourses.length} label="khóa học tài trợ" />}
+          {isDiscoveryHome && discoverySponsoredCourses.length === 0 && <div className="search-empty"><Search size={30} /><h3>Chưa tìm thấy khóa học phù hợp</h3><p>Thử điều chỉnh mô tả nhu cầu hoặc hình thức học.</p><Button className="edu-button" onClick={() => { setSponsoredFilters({ description: '', mode: '' }); setAppliedSponsoredFilters({ description: '', mode: '' }); }}>Xóa bộ lọc</Button></div>}
+          {!isDiscoveryHome && sponsoredCourses.length > 3 && (
             <div className="course-pagination sponsored-pagination" aria-label="Điều hướng khóa học được tài trợ">
               {!showAllSponsored ? (
                 <button type="button" className="course-pagination__all" onClick={() => { setShowAllSponsored(true); setSponsoredPage(1); }}>
@@ -1697,12 +1821,12 @@ const profileCourses = profile
           )}
         </section>
 
-        <section className="bottom-cta">
+        <section className="bottom-cta" ref={discoveryEndRef}>
           <div className="cta-icon">
             <BookOpen size={37} strokeWidth={1.4} />
           </div>
           <div className="cta-copy">
-            <h2>Bắt đầu hành trình của bạn hôm nay.</h2>
+            <h2 tabIndex={-1}>Bắt đầu hành trình của bạn hôm nay.</h2>
             <p>Một người thầy phù hợp, những cơ hội mới đang chờ.</p>
           </div>
           <div className="cta-actions">
@@ -1720,6 +1844,10 @@ const profileCourses = profile
       </div>
       </>
       )}
+
+      {continuation && !dialog && !profile && <div className="discovery-continuation">
+        <button type="button" onClick={() => discovery.goToNext(discovery.activeSection === 'khoa-hoc' ? resultsRef : discovery.activeSection === 'giao-vien' ? sponsoredRef : discoveryEndRef)}>{continuation}<ChevronDown size={18} aria-hidden="true" /></button>
+      </div>}
 
       <Modal
         open={Boolean(profile)}

@@ -21,9 +21,16 @@ export function CourseCard({ course, editable = false, sponsored = false }) {
       <div className="course-card__top">
         <div className="course-card__badges">
           {sponsored && <span className="course-card__sponsored">Được tài trợ</span>}
-          <span className={`course-card__status ${course.enrollmentStatus === 'closed' ? 'is-closed' : ''}`}>{enrollmentLabel(course)}</span>
+          <span className={`course-card__status ${course.enrollmentStatus === 'closed' ? 'is-closed' : ''}`} title={enrollmentLabel(course)}>
+            <span className="course-card__status-full">{enrollmentLabel(course)}</span>
+            <span className="course-card__status-compact">{course.enrollmentStatus === 'closed' ? 'Đóng lớp' : enrollmentLabel(course)}</span>
+          </span>
         </div>
-        <span className="course-card__rating"><Star size={14} fill="currentColor" /> {rating.total ? `${rating.average.toFixed(1)} · ${rating.total} đánh giá` : 'Mới'}</span>
+        <span className="course-card__rating" aria-label={rating.total ? `${rating.average.toFixed(1)} trên 5 sao, ${rating.total} đánh giá` : 'Chưa có đánh giá'} title={rating.total ? `${rating.average.toFixed(1)} · ${rating.total} đánh giá` : 'Mới'}>
+          <Star size={14} fill="currentColor" />
+          <span className="course-card__rating-full">{rating.total ? `${rating.average.toFixed(1)} · ${rating.total} đánh giá` : 'Mới'}</span>
+          <span className="course-card__rating-compact" aria-hidden="true">{rating.total ? `${rating.average.toFixed(1)} (${rating.total})` : 'Mới'}</span>
+        </span>
       </div>
       <h3 className="course-title">{course.title}</h3>
       <div className="course-card__provider">

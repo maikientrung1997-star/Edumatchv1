@@ -1,3 +1,6 @@
+const postDetailPath = (postId = ':postId') => `/bai-viet/${postId}`;
+export const POST_COMMENTS_ANCHOR = 'binh-luan';
+
 /**
  * Application route constants
  */
@@ -12,7 +15,8 @@ export const ROUTES = {
   CENTER_SUPPORT: '/ho-tro-trung-tam-dao-tao',
   CONTACT: '/lien-he',
   FEED: '/bang-tin',
-  POST_DETAIL: (postId = ':postId') => `/bai-viet/${postId}`,
+  POST_DETAIL: postDetailPath,
+  POST_COMMENTS: (postId) => `${postDetailPath(postId)}#${POST_COMMENTS_ANCHOR}`,
   SEARCH_RESULTS: '/tim-kiem',
   MESSAGES: '/tin-nhan',
   CREATE_COURSE: '/khoa-hoc/them-moi',

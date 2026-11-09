@@ -65,7 +65,8 @@ export function CourseDetailPage() {
     : 0;
   if (!course) return <section className="learning-page"><div className="learning-empty"><h1>Không tìm thấy khóa học</h1><p>Khóa học có thể đã được gỡ hoặc đường dẫn không còn hợp lệ.</p><Link to={ROUTES.HOME}>Về trang chủ</Link></div></section>;
   const isCourseOwner = isAuthenticated && user?.id === course.teacher.id;
-  const hasRatedCourse = isAuthenticated && displayReviews.some((item) => item.authorId === user?.id);
+  const ownsReviewContent = (authorId) => user?.id != null && authorId != null && String(authorId) === String(user.id);
+  const hasRatedCourse = isAuthenticated && displayReviews.some((item) => ownsReviewContent(item.authorId));
   const teacherRole = normalizeRole(course.teacher?.role, course.teacher?.name, course.teacher?.id, 'teacher');
   const isCenterCourse = teacherRole === 'center';
   const providerIsOnline = isOnline(course.teacher?.id);
@@ -117,7 +118,7 @@ export function CourseDetailPage() {
     const text = String(replyDrafts[review.id] || '').trim();
     const media = replyMedia[review.id] || null;
     if (!text && !media) return;
-    const isAnonymousOwnerReply = Boolean(review.isAnonymous && review.authorId === user.id);
+    const isAnonymousOwnerReply = Boolean(review.isAnonymous && ownsReviewContent(review.authorId));
     const reply = {
       id: createConversationId('review-reply'),
       author: user.name || 'Thành viên EduMatch',
@@ -132,7 +133,7 @@ export function CourseDetailPage() {
     setReviews(getCourseReviews(courseId));
     setReplyDrafts((current) => ({ ...current, [review.id]: '' }));
     setReplyMedia((current) => ({ ...current, [review.id]: null }));
-    if (review.authorId && review.authorId !== user.id) {
+    if (review.authorId && !ownsReviewContent(review.authorId)) {
       createNotification({
         recipientId: review.authorId,
         actorName: isAnonymousOwnerReply ? 'Học viên ẩn danh' : user.name || 'Một thành viên',
@@ -163,7 +164,6 @@ export function CourseDetailPage() {
       });
     }
   };
-  const ownsReviewContent = (authorId) => Boolean(user?.id && authorId === user.id);
   const editReviewContent = (review, reply = null) => {
     const target = reply || review;
     if (!ownsReviewContent(target.authorId)) return;
@@ -207,12 +207,12 @@ export function CourseDetailPage() {
         <div className="review-list">{displayReviews.map((item) => {
           const isReviewLiked = (item.likes || []).includes(user?.id);
           return <article key={item.id}>
-            <div className="review-item__head"><ReviewAuthor authorId={item.authorId} name={item.author} isAnonymous={item.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} /><span>{Array.from({ length: item.rating }, (_, index) => <Star key={index} size={13} fill="currentColor" />)}</span>{ownsReviewContent(item.authorId) && <ContentMenu id={`review-${item.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editReviewContent(item)} onDelete={() => removeReviewContent(item)} label="đánh giá" />}</div>
+            <div className="discussion-item__head"><ReviewAuthor authorId={item.authorId} name={item.author} isAnonymous={item.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} /><span className="review-item__rating">{Array.from({ length: item.rating }, (_, index) => <Star key={index} size={13} fill="currentColor" />)}</span>{ownsReviewContent(item.authorId) && <ContentMenu id={`review-${item.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editReviewContent(item)} onDelete={() => removeReviewContent(item)} label="đánh giá" />}</div>
             {item.comment && <p>{item.comment}</p>}<DiscussionMedia media={item.media} className="review-media" alt="Ảnh đính kèm trong đánh giá" expandable /><time className="review-item__time" dateTime={item.createdAt || undefined}>{formatRelativeTime(item.createdAt)}</time>
             <div className="review-item__actions"><button type="button" className={isReviewLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item)}><Heart size={14} fill={isReviewLiked ? 'currentColor' : 'none'} /> Thích</button>{item.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ ids: item.likes, label: 'Những người đã thích đánh giá này' })}>{item.likes.length} lượt thích</button>}</div>
             {item.replies?.length > 0 && <div className="review-replies">{item.replies.map((reply) => {
               const isReplyLiked = (reply.likes || []).includes(user?.id);
-              return <div className="review-reply" key={reply.id}><div className="review-reply__head"><div className="review-reply__identity"><ReviewAuthor authorId={reply.authorId} name={reply.author} isAnonymous={reply.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} />{reply.isReviewOwner && <span>Chủ đánh giá</span>}</div>{ownsReviewContent(reply.authorId) && <ContentMenu id={`review-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editReviewContent(item, reply)} onDelete={() => removeReviewContent(item, reply)} label="phản hồi" />}</div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="review-media" alt="Ảnh đính kèm trong phản hồi" expandable /><time className="review-reply__time" dateTime={reply.createdAt || undefined}>{formatRelativeTime(reply.createdAt)}</time><div className="review-reply__actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item, reply)}><Heart size={13} fill={isReplyLiked ? 'currentColor' : 'none'} /> Thích</button>{reply.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })}>{reply.likes.length} lượt thích</button>}</div></div>;
+              return <div className="review-reply" key={reply.id}><div className="discussion-item__head"><div className="review-reply__identity"><ReviewAuthor authorId={reply.authorId} name={reply.author} isAnonymous={reply.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} />{reply.isReviewOwner && <span>Chủ đánh giá</span>}</div>{ownsReviewContent(reply.authorId) && <ContentMenu id={`review-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editReviewContent(item, reply)} onDelete={() => removeReviewContent(item, reply)} label="phản hồi" />}</div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="review-media" alt="Ảnh đính kèm trong phản hồi" expandable /><time className="review-reply__time" dateTime={reply.createdAt || undefined}>{formatRelativeTime(reply.createdAt)}</time><div className="review-reply__actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item, reply)}><Heart size={13} fill={isReplyLiked ? 'currentColor' : 'none'} /> Thích</button>{reply.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })}>{reply.likes.length} lượt thích</button>}</div></div>;
             })}</div>}
             {isAuthenticated && <form className="review-reply-form" onSubmit={(event) => replyToReview(event, item)}><textarea value={replyDrafts[item.id] || ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [item.id]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder="Viết phản hồi..." aria-label={`Phản hồi đánh giá của ${item.isAnonymous ? 'học viên ẩn danh' : item.author}`} rows="1" /><ImageAttachment id={`review-reply-image-${item.id}`} value={replyMedia[item.id] || null} onChange={(media) => setReplyMedia((current) => ({ ...current, [item.id]: media }))} label="Tệp" /><button type="submit"><Send size={15} /> Trả lời</button></form>}
           </article>;

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsDown,
   Clock3,
   GraduationCap,
   Headphones,
@@ -305,7 +306,7 @@ export const Home = () => {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading, canUseStudentConsultation } = useAuth();
   const chatOpening = useRef(false);
   const query = params.get('q') || '';
   const needQuery = params.get('need') || '';
@@ -334,6 +335,15 @@ export const Home = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const dialog = params.get('dialog');
+  useEffect(() => {
+    if (dialog !== 'consultation' || loading || canUseStudentConsultation) return;
+    const next = new URLSearchParams(params);
+    next.delete('dialog');
+    navigate(
+      { pathname: location.pathname, search: next.toString(), hash: location.hash },
+      { replace: true, preventScrollReset: true },
+    );
+  }, [dialog, loading, canUseStudentConsultation, params, navigate, location.pathname, location.hash]);
   const [filters, setFilters] = useState(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState(initialFilters);
   const [courseFilters, setCourseFilters] = useState(initialCourseFilters);
@@ -366,8 +376,15 @@ const profileCourses = profile
   const filterRef = useRef(null);
   const courseRef = useRef(null);
   const sponsoredRef = useRef(null);
+  const discoveryHeroRef = useRef(null);
   const discoveryEndRef = useRef(null);
-  const discovery = useDiscoveryNavigation(isDiscoveryHome, courseRef, resultsRef, sponsoredRef);
+  const discovery = useDiscoveryNavigation(isDiscoveryHome, {
+    heroRef: discoveryHeroRef,
+    courseRef,
+    tutorRef: resultsRef,
+    sponsoredRef,
+    endRef: discoveryEndRef,
+  });
   const [sponsoredFilters, setSponsoredFilters] = useState({ description: '', mode: '' });
   const [appliedSponsoredFilters, setAppliedSponsoredFilters] = useState({ description: '', mode: '' });
   const [sponsoredSort, setSponsoredSort] = useState('top-rated');
@@ -615,14 +632,10 @@ const profileCourses = profile
   const courseQueryKey = JSON.stringify([activeCourseFilters, courseSort]);
   const tutorQueryKey = JSON.stringify([activeTutorFilters, query, savedOnly, trustFirst]);
   const sponsoredQueryKey = JSON.stringify([appliedSponsoredFilters, sponsoredSort]);
-  const homeCourses = useDiscoveryFeed(rankedCourses.length, courseQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('khoa-hoc'), discoveryBatchSize);
-  const homeTutors = useDiscoveryFeed(filteredTutors.length, tutorQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('giao-vien'), isMobile ? 8 : 12);
-  const homeSponsored = useDiscoveryFeed(discoverySponsoredCourses.length, sponsoredQueryKey, isDiscoveryHome && !discovery.pausedSections.includes('khoa-hoc-tai-tro'), discoveryBatchSize);
-  const continuation = {
-    'khoa-hoc': 'Tiếp tục khám phá giáo viên',
-    'giao-vien': 'Khám phá khóa học tài trợ',
-    'khoa-hoc-tai-tro': 'Tiếp tục khám phá',
-  }[discovery.activeSection];
+  const canLoadDiscovery = isDiscoveryHome && !discovery.isMoving;
+  const homeCourses = useDiscoveryFeed(rankedCourses.length, courseQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc'), discoveryBatchSize);
+  const homeTutors = useDiscoveryFeed(filteredTutors.length, tutorQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('giao-vien'), isMobile ? 8 : 12);
+  const homeSponsored = useDiscoveryFeed(discoverySponsoredCourses.length, sponsoredQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc-tai-tro'), discoveryBatchSize);
   const { administrativeProvinces, wardOptions, error: areaError } = useAdministrativeOptions(filters.province);
   const { administrativeProvinces: courseProvinces, wardOptions: courseWardOptions, error: courseAreaError } = useAdministrativeOptions(courseFilters.province);
   const registerForTutor = async (tutor) => {
@@ -1137,13 +1150,13 @@ const profileCourses = profile
           </div>
         </section>
       ) : (
-      <section className="home-hero" aria-labelledby="hero-title">
+      <section id="gioi-thieu" className="home-hero" ref={discoveryHeroRef} aria-labelledby="hero-title">
         <div className="edu-container hero-grid">
           <div className="hero-copy">
             <span className="hero-eyebrow">
               <GraduationCap size={15} /> CHỌN ĐÚNG NƠI, HỌC ĐÚNG CHỖ.
             </span>
-            <h1 id="hero-title">
+            <h1 id="hero-title" tabIndex={-1}>
               Kết nối Học viên với
               <br />
               <span>Giáo viên, Trung Tâm Uy Tín</span>
@@ -1821,7 +1834,7 @@ const profileCourses = profile
           )}
         </section>
 
-        <section className="bottom-cta" ref={discoveryEndRef}>
+        <section id="bat-dau" className="bottom-cta" ref={discoveryEndRef}>
           <div className="cta-icon">
             <BookOpen size={37} strokeWidth={1.4} />
           </div>
@@ -1845,9 +1858,18 @@ const profileCourses = profile
       </>
       )}
 
-      {continuation && !dialog && !profile && <div className="discovery-continuation">
-        <button type="button" onClick={() => discovery.goToNext(discovery.activeSection === 'khoa-hoc' ? resultsRef : discovery.activeSection === 'giao-vien' ? sponsoredRef : discoveryEndRef)}>{continuation}<ChevronDown size={18} aria-hidden="true" /></button>
-      </div>}
+      {discovery.hasDestination && !dialog && !profile && (
+        <button
+          type="button"
+          className="discovery-arrow"
+          data-direction={discovery.direction === -1 ? 'up' : 'down'}
+          aria-label={discovery.direction === -1 ? 'Chuyển đến mục phía trên' : 'Chuyển đến mục tiếp theo'}
+          disabled={discovery.isMoving}
+          onClick={discovery.goToAdjacent}
+        >
+          <ChevronsDown size={30} strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      )}
 
       <Modal
         open={Boolean(profile)}
@@ -1943,10 +1965,12 @@ const profileCourses = profile
             Giao diện đăng ký đang được chuẩn bị. Bạn có thể tìm hiểu nhu cầu học tập hoặc sử dụng
             trang đăng nhập hiện có.
           </p>
-          <Button className="edu-button w-full" onClick={() => openDialog('consultation')}>
-            Tìm hiểu thêm
-            <ArrowRight size={16} />
-          </Button>
+          {canUseStudentConsultation && (
+            <Button className="edu-button w-full" onClick={() => openDialog('consultation')}>
+              Tìm hiểu thêm
+              <ArrowRight size={16} />
+            </Button>
+          )}
           <Link to={ROUTES.LOGIN} className="text-link join-login">
             Đã có tài khoản? Đăng nhập
           </Link>
@@ -1954,7 +1978,7 @@ const profileCourses = profile
       </Modal>
 
       <Modal
-        open={dialog === 'consultation'}
+        open={canUseStudentConsultation && dialog === 'consultation'}
         onClose={closeDialog}
         title="Tư vấn lộ trình học tập"
         description="Cùng tìm ra cách học phù hợp với bạn."
@@ -2100,16 +2124,18 @@ const profileCourses = profile
             <ShieldCheck size={32} />
             <p>
               {dialog === 'support'
-                ? 'EduMatch luôn hướng đến môi trường giáo dục an toàn, minh bạch và hiệu quả. Bạn có thể khám phá câu hỏi thường gặp hoặc điền biểu mẫu tư vấn để tìm lựa chọn học tập phù hợp.'
+                ? `EduMatch luôn hướng đến môi trường giáo dục an toàn, minh bạch và hiệu quả. Bạn có thể xem câu hỏi thường gặp${canUseStudentConsultation ? ' hoặc điền biểu mẫu tư vấn để tìm lựa chọn học tập phù hợp' : ''}.`
                 : 'Chính sách của EduMatch được xây dựng để bảo vệ trải nghiệm học tập an toàn, thông tin minh bạch và kết quả hiệu quả cho mọi thành viên.'}
             </p>
-            <Button
-              className="edu-button"
-              onClick={() => openDialog(dialog === 'support' ? 'faq' : 'consultation')}
-            >
-              {dialog === 'support' ? 'Xem câu hỏi thường gặp' : 'Tìm hiểu thêm'}
-              <ArrowRight size={16} />
-            </Button>
+            {(dialog === 'support' || canUseStudentConsultation) && (
+              <Button
+                className="edu-button"
+                onClick={() => openDialog(dialog === 'support' ? 'faq' : 'consultation')}
+              >
+                {dialog === 'support' ? 'Xem câu hỏi thường gặp' : 'Tìm hiểu thêm'}
+                <ArrowRight size={16} />
+              </Button>
+            )}
           </div>
         )}
       </Modal>

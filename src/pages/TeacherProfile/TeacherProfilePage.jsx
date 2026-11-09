@@ -24,6 +24,7 @@ import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/com
 import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
+import { PostCommentList } from '@/components/feedback/PostCommentList';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
 import { ReactionCount } from '@/components/feedback/ReactionCount';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
@@ -378,6 +379,7 @@ export function TeacherProfilePage() {
       mediaItems,
       interactionPostIds,
       fallbackPosts,
+      fromAlbum: true,
       activeIndex: index,
       albumId: resolvedAlbum?.id || albumId,
       albumName: resolvedAlbumName,
@@ -1009,36 +1011,6 @@ export function TeacherProfilePage() {
     if (!hasLiked && (post.authorId || post.teacherId) !== user.id) createNotification({ recipientId: post.authorId || post.teacherId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'post_like', title: `${user.name || 'Một thành viên'} đã thích ${mediaId ? 'một mục trong album' : 'bài viết'} của bạn`, description: 'Bấm để xem bài viết.', link: ROUTES.POST_DETAIL(postId) });
     saveTargetInteraction(postId, mediaId, (current) => ({ ...current, likes: hasLiked ? likes.filter((id) => id !== user.id) : [...likes, user.id] }));
   };
-  const comment = (event, postId, mediaId = null) => {
-    event.preventDefault();
-    if (!user) { toast.error('Vui lòng đăng nhập để bình luận.'); return; }
-    const draftKey = `${postId}:${mediaId || 'post'}`;
-    const text = commentText[draftKey]?.trim();
-    const media = commentMedia[draftKey] || null;
-    if (isEditingProfileDiscussion(postId, mediaId)) {
-      if (!text) { toast.error('Bình luận không được để trống.'); return; }
-      saveTargetInteraction(postId, mediaId, (current) => ({
-        ...current,
-        comments: (current.comments || []).map((item) => item.id !== editingDiscussion.commentId ? item : editingDiscussion.replyId
-          ? { ...item, replies: (item.replies || []).map((reply) => reply.id === editingDiscussion.replyId ? { ...reply, text } : reply) }
-          : { ...item, text }),
-      }));
-      setEditingDiscussion(null);
-      setCommentText((current) => ({ ...current, [draftKey]: '' }));
-      setCommentMedia((current) => ({ ...current, [draftKey]: null }));
-      toast.success('Đã cập nhật bình luận.');
-      return;
-    }
-    if (!text && !media) return;
-    const targetPost = getPosts().find((post) => post.id === postId)
-      || getViewerFallbackPost(postId);
-    if (targetPost && (targetPost.authorId || targetPost.teacherId) !== user.id) {
-      createNotification({ recipientId: targetPost?.authorId || targetPost?.teacherId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'post_comment', title: `${user.name || 'Một thành viên'} đã bình luận về bài viết của bạn`, description: text, link: ROUTES.POST_DETAIL(postId) });
-    }
-    saveTargetInteraction(postId, mediaId, (post) => ({ ...post, comments: [...(post.comments || []), { id: `comment-${Date.now()}`, author: user.name || 'Thành viên EduMatch', authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media, replies: [], createdAt: new Date().toISOString() }] }));
-    setCommentText((current) => ({ ...current, [draftKey]: '' }));
-    setCommentMedia((current) => ({ ...current, [draftKey]: null }));
-  };
   const openShareDialog = (post, mediaItem = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để chia sẻ bài viết.'); return; }
     setShareTarget({ post, mediaId: mediaItem?.id || null });
@@ -1102,110 +1074,61 @@ export function TeacherProfilePage() {
     setShareText('');
     toast.success('Bài viết đã được chia sẻ lên trang cá nhân của bạn.');
   };
-  const openProfileReply = (postId, commentId, mediaId = null) => {
-    if (!user) { toast.error('Vui lòng đăng nhập để trả lời bình luận.'); return; }
-    setReplyTarget({ postId, commentId, mediaId });
-    setReplyText('');
-    setReplyMedia(null);
-  };
-  const replyToProfileComment = (event) => {
-    event.preventDefault();
-    if (!replyTarget || !user) return;
-    const text = replyText.trim();
-    if (!text && !replyMedia) return;
-    const targetPost = getPosts().find((post) => post.id === replyTarget.postId)
-      || getViewerFallbackPost(replyTarget.postId);
-    const parentComment = getInteractionTarget(targetPost, replyTarget.mediaId)?.comments?.find((item) => item.id === replyTarget.commentId);
-    const reply = { id: createPostId('reply'), author: user.name || 'Thành viên EduMatch', authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media: replyMedia, likes: [], createdAt: new Date().toISOString() };
-    if (parentComment?.authorId && parentComment.authorId !== user.id) {
-      createNotification({ recipientId: parentComment.authorId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'comment_reply', title: `${user.name || 'Một thành viên'} đã trả lời bình luận của bạn`, description: text, link: ROUTES.POST_DETAIL(replyTarget.postId) });
-    }
-    saveTargetInteraction(replyTarget.postId, replyTarget.mediaId, (post) => ({ ...post, comments: (post.comments || []).map((item) => item.id === replyTarget.commentId ? { ...item, replies: [...(item.replies || []), reply] } : item) }));
-    setReplyTarget(null);
-    setReplyText('');
-    setReplyMedia(null);
-  };
-  const toggleProfileCommentLike = (postId, commentId, replyId = null, mediaId = null) => {
-    if (!user) { toast.error('Vui lòng đăng nhập để thích bình luận.'); return; }
-    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
-    const target = getInteractionTarget(post, mediaId);
-    const comment = target?.comments?.find((item) => item.id === commentId);
-    const reply = comment?.replies?.find((item) => item.id === replyId);
-    const likes = (reply || comment)?.likes || [];
-    saveTargetInteraction(postId, mediaId, (post) => ({
-      ...post,
-      comments: (post.comments || []).map((item) => {
-        if (item.id !== commentId) return item;
-        if (!replyId) return { ...item, likes: likes.includes(user.id) ? likes.filter((id) => id !== user.id) : [...likes, user.id] };
-        return {
-          ...item,
-          replies: (item.replies || []).map((reply) => {
-            if (reply.id !== replyId) return reply;
-            return { ...reply, likes: likes.includes(user.id) ? likes.filter((id) => id !== user.id) : [...likes, user.id] };
-          }),
-        };
-      }),
-    }));
-  };
   const ownsContent = (authorId) => Boolean(user?.id != null && String(authorId) === String(user.id));
-  const discussionKey = (postId, mediaId = null) => `${postId}:${mediaId || 'post'}`;
-  const isEditingProfileDiscussion = (postId, mediaId = null) => Boolean(
-    editingDiscussion
-    && String(editingDiscussion.postId) === String(postId)
-    && String(editingDiscussion.mediaId || '') === String(mediaId || ''),
-  );
-  const cancelProfileDiscussionEdit = (postId, mediaId = null) => {
-    if (!isEditingProfileDiscussion(postId, mediaId)) return;
-    const draftKey = discussionKey(postId, mediaId);
-    setEditingDiscussion(null);
-    setCommentText((current) => ({ ...current, [draftKey]: '' }));
-    setCommentMedia((current) => ({ ...current, [draftKey]: null }));
-  };
   const viewerActiveIndex = imageViewer?.activeIndex || 0;
-  const viewerFallbackPost = imageViewer?.fallbackPosts?.[viewerActiveIndex] || imageViewer?.post;
-  const viewerInteractionPostId = imageViewer?.interactionPostIds?.[viewerActiveIndex] || viewerFallbackPost?.id;
-  const viewerPost = imageViewer ? getPosts().find((post) => post.id === viewerInteractionPostId) || viewerFallbackPost : null;
-  const viewerAuthor = imageViewer?.author || (viewerPost ? { id: viewerPost.authorId || viewerPost.teacherId || '', name: viewerPost.authorName || viewerPost.author || profile.name, role: viewerPost.authorRole || profile.role, avatar: viewerPost.authorAvatar || profile.avatar || '' } : null);
-  const viewerMediaItems = imageViewer?.mediaItems?.length ? imageViewer.mediaItems : getMediaItems(viewerPost);
-  const viewerMedia = viewerMediaItems[viewerActiveIndex] || null;
-  const viewerMatchedPostMedia = viewerPost && viewerMedia
-    ? getMediaItems(viewerPost).find((item) => isSameAlbumMedia(item, viewerMedia)) || null
-    : null;
-  const viewerInteractionTarget = (() => {
-    if (!viewerMedia) return viewerPost;
-    const albumInteractions = getAlbumMediaInteractions();
-    const mediaKey = viewerMedia.storageKey || viewerMedia.id || viewerMedia.src;
+  const viewerPosts = imageViewer ? getPosts() : [];
+  const albumInteractions = imageViewer ? getAlbumMediaInteractions() : {};
+  const viewerMediaItems = imageViewer?.mediaItems || [];
+  const getViewerPost = (index) => {
+    const fallbackPost = imageViewer?.fallbackPosts?.[index] || imageViewer?.post;
+    const postId = imageViewer?.interactionPostIds?.[index] || fallbackPost?.id;
+    return viewerPosts.find((post) => post.id === postId) || fallbackPost;
+  };
+  const getViewerTarget = (index, post) => {
+    const media = viewerMediaItems[index];
+    if (!media) return post;
+
+    const fallbackPost = imageViewer?.fallbackPosts?.[index] || imageViewer?.post;
+    const postMedia = getMediaItems(post);
+    const matchedMedia = postMedia.find((item) => isSameAlbumMedia(item, media));
+    const mediaKey = media.storageKey || media.id || media.src;
     const stored = albumInteractions[mediaKey] || {};
-    if (viewerMatchedPostMedia) {
-      if (getMediaItems(viewerPost).length <= 1) {
+    if (matchedMedia) {
+      if (postMedia.length <= 1) {
         return {
-          ...viewerMatchedPostMedia,
-          likes: [...new Set([...(viewerPost?.likes || []), ...(viewerMatchedPostMedia.likes || []), ...(viewerMedia.likes || []), ...(stored.likes || [])])],
-          comments: viewerMatchedPostMedia.comments?.length
-            ? viewerMatchedPostMedia.comments
-            : (viewerPost?.comments?.length ? viewerPost.comments : (viewerMedia.comments?.length ? viewerMedia.comments : (stored.comments || []))),
+          ...matchedMedia,
+          likes: [...new Set([...(post?.likes || []), ...(matchedMedia.likes || []), ...(media.likes || []), ...(stored.likes || [])])],
+          comments: post?.commentsUpdated
+            ? post.comments
+            : matchedMedia.comments?.length
+              ? matchedMedia.comments
+              : (post?.comments?.length ? post.comments : (media.comments?.length ? media.comments : (stored.comments || []))),
         };
       }
       return {
-        ...viewerMatchedPostMedia,
-        likes: [...new Set([...(viewerMatchedPostMedia.likes || []), ...(viewerMedia.likes || []), ...(stored.likes || [])])],
-        comments: viewerMatchedPostMedia.comments?.length
-          ? viewerMatchedPostMedia.comments
-          : (viewerMedia.comments?.length ? viewerMedia.comments : (stored.comments || [])),
+        ...matchedMedia,
+        likes: [...new Set([...(matchedMedia.likes || []), ...(media.likes || []), ...(stored.likes || [])])],
+        comments: matchedMedia.commentsUpdated || matchedMedia.comments?.length
+          ? matchedMedia.comments
+          : (media.comments?.length ? media.comments : (stored.comments || [])),
       };
     }
     return {
-      ...viewerMedia,
-      likes: [...new Set([...(viewerMedia.likes || []), ...(viewerFallbackPost?.likes || []), ...(stored.likes || [])])],
-      comments: viewerMedia.comments?.length
-        ? viewerMedia.comments
-        : (viewerFallbackPost?.comments?.length ? viewerFallbackPost.comments : (stored.comments || [])),
+      ...media,
+      likes: [...new Set([...(media.likes || []), ...(fallbackPost?.likes || []), ...(stored.likes || [])])],
+      comments: stored.commentsUpdated ? stored.comments : (media.comments?.length
+        ? media.comments
+        : (fallbackPost?.comments?.length ? fallbackPost.comments : (stored.comments || []))),
     };
-  })();
+  };
+  const viewerPost = getViewerPost(viewerActiveIndex);
+  const viewerAuthor = imageViewer?.author || (viewerPost ? { id: viewerPost.authorId || viewerPost.teacherId || '', name: viewerPost.authorName || viewerPost.author || profile.name, role: viewerPost.authorRole || profile.role, avatar: viewerPost.authorAvatar || profile.avatar || '' } : null);
+  const viewerMedia = viewerMediaItems[viewerActiveIndex] || null;
+  const viewerInteractionTarget = getViewerTarget(viewerActiveIndex, viewerPost);
   const viewerDiscussionKey = viewerMedia ? `${viewerPost?.id || 'viewer'}:${viewerMedia.storageKey || viewerMedia.id || viewerMedia.src}` : `${viewerPost?.id}:post`;
   const isEditingViewerDiscussion = Boolean(
     editingDiscussion
-    && (String(editingDiscussion.postId) === String(viewerPost?.id) || editingDiscussion.postId === 'viewer')
+    && editingDiscussion.key === viewerDiscussionKey
   );
   const isGenericProfileTabName = (name) => ['Tất cả', 'Ảnh', 'Video', 'Album', 'all-media', 'photos', 'videos', 'albums'].includes(String(name || '').trim());
   const currentViewerMedia = viewerMedia || imageViewer?.mediaItems?.[viewerActiveIndex];
@@ -1220,21 +1143,25 @@ export function TeacherProfilePage() {
   const rawViewerAlbumName = imageViewer?.albumName || viewerAlbum?.name || viewerPost?.albumName || '';
   const viewerAlbumName = isGenericProfileTabName(rawViewerAlbumName) ? '' : rawViewerAlbumName;
 
-  const saveViewerInteraction = (updater) => {
-    const activeIndex = imageViewer?.activeIndex || 0;
-    const mediaItem = viewerMedia;
+  const saveViewerInteraction = (updater, activeIndex = viewerActiveIndex) => {
+    const mediaItem = viewerMediaItems[activeIndex];
+    const post = getViewerPost(activeIndex);
     if (!mediaItem) return;
 
     const mediaKey = mediaItem.storageKey || mediaItem.id || mediaItem.src;
-    const currentTarget = viewerInteractionTarget || mediaItem;
+    const currentTarget = getViewerTarget(activeIndex, post) || mediaItem;
     const updatedTarget = updater(currentTarget);
     const nextLikes = updatedTarget.likes || [];
     const nextComments = updatedTarget.comments || [];
+    const interaction = {
+      likes: nextLikes,
+      comments: nextComments,
+      ...(updatedTarget.comments !== currentTarget.comments ? { commentsUpdated: true } : {}),
+    };
 
     const updatedMediaItem = {
       ...mediaItem,
-      likes: nextLikes,
-      comments: nextComments,
+      ...interaction,
     };
 
     setImageViewer((current) => {
@@ -1248,21 +1175,19 @@ export function TeacherProfilePage() {
           ...fb,
           media: updatedMediaItem,
           mediaItems: [updatedMediaItem],
-          likes: nextLikes,
-          comments: nextComments,
+          ...interaction,
         };
       });
-      const nextPost = current.post ? {
+      const nextPost = current.post && current.post.id === post?.id ? {
         ...current.post,
         ...(current.post.mediaItems?.length > 1 ? {
           mediaItems: getMediaItems(current.post).map((m) =>
-            isSameAlbumMedia(m, mediaItem) ? { ...m, likes: nextLikes, comments: nextComments } : m
+            isSameAlbumMedia(m, mediaItem) ? { ...m, ...interaction } : m
           ),
         } : {
           media: updatedMediaItem,
           mediaItems: [updatedMediaItem],
-          likes: nextLikes,
-          comments: nextComments,
+          ...interaction,
         }),
       } : current.post;
 
@@ -1274,7 +1199,7 @@ export function TeacherProfilePage() {
       };
     });
 
-    saveAlbumMediaInteraction(mediaKey, { likes: nextLikes, comments: nextComments });
+    saveAlbumMediaInteraction(mediaKey, interaction);
 
     const targetAlbumId = imageViewer?.albumId || mediaItem.albumId;
     const matchedAlbum = visibleProfileAlbums.find((a) => a.id === targetAlbumId)
@@ -1285,45 +1210,41 @@ export function TeacherProfilePage() {
         return {
           ...album,
           media: album.media.map((m) =>
-            isSameAlbumMedia(m, mediaItem) ? { ...m, likes: nextLikes, comments: nextComments } : m
+            isSameAlbumMedia(m, mediaItem) ? { ...m, ...interaction } : m
           ),
         };
       });
       saveProfileAlbums(nextAlbums);
     }
 
-    if (viewerPost && !viewerPost.isAlbumMediaFallback) {
-      const isSingleMediaPost = getMediaItems(viewerPost).length <= 1;
-      const matchedMediaInPost = getMediaItems(viewerPost).find((m) => isSameAlbumMedia(m, mediaItem));
+    if (post && !post.isAlbumMediaFallback) {
+      const isSingleMediaPost = getMediaItems(post).length <= 1;
+      const matchedMediaInPost = getMediaItems(post).find((m) => isSameAlbumMedia(m, mediaItem));
       if (matchedMediaInPost) {
-        updatePostMediaItem(viewerPost.id, matchedMediaInPost.id, (current) => ({
+        updatePostMediaItem(post.id, matchedMediaInPost.id, (current) => ({
           ...current,
-          likes: nextLikes,
-          comments: nextComments,
+          ...interaction,
         }));
       }
       if (isSingleMediaPost) {
-        updatePost(viewerPost.id, (current) => ({
+        updatePost(post.id, (current) => ({
           ...current,
-          likes: nextLikes,
-          comments: nextComments,
+          ...interaction,
         }));
       }
       refreshProfilePosts();
     }
   };
 
-  const likeViewerMedia = () => {
+  const likeViewerMedia = (index, post, likes) => {
     if (!user) { toast.error('Vui lòng đăng nhập để tương tác.'); return; }
-    if (!viewerPost || !viewerMedia) return;
 
-    const currentLikes = viewerInteractionTarget?.likes || [];
-    const hasLiked = currentLikes.includes(user.id);
+    const hasLiked = likes.includes(user.id);
     const nextLikes = hasLiked
-      ? currentLikes.filter((id) => id !== user.id)
-      : [...currentLikes, user.id];
+      ? likes.filter((id) => id !== user.id)
+      : [...likes, user.id];
 
-    const authorId = viewerPost.authorId || viewerPost.teacherId || profile.id;
+    const authorId = post.authorId || post.teacherId || profile.id;
     if (!hasLiked && authorId !== user.id) {
       createNotification({
         recipientId: authorId,
@@ -1336,7 +1257,27 @@ export function TeacherProfilePage() {
       });
     }
 
-    saveViewerInteraction((target) => ({ ...target, likes: nextLikes }));
+    saveViewerInteraction((target) => ({ ...target, likes: nextLikes }), index);
+  };
+
+  const getViewerInteractions = (index) => {
+    const post = getViewerPost(index);
+    const target = getViewerTarget(index, post);
+    const likes = target?.likes || [];
+    const shareIds = [...new Set(viewerPosts
+      .filter((candidate) => candidate.sharedPost?.id === post?.id && candidate.sharedPost?.mediaId === target?.id)
+      .map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))];
+
+    return {
+      likes,
+      shareIds,
+      commentCount: target?.comments?.length || 0,
+      isMedia: true,
+      isLiked: likes.includes(user?.id),
+      like: () => likeViewerMedia(index, post, likes),
+      share: () => openShareDialog(post, target),
+      canManageMedia: ownsContent(post?.authorId || post?.teacherId),
+    };
   };
 
   const commentViewerMedia = (event) => {
@@ -1495,11 +1436,11 @@ export function TeacherProfilePage() {
     const comment = (viewerInteractionTarget?.comments || []).find((c) => c.id === commentId);
     const target = replyId ? comment?.replies?.find((r) => r.id === replyId) : comment;
     if (!target || !ownsContent(target.authorId)) return;
-    setEditingDiscussion({ postId: viewerPost?.id || 'viewer', commentId, replyId, mediaId: viewerMedia?.id });
+    setEditingDiscussion({ key: viewerDiscussionKey, commentId, replyId });
     setCommentText((current) => ({ ...current, [viewerDiscussionKey]: target.text || '' }));
     setCommentMedia((current) => ({ ...current, [viewerDiscussionKey]: null }));
     requestAnimationFrame(() => {
-      document.querySelector('.post-image-dialog .post-comment-form textarea')?.focus();
+      document.querySelector('.post-image-comments-sheet > div > .post-comment-form textarea, .post-image-dialog__discussion > .post-comment-form textarea')?.focus();
     });
   };
 
@@ -1536,29 +1477,29 @@ export function TeacherProfilePage() {
     }
   };
 
+  const reloadCurrentProfile = (event, profileId) => {
+    if (String(profileId) !== String(teacherId)) return;
+    event.preventDefault();
+    window.location.reload();
+  };
+
   const imageViewerDiscussion = viewerInteractionTarget ? (
     <>
       <div className="post-image-dialog__comments">
-        {(viewerInteractionTarget.comments || []).map((item) => {
+        {viewerInteractionTarget.comments?.length ? <PostCommentList items={viewerInteractionTarget.comments} renderItem={(item) => {
           const isReplying = replyTarget?.commentId === item.id;
           const authorName = item.authorName || item.author || 'Thành viên EduMatch';
           const isCommentLiked = (item.likes || []).includes(user?.id);
           return (
             <div className="post-image-dialog__comment" key={item.id}>
-              {item.authorId ? (
-                <Link to={ROUTES.TEACHER_PROFILE(item.authorId)} onClick={(event) => reloadCurrentProfile(event, item.authorId)}>
+              <div className="discussion-item__head">
+                {item.authorId ? (
+                  <Link to={ROUTES.TEACHER_PROFILE(item.authorId)} onClick={(event) => reloadCurrentProfile(event, item.authorId)}>
+                    <strong>{authorName}</strong>
+                  </Link>
+                ) : (
                   <strong>{authorName}</strong>
-                </Link>
-              ) : (
-                <strong>{authorName}</strong>
-              )}
-              {item.text && <p>{item.text}</p>}
-              <DiscussionMedia media={item.media} className="discussion-image" alt={`Ảnh đính kèm từ ${authorName}`} />
-              <div className="post-image-dialog__comment-actions">
-                <button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id)}>
-                  {isCommentLiked ? 'Đã thích' : 'Thích'}
-                </button>
-                <button type="button" onClick={() => openViewerReply(item.id)}>Trả lời</button>
+                )}
                 {ownsContent(item.authorId) && (
                   <ContentMenu
                     id={`viewer-profile-comment-${item.id}`}
@@ -1569,30 +1510,33 @@ export function TeacherProfilePage() {
                     label="bình luận"
                   />
                 )}
+              </div>
+              {item.text && <p>{item.text}</p>}
+              <DiscussionMedia media={item.media} className="discussion-image" alt={`Ảnh đính kèm từ ${authorName}`} />
+              <div className="post-image-dialog__comment-actions">
+                <button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id)}>
+                  {isCommentLiked ? 'Đã thích' : 'Thích'}
+                </button>
+                <button type="button" onClick={() => openViewerReply(item.id)}>Trả lời</button>
                 <ReactionCount
                   count={item.likes?.length}
                   label="Xem những người đã thích bình luận này"
                   onClick={() => setLikesTarget({ ids: item.likes, label: 'Những người đã thích bình luận này' })}
                 />
               </div>
-              {(item.replies || []).map((reply) => {
+              <PostCommentList items={item.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
                 const replyAuthor = reply.authorName || reply.author || 'Thành viên EduMatch';
                 const isReplyLiked = (reply.likes || []).includes(user?.id);
                 return (
                   <div className="post-image-dialog__comment-reply" key={reply.id}>
-                    {reply.authorId ? (
-                      <Link to={ROUTES.TEACHER_PROFILE(reply.authorId)} onClick={(event) => reloadCurrentProfile(event, reply.authorId)}>
+                    <div className="discussion-item__head">
+                      {reply.authorId ? (
+                        <Link to={ROUTES.TEACHER_PROFILE(reply.authorId)} onClick={(event) => reloadCurrentProfile(event, reply.authorId)}>
+                          <strong>{replyAuthor}</strong>
+                        </Link>
+                      ) : (
                         <strong>{replyAuthor}</strong>
-                      </Link>
-                    ) : (
-                      <strong>{replyAuthor}</strong>
-                    )}
-                    {reply.text && <p>{reply.text}</p>}
-                    <DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor}`} />
-                    <div className="post-image-dialog__comment-actions">
-                      <button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id, reply.id)}>
-                        {isReplyLiked ? 'Đã thích' : 'Thích'}
-                      </button>
+                      )}
                       {ownsContent(reply.authorId) && (
                         <ContentMenu
                           id={`viewer-profile-reply-${reply.id}`}
@@ -1603,6 +1547,13 @@ export function TeacherProfilePage() {
                           label="phản hồi"
                         />
                       )}
+                    </div>
+                    {reply.text && <p>{reply.text}</p>}
+                    <DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor}`} />
+                    <div className="post-image-dialog__comment-actions">
+                      <button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id, reply.id)}>
+                        {isReplyLiked ? 'Đã thích' : 'Thích'}
+                      </button>
                       <ReactionCount
                         count={reply.likes?.length}
                         label="Xem những người đã thích phản hồi này"
@@ -1611,7 +1562,7 @@ export function TeacherProfilePage() {
                     </div>
                   </div>
                 );
-              })}
+              }} />
               {isReplying && (
                 <form className="post-comment-form post-image-dialog__reply-form" onSubmit={replyToViewerComment}>
                   <textarea
@@ -1628,11 +1579,11 @@ export function TeacherProfilePage() {
               )}
             </div>
           );
-        })}
+        }} /> : <p>Chưa có bình luận.</p>}
       </div>
       <form className="post-comment-form" onSubmit={commentViewerMedia}>
         <textarea
-          autoFocus={isEditingViewerDiscussion || !replyTarget}
+          autoFocus={isEditingViewerDiscussion}
           value={commentText[viewerDiscussionKey] || ''}
           onChange={(event) => setCommentText((current) => ({ ...current, [viewerDiscussionKey]: event.target.value }))}
           onKeyDown={submitOnPlainEnter}
@@ -1683,27 +1634,6 @@ export function TeacherProfilePage() {
     deletePost(post.id);
     refreshProfilePosts();
   };
-  const editProfileComment = (postId, commentId, replyId = null, mediaId = null) => {
-    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
-    const comment = getInteractionTarget(post, mediaId)?.comments?.find((item) => item.id === commentId);
-    const target = replyId ? comment?.replies?.find((item) => item.id === replyId) : comment;
-    if (!target || !ownsContent(target.authorId)) return;
-    const draftKey = discussionKey(postId, mediaId);
-    setEditingDiscussion({ postId, commentId, replyId, mediaId });
-    setCommentText((current) => ({ ...current, [draftKey]: target.text || '' }));
-    setCommentMedia((current) => ({ ...current, [draftKey]: null }));
-    requestAnimationFrame(() => {
-      const dialogInput = document.querySelector('.post-image-dialog .post-comment-form textarea');
-      (dialogInput || document.getElementById(`profile-comment-${postId}`))?.focus();
-    });
-  };
-  const removeProfileComment = (postId, commentId, replyId = null, mediaId = null) => {
-    const post = getPosts().find((item) => item.id === postId) || getViewerFallbackPost(postId);
-    const comment = getInteractionTarget(post, mediaId)?.comments?.find((item) => item.id === commentId);
-    const target = replyId ? comment?.replies?.find((item) => item.id === replyId) : comment;
-    if (!target || !ownsContent(target.authorId) || !window.confirm('Xóa bình luận này?')) return;
-    saveTargetInteraction(postId, mediaId, (current) => ({ ...current, comments: replyId ? (current.comments || []).map((item) => item.id === commentId ? { ...item, replies: (item.replies || []).filter((reply) => reply.id !== replyId) } : item) : (current.comments || []).filter((item) => item.id !== commentId) }));
-  };
   const messageProfile = async () => {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để nhắn tin.'); navigate(ROUTES.LOGIN); return; }
     if (ownsProfile || chatOpening.current) return;
@@ -1733,11 +1663,6 @@ export function TeacherProfilePage() {
     if (!(image instanceof HTMLImageElement) || !image.matches('.discussion-image, .review-media')) return;
     setExpandedCommentImage({ src: image.currentSrc || image.src, alt: image.alt || 'Ảnh đính kèm' });
   };
-  const reloadCurrentProfile = (event, profileId) => {
-    if (String(profileId) !== String(teacherId)) return;
-    event.preventDefault();
-    window.location.reload();
-  };
 
   return <div onClickCapture={openCommentImage} className={hasSubmittedVerification ? 'has-submitted-verification' : ''}><section className="learning-page teacher-public-page"><div className="learning-container">
     <header className={`teacher-cover ${profile.coverImage ? 'has-custom-cover' : ''}`} style={coverStyle}>
@@ -1750,8 +1675,8 @@ export function TeacherProfilePage() {
       {ownsProfile && <PostComposerTrigger avatar={profile.avatar} role={profile.role} placeholder="Hãy chia sẻ để học viên hiểu hơn về bạn" onOpen={() => setIsPostComposerOpen(true)} />}
       {posts.length ? renderedPosts.map((post) => {
         const likes = post.likes || [];
-        const comments = post.comments || [];
-        const isEditingPostDiscussion = isEditingProfileDiscussion(post.id);
+        const isLiked = likes.includes(user?.id);
+        const postCommentsUrl = ROUTES.POST_COMMENTS(post.id);
         const postMediaItems = getMediaItems(post);
         const postAuthor = (item) => {
           const authorId = item.authorId || item.teacherId || '';
@@ -1775,15 +1700,18 @@ export function TeacherProfilePage() {
           {editingPostId === post.id ? <InlinePostEditor draft={editingPostText} onDraftChange={setEditingPostText} media={editingPostMedia} onMediaChange={setEditingPostMedia} onCancel={cancelProfilePostEdit} onSave={(event) => saveProfilePostEdit(event, post)} attachmentId={`profile-edit-post-media-${post.id}`} /> : post.text && <p>{post.text}</p>}
           {originalSharedPost && <div className="shared-post"><span>Đã chia sẻ <Link to={ROUTES.POST_DETAIL(originalSharedPost.id)}>bài viết gốc</Link> của</span>{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}<p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`social-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = getPosts().find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ảnh chia sẻ ${index + 1}`}><img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} /></button>)}</div>}</div>}
           {postMediaItems.length > 0 && <div className={`social-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, postAuthor(post), postMediaItems, index)} aria-label={`Mở ảnh ${index + 1}`}><img src={item.src} alt={`Ảnh ${index + 1} do ${profile.name} chia sẻ`} /></button>)}</div>}
-          <div className="social-post__summary"><div>{likes.length ? <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: likes, label: 'Những người đã thích bài viết này' })}>{likes.length} lượt thích</button> : <span>Hãy là người đầu tiên thích bài viết này</span>}{comments.length > 0 && <span>{comments.length} bình luận</span>}{shareCount > 0 && <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: shareIds, kind: 'share', title: 'Lượt chia sẻ', label: 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })}>{shareCount} lượt chia sẻ</button>}</div></div>
-          <div className="social-post__actions"><button onClick={() => like(post.id)} className={likes.includes(user?.id) ? 'is-liked' : ''}><Heart size={17} fill={likes.includes(user?.id) ? 'currentColor' : 'none'} /> Thích</button><button type="button" onClick={() => document.getElementById(`profile-comment-${post.id}`)?.focus()}><MessageCircle size={16} /> Bình luận</button><button type="button" onClick={() => openShareDialog(post)}><Share2 size={16} /> Chia sẻ</button></div>
-          {comments.map((item) => {
-            const commentLikes = item.likes || [];
-            const isCommentLiked = commentLikes.includes(user?.id);
-            const isReplying = replyTarget?.postId === post.id && replyTarget?.commentId === item.id;
-            return <div className="post-comment" key={item.id}><div className="post-comment__head">{item.authorId ? <Link className="post-comment__author" to={ROUTES.TEACHER_PROFILE(item.authorId)} onClick={(event) => reloadCurrentProfile(event, item.authorId)}>{item.authorName || item.author}</Link> : <strong>{item.author}</strong>}{ownsContent(item.authorId) && <ContentMenu id={`comment-${item.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editProfileComment(post.id, item.id)} onDelete={() => removeProfileComment(post.id, item.id)} label="bình luận" />}</div>{item.text && <span>{item.text}</span>}<DiscussionMedia media={item.media} className="review-media" alt={`Ảnh đính kèm từ ${item.author}`} /><div className="post-comment__reaction"><time className="post-comment__time">{formatPublishedAt(item.createdAt)}</time><button type="button" className={`post-comment__like ${isCommentLiked ? 'is-liked' : ''}`} onClick={() => toggleProfileCommentLike(post.id, item.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" className="post-comment__reply-button" onClick={() => openProfileReply(post.id, item.id)}>Trả lời</button><ReactionCount count={commentLikes.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: commentLikes, label: 'Những người đã thích bình luận này' })} /></div>{(item.replies || []).map((reply) => { const replyLikes = reply.likes || []; const isReplyLiked = replyLikes.includes(user?.id); return <div className="post-comment__reply" key={reply.id}><strong>{reply.authorId ? <Link className="post-comment__author" to={ROUTES.TEACHER_PROFILE(reply.authorId)} onClick={(event) => reloadCurrentProfile(event, reply.authorId)}>{reply.authorName || reply.author}</Link> : reply.author}</strong>{reply.text && <span>{reply.text}</span>}<DiscussionMedia media={reply.media} className="review-media" alt={`Ảnh đính kèm từ ${reply.author}`} /><div className="post-comment__reaction"><time className="post-comment__time">{formatPublishedAt(reply.createdAt)}</time><button type="button" className={`post-comment__like ${isReplyLiked ? 'is-liked' : ''}`} onClick={() => toggleProfileCommentLike(post.id, item.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button>{ownsContent(reply.authorId) && <ContentMenu id={`reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editProfileComment(post.id, item.id, reply.id)} onDelete={() => removeProfileComment(post.id, item.id, reply.id)} label="phản hồi" />}<ReactionCount count={replyLikes.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: replyLikes, label: 'Những người đã thích phản hồi này' })} /></div></div>; })}{isReplying && <form className="post-comment-form post-comment-form--reply" onSubmit={replyToProfileComment}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${item.authorName || item.author}...`} rows="1" /><ImageAttachment id={`profile-reply-image-${post.id}-${item.id}`} value={replyMedia} onChange={setReplyMedia} label="Tệp" /><button type="submit">Gửi</button></form>}</div>;
-          })}
-          <form className="post-comment-form" onSubmit={(event) => comment(event, post.id)}><textarea id={`profile-comment-${post.id}`} value={commentText[`${post.id}:post`] || ''} onChange={(event) => setCommentText((current) => ({ ...current, [`${post.id}:post`]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder={isEditingPostDiscussion ? 'Chỉnh sửa bình luận...' : 'Viết bình luận...'} rows="1" />{!isEditingPostDiscussion && <ImageAttachment id={`profile-comment-image-${post.id}`} value={commentMedia[`${post.id}:post`] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [`${post.id}:post`]: media }))} label="Tệp" />}{isEditingPostDiscussion && <button type="button" onClick={() => cancelProfileDiscussionEdit(post.id)}>Hủy</button>}<button type="submit">{isEditingPostDiscussion ? 'Lưu' : 'Gửi'}</button></form>
+          <div className="social-post__summary">
+            <div>
+              {likes.length ? <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: likes, label: 'Những người đã thích bài viết này' })}>{likes.length} lượt thích</button> : <span>0 lượt thích</span>}
+              <Link className="social-likes-count" to={postCommentsUrl} state={{ fromPostList: true }}>{post.comments?.length || 0} bình luận</Link>
+              {shareCount ? <button type="button" className="social-likes-count" onClick={() => setLikesTarget({ ids: shareIds, kind: 'share', title: 'Lượt chia sẻ', label: 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })}>{shareCount} lượt chia sẻ</button> : <span>0 lượt chia sẻ</span>}
+            </div>
+          </div>
+          <div className="social-post__actions">
+            <button type="button" onClick={() => like(post.id)} className={isLiked ? 'is-liked' : ''} aria-pressed={isLiked}><Heart size={17} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Đã thích' : 'Thích'}</button>
+            <Link to={postCommentsUrl} state={{ fromPostList: true }}><MessageCircle size={16} /> Bình luận</Link>
+            <button type="button" onClick={() => openShareDialog(post)}><Share2 size={16} /> Chia sẻ</button>
+          </div>
         </article>;
       }) : <div className="feed-empty"><Star size={23} /><p>{isCenterProfile ? 'Trung tâm chưa có bài viết nào.' : isTeacherProfile ? 'Giáo viên chưa có bài viết nào.' : 'Học viên chưa có bài viết nào.'}</p></div>}
       {renderedPosts.length < posts.length && <div ref={loadMorePostsRef} className="teacher-feed__load-more" aria-live="polite">Đang tải thêm bài viết…</div>}
@@ -1815,7 +1743,24 @@ export function TeacherProfilePage() {
     <Modal open={Boolean(expandedCommentImage)} onClose={() => setExpandedCommentImage(null)} title="Ảnh đính kèm" size="xl" className="expandable-image-dialog">
       <div className="expandable-image-dialog__content">{expandedCommentImage && <img src={expandedCommentImage.src} alt={expandedCommentImage.alt} />}</div>
     </Modal>
-    <PostImageDialog key={imageViewer ? `${imageViewer.post.id}-${imageViewer.activeIndex}` : 'closed'} viewer={imageViewer && { ...imageViewer, post: viewerPost, author: viewerAuthor, publishedAt: formatPublishedAt(viewerPost?.createdAt), albumName: viewerAlbumName }} albumName={viewerAlbumName} interactionTarget={viewerInteractionTarget || null} onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)} onClose={() => setImageViewer(null)} onAuthorClick={handleViewerAuthorClick} discussion={imageViewerDiscussion} onLike={likeViewerMedia} onShowLikes={() => setLikesTarget({ ids: viewerInteractionTarget?.likes || [], label: viewerMedia ? 'Những người đã thích ảnh/video này' : 'Những người đã thích bài viết này' })} onShare={() => openShareDialog(viewerPost, viewerInteractionTarget)} shareCount={viewerPost ? [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost.id && (viewerMedia ? candidate.sharedPost?.mediaId === (viewerInteractionTarget?.id || viewerMedia.id) : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))].length : 0} onShowShares={() => setLikesTarget({ ids: [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === viewerPost?.id && (viewerMedia ? candidate.sharedPost?.mediaId === (viewerInteractionTarget?.id || viewerMedia.id) : !candidate.sharedPost?.mediaId)).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))], kind: 'share', title: 'Lượt chia sẻ', label: viewerMedia ? 'Những người đã chia sẻ ảnh/video này' : 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })} isLiked={(viewerInteractionTarget?.likes || []).includes(user?.id)} canManageMedia={Boolean(viewerPost && ownsContent(viewerPost.authorId || viewerPost.teacherId))} onEditMedia={updateViewedMediaDescription} onDeleteMedia={deleteViewedMedia} />
+    <PostImageDialog
+      viewer={imageViewer && {
+        ...imageViewer,
+        post: viewerPost,
+        author: viewerAuthor,
+        publishedAt: formatPublishedAt(viewerPost?.createdAt),
+        albumName: viewerAlbumName,
+      }}
+      getInteractions={getViewerInteractions}
+      onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)}
+      onClose={() => setImageViewer(null)}
+      onAuthorClick={handleViewerAuthorClick}
+      discussion={imageViewerDiscussion}
+      onShowLikes={(ids, kind) => setLikesTarget({ ids, label: `Những người đã thích ${kind} này` })}
+      onShowShares={(ids, kind) => setLikesTarget({ ids, kind: 'share', title: 'Lượt chia sẻ', label: `Những người đã chia sẻ ${kind} này` })}
+      onEditMedia={updateViewedMediaDescription}
+      onDeleteMedia={deleteViewedMedia}
+    />
     <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm">
       <form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form>
     </Modal>

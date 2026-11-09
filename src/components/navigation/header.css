@@ -256,25 +256,6 @@
   gap: 12px;
 }
 
-.theme-toggle {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  color: var(--edu-muted);
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 120ms ease;
-}
-
-.theme-toggle:hover {
-  background: var(--edu-tag);
-  color: var(--edu-green);
-}
-
 .login-link {
   color: var(--edu-ink);
   font-weight: 600;
@@ -373,7 +354,10 @@
 }
 
 .mobile-menu-toggle,
-.mobile-navigation {
+.mobile-navigation,
+.mobile-header-search,
+.mobile-header-shortcuts,
+.notification-popover.mobile-header-notifications {
   display: none;
 }
 
@@ -382,10 +366,111 @@
   .desktop-nav {
     display: none !important;
   }
-  .header-search {
-    flex: 1;
-    max-width: 260px;
+  .edu-header .header-inner {
+    gap: 14px;
+  }
+  .header-inner > .header-search,
+  .header-inner .header-auth > :is(.account-menu, .login-link, .register-button) {
+    display: none;
+  }
+  .header-inner .header-auth {
     margin-left: auto;
+  }
+  .mobile-header-shortcuts {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 4px;
+  }
+  .mobile-header-shortcuts > :is(a, button) {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--edu-green);
+    cursor: pointer;
+  }
+  .mobile-header-shortcuts > :is(a, button):hover,
+  .mobile-header-shortcuts > [aria-current="page"],
+  .mobile-header-shortcuts > [aria-expanded="true"] {
+    background: var(--edu-tag);
+  }
+  .mobile-header-shortcuts b {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 16px;
+    padding: 1px 3px;
+    border: 1px solid var(--edu-surface);
+    border-radius: 999px;
+    background: #d35656;
+    color: var(--edu-on-primary);
+    font-size: 9px;
+    line-height: 12px;
+    text-align: center;
+  }
+  .notification-popover.mobile-header-notifications {
+    display: block;
+    top: calc(100% + 6px);
+    right: 12px;
+    width: min(390px, calc(100% - 24px));
+  }
+  .mobile-header-search {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 12px;
+    width: min(390px, calc(100% - 24px));
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border: 1px solid var(--edu-line);
+    border-radius: 12px;
+    background: var(--edu-surface);
+    box-shadow: var(--edu-shadow);
+  }
+  .mobile-header-search .header-search {
+    width: 100%;
+    max-width: none;
+    height: 44px;
+    margin: 0;
+    padding: 0 8px 0 12px;
+  }
+  .mobile-header-search .header-search input {
+    font-size: 16px;
+  }
+  .mobile-header-search .header-search > svg {
+    flex-shrink: 0;
+  }
+  .mobile-header-search .header-search button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: var(--edu-green);
+    color: var(--edu-on-primary);
+    cursor: pointer;
+  }
+  .mobile-header-search > a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 8px;
+    color: var(--edu-green);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .mobile-header-search > a:hover {
+    background: var(--edu-soft);
   }
   .mobile-menu-toggle {
     display: inline-flex !important;
@@ -427,11 +512,13 @@
     background: var(--edu-soft);
     color: var(--edu-green);
   }
-  .mobile-navigation .header-search {
-    width: 100%;
-    max-width: 100%;
-    height: 42px;
-    margin-bottom: 8px;
+  .mobile-navigation > .mobile-navigation__profile-link {
+    background: var(--edu-soft);
+    color: var(--edu-green);
+    overflow-wrap: anywhere;
+  }
+  .mobile-navigation > .mobile-navigation__profile-link:hover {
+    background: var(--edu-tag);
   }
 }
 
@@ -447,11 +534,6 @@
     box-sizing: border-box !important;
     justify-content: space-between !important;
   }
-  .header-inner > .header-search,
-  .header-auth .login-link,
-  .user-name {
-    display: none !important;
-  }
   .edu-brand {
     font-size: 18px !important;
     gap: 7px !important;
@@ -464,13 +546,6 @@
   .header-auth {
     margin-left: auto !important;
     gap: 6px !important;
-  }
-  .header-auth .edu-button,
-  .header-auth .register-button {
-    height: 34px !important;
-    padding: 0 10px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
   }
   .mobile-menu-toggle {
     width: 36px !important;
@@ -488,11 +563,13 @@
   .edu-brand {
     font-size: 16px !important;
   }
-  .header-auth .register-button {
-    padding: 0 7px !important;
-    font-size: 11px !important;
+  .header-auth {
+    gap: 4px !important;
   }
-  .header-auth .register-button svg {
-    display: none;
+  .mobile-header-shortcuts {
+    gap: 2px;
+  }
+  .mobile-header-shortcuts > :is(a, button) {
+    width: 32px;
   }
 }

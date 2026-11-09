@@ -24,6 +24,7 @@
   --color-on-accent: #ffffff;
   --color-trust: #e53935;
   --color-trust-light: #fff1f3;
+  --color-reaction-active: #bf2d34;
   --color-danger: #a75656;
   --color-danger-light: #f6eeee;
   --color-online: #32b779;
@@ -142,28 +143,6 @@
   --edu-shadow: var(--shadow-edu);
   --edu-on-primary: var(--color-on-primary);
   --edu-gold: var(--color-badge-gold);
-}
-.edu-site[data-theme="dark"] {
-  --color-on-primary: #15332a;
-  --color-badge-gold: #e6c088;
-  --color-bg: #14221f;
-  --color-surface: #1c2d27;
-  --color-soft: #23372f;
-  --color-mint: #233c32;
-  --color-ink: #e8f1ec;
-  --color-muted: #b0c1b7;
-  --color-faint: #a2b6ab;
-  --color-line: #354b40;
-  --color-primary: #85d6b7;
-  --color-primary-hover: #a4e6ce;
-  --color-tag: #2c493b;
-  --shadow-edu: 0 8px 30px rgb(5 20 12 / 20%);
-  --color-badge-gold-bg: #423622;
-  --color-trust: #efa8b8;
-  --color-trust-light: #422c34;
-  --color-danger: #efaaaa;
-  --color-danger-light: #422d2d;
-  color-scheme: dark;
 }
 
 /* Small, reusable image control used by discussions and course reviews. */

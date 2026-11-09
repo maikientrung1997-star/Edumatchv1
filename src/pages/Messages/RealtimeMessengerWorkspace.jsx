@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
-import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Camera, Check, ChevronLeft, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, MessageCircle, PanelRight, Plus, Search, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useDesktopChat } from '@/hooks/useDesktopChat';
 import { useRealtimeChat } from '@/hooks/useRealtimeChat';
 import { chatService, chatError, chatRole } from '@/services/chatService';
 import { chatTime } from '@/utils/chatState';
@@ -347,7 +348,7 @@ function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia })
   </section>;
 }
 
-function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user }) {
+function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
   const thread = useRealtimeChat(conversationId);
   const chat = useChat();
   const { online, presenceReady, conversations } = chat;
@@ -360,12 +361,6 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
   const partner = detail?.partner;
   const onlineNow = partner && presenceReady && online.has(String(partner.id));
   const onlineText = !presenceReady ? 'Chưa rõ trạng thái' : onlineNow ? 'Đang hoạt động' : 'Ngoại tuyến';
-
-  useEffect(() => {
-    if (user?.id && conversationId) {
-      setChatWidget(user.id, String(conversationId), { isClosed: false, isMinimized: false });
-    }
-  }, [conversationId, user?.id]);
 
   const currentConv = conversations.find((c) => Number(c.id) === Number(conversationId));
   const isUnread = Boolean(currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread));
@@ -438,7 +433,6 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
       {detail && (
         <ChatComposer
           thread={thread}
-          theme={theme}
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
         />
@@ -543,7 +537,7 @@ function ActiveThread({ conversationId, theme, onBack, infoOpen, onInfo, user })
 }
 
 export function MessengerWorkspace() {
-  const { theme = 'light' } = useOutletContext() || {};
+  const desktopChat = useDesktopChat();
   const { user } = useAuth();
   const chat = useChat();
   const [params, setParams] = useSearchParams();
@@ -608,10 +602,15 @@ export function MessengerWorkspace() {
   const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
   const { upsert, conversations, markUnread } = chat;
 
+  useEffect(() => {
+    if (desktopChat && user?.id && selectedId) {
+      setChatWidget(user.id, String(selectedId), { isClosed: false, isMinimized: false });
+    }
+  }, [desktopChat, user?.id, selectedId]);
+
   const lastOpenedIdRef = useRef(null);
   useEffect(() => {
     if (user?.id && selectedId) {
-      setChatWidget(user.id, String(selectedId), { isClosed: false, isMinimized: false });
       if (lastOpenedIdRef.current !== selectedId) {
         lastOpenedIdRef.current = selectedId;
         const currentConv = conversations.find((c) => Number(c.id) === Number(selectedId));
@@ -638,9 +637,6 @@ export function MessengerWorkspace() {
     upsert({ ...conversation, unread_count: 0, is_manual_unread: false });
     setParams({ conversation: conversation.id });
     setMobileView('chat');
-    if (user?.id) {
-      setChatWidget(user.id, String(conversation.id), { isClosed: false, isMinimized: false });
-    }
   };
   const openPerson = async (person) => {
     if (opening) return;
@@ -783,7 +779,6 @@ export function MessengerWorkspace() {
       <ActiveThread
         key={`${user?.id}:${selectedId}`}
         conversationId={selectedId}
-        theme={theme}
         onBack={handleBack}
         infoOpen={infoOpen}
         onInfo={handleToggleInfo}

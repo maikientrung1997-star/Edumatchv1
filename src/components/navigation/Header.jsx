@@ -9,13 +9,11 @@ import {
   Info,
   Menu,
   MessageCircle,
-  Moon,
   Newspaper,
   PartyPopper,
   Phone,
   Search,
   ShieldCheck,
-  Sun,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -76,21 +74,23 @@ const notificationTime = (value) => {
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
 };
 
-export const Header = ({ theme, onToggleTheme }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+export const Header = () => {
+  const [mobilePanel, setMobilePanel] = useState(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [params] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const locationKey = `${location.pathname}${location.search}${location.hash}`;
+  const activeMobilePanel = mobilePanel?.locationKey === locationKey ? mobilePanel.name : null;
   const [notificationPanel, setNotificationPanel] = useState({ open: false, locationKey: '' });
-  const { isAuthenticated, user, token, logout } = useAuth();
+  const { isAuthenticated, user, token, logout, canUseStudentConsultation } = useAuth();
   const { counts: chatCounts } = useChat();
   const [notifications, setNotifications] = useState(() => user?.id ? getNotifications(user.id) : []);
   const [serverNotifications, setServerNotifications] = useState({ userId: null, items: [] });
   const receivedServerNotificationIds = useRef(new Set());
   const accountMenuRef = useRef(null);
   const headerRef = useRef(null);
+  const mobileSearchTriggerRef = useRef(null);
   useEffect(() => {
     const header = headerRef.current;
     const site = header?.closest('.edu-site');
@@ -255,9 +255,21 @@ export const Header = ({ theme, onToggleTheme }) => {
   const readAllNotifications = () => {
     markAllAsRead();
   };
-  const openDialog = (name) => {
-    setMobileMenuOpen(false);
-    navigate({ pathname: ROUTES.HOME, search: `?dialog=${name}` });
+  const closeMobilePanels = () => {
+    setMobilePanel(null);
+    if (notificationOpen) setNotificationPanel({ open: false, locationKey });
+  };
+  const toggleMobilePanel = (name) => {
+    if (notificationOpen) setNotificationPanel({ open: false, locationKey });
+    setMobilePanel(activeMobilePanel === name ? null : { name, locationKey });
+  };
+  const toggleMobileNotifications = () => {
+    setMobilePanel(null);
+    toggleNotifications();
+  };
+  const openStudentConsultation = () => {
+    setMobilePanel(null);
+    navigate({ pathname: ROUTES.HOME, search: '?dialog=consultation' });
   };
   const search = (event) => {
     event.preventDefault();
@@ -266,13 +278,33 @@ export const Header = ({ theme, onToggleTheme }) => {
       pathname: ROUTES.SEARCH_RESULTS,
       search: `?need=${encodeURIComponent(value)}`,
     });
-    setMobileMenuOpen(false);
+    setMobilePanel(null);
   };
   const openOwnProfile = (event) => {
     if (location.pathname !== ROUTES.TEACHER_PROFILE(user?.id)) return;
     event.preventDefault();
     window.location.reload();
   };
+  const renderNotificationPopover = (className, id) => (
+    <section id={id} className={className} aria-label="Danh sách thông báo">
+      <header><div><strong>Thông báo</strong><span>{unreadNotifications ? `${unreadNotifications} chưa đọc` : 'Bạn đã đọc tất cả'}</span></div><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}><CheckCheck size={15} /> Đánh dấu đã đọc</button></header>
+      <div className="notification-popover__list">
+        {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
+          const copy = formatNotificationCopy(notification, isCenterAccount);
+          return <Link
+            to={notificationDestination(notification)}
+            key={notification.id}
+            className={!notification.isRead ? 'is-unread' : ''}
+            onClick={() => openNotification(notification.id)}
+          >
+            {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className={`notification-type-icon${isApprovedVerificationNotification(notification) ? ' is-celebration' : ''}`}>{notificationIcon(notification.type, notification)}</span>}
+            <div><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
+            {!notification.isRead && <i aria-label="Chưa đọc" />}
+          </Link>;
+        }) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
+      </div>
+    </section>
+  );
 
   return (
     <header className="edu-header" ref={headerRef}>
@@ -306,13 +338,8 @@ export const Header = ({ theme, onToggleTheme }) => {
           </Link>
           <Link to={ROUTES.FEED}><Newspaper size={16} /> Bảng Tin</Link>
           <Link to={teachingDestination}>{teachingLabel}</Link>
-          {isCenterAccount ? (
-            <Link className="consultation-nav" to={ROUTES.CENTER_SUPPORT}>
-              <Phone size={14} />
-              Tư vấn miễn phí
-            </Link>
-          ) : (
-            <button className="consultation-nav" onClick={() => openDialog('consultation')}>
+          {canUseStudentConsultation && (
+            <button type="button" className="consultation-nav" onClick={openStudentConsultation}>
               <Phone size={14} />
               Tư vấn miễn phí
             </button>
@@ -333,36 +360,58 @@ export const Header = ({ theme, onToggleTheme }) => {
               <Bell size={17} />
               {unreadNotifications > 0 && <b>{unreadNotifications > 99 ? '99+' : unreadNotifications}</b>}
             </button>
-            {notificationOpen && <section className="notification-popover" aria-label="Danh sách thông báo">
-              <header><div><strong>Thông báo</strong><span>{unreadNotifications ? `${unreadNotifications} chưa đọc` : 'Bạn đã đọc tất cả'}</span></div><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}><CheckCheck size={15} /> Đánh dấu đã đọc</button></header>
-              <div className="notification-popover__list">
-                {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
-                  const copy = formatNotificationCopy(notification, isCenterAccount);
-                  return <Link
-                    to={notificationDestination(notification)}
-                    key={notification.id}
-                    className={!notification.isRead ? 'is-unread' : ''}
-                    onClick={() => openNotification(notification.id)}
-                  >
-                    {notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : <span className={`notification-type-icon${isApprovedVerificationNotification(notification) ? ' is-celebration' : ''}`}>{notificationIcon(notification.type, notification)}</span>}
-                    <div><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></div>
-                    {!notification.isRead && <i aria-label="Chưa đọc" />}
-                  </Link>;
-                }) : <div className="notification-popover__empty"><Bell size={21} /><strong>Chưa có thông báo</strong><p>Các cập nhật về bài viết, khóa học và hoạt động sẽ hiển thị tại đây.</p></div>}
-              </div>
-            </section>}
+            {notificationOpen && renderNotificationPopover('notification-popover')}
           </div>}
         </nav>
         <div className="header-auth">
-          <button
-            className="theme-toggle"
-            onClick={onToggleTheme}
-            aria-label={
-              theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'
-            }
-          >
-            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
+          <nav className="mobile-header-shortcuts" aria-label="Lối tắt trên điện thoại">
+            <button
+              type="button"
+              ref={mobileSearchTriggerRef}
+              onClick={() => toggleMobilePanel('search')}
+              aria-label="Tìm kiếm"
+              aria-expanded={activeMobilePanel === 'search'}
+              aria-controls={activeMobilePanel === 'search' ? 'mobile-header-search' : undefined}
+              title="Tìm kiếm"
+            >
+              <Search size={18} aria-hidden="true" />
+            </button>
+            <Link
+              to={ROUTES.FEED}
+              onClick={closeMobilePanels}
+              aria-current={location.pathname === ROUTES.FEED ? 'page' : undefined}
+              aria-label="Bảng tin"
+              title="Bảng tin"
+            >
+              <Newspaper size={18} aria-hidden="true" />
+            </Link>
+            <Link
+              to={ROUTES.MESSAGES}
+              onClick={closeMobilePanels}
+              aria-label={`Tin nhắn${unreadConversationCount ? `, ${unreadConversationCount} cuộc trò chuyện chưa đọc` : ''}`}
+              title="Tin nhắn"
+            >
+              <MessageCircle size={18} aria-hidden="true" />
+              {unreadConversationCount > 0 && <b aria-hidden="true">{unreadConversationCount > 99 ? '99+' : unreadConversationCount}</b>}
+            </Link>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={toggleMobileNotifications}
+                aria-label={`Thông báo${unreadNotifications ? `, ${unreadNotifications} chưa đọc` : ''}`}
+                aria-expanded={notificationOpen}
+                aria-controls={notificationOpen ? 'mobile-header-notifications' : undefined}
+                title="Thông báo"
+              >
+                <Bell size={18} aria-hidden="true" />
+                {unreadNotifications > 0 && <b aria-hidden="true">{unreadNotifications > 99 ? '99+' : unreadNotifications}</b>}
+              </button>
+            ) : (
+              <Link to={ROUTES.LOGIN} state={{ from: location }} onClick={closeMobilePanels} aria-label="Thông báo" title="Thông báo">
+                <Bell size={18} aria-hidden="true" />
+              </Link>
+            )}
+          </nav>
           {isAuthenticated ? (
             <>
               <div className="account-menu" ref={accountMenuRef}>
@@ -401,68 +450,54 @@ export const Header = ({ theme, onToggleTheme }) => {
           )}
         </div>
         <button
+          type="button"
           className="mobile-menu-toggle"
-          onClick={() => setMobileMenuOpen((current) => !current)}
-          aria-label={mobileMenuOpen ? 'Đóng menu' : 'Mở menu'}
-          aria-expanded={mobileMenuOpen}
-          aria-controls="mobile-navigation"
+          onClick={() => toggleMobilePanel('menu')}
+          aria-label={activeMobilePanel === 'menu' ? 'Đóng menu' : 'Mở menu'}
+          aria-expanded={activeMobilePanel === 'menu'}
+          aria-controls={activeMobilePanel === 'menu' ? 'mobile-navigation' : undefined}
         >
-          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          {activeMobilePanel === 'menu' ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
-      {mobileMenuOpen && (
-        <nav
-          id="mobile-navigation"
-          className="mobile-navigation"
-          aria-label="Điều hướng trên điện thoại"
+      {isAuthenticated && notificationOpen && renderNotificationPopover('notification-popover mobile-header-notifications', 'mobile-header-notifications')}
+      {activeMobilePanel === 'search' && (
+        <div
+          id="mobile-header-search"
+          className="mobile-header-search"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            closeMobilePanels();
+            mobileSearchTriggerRef.current?.focus();
+          }}
         >
           <form className="header-search" role="search" onSubmit={search}>
-            <Search size={18} />
+            <Search size={18} aria-hidden="true" />
             <input
+              type="search"
               name="need-description"
+              defaultValue={params.get('need') || ''}
               aria-label="Tìm khóa học và giáo viên qua mô tả trên điện thoại"
               placeholder="Mô tả nhu cầu học của bạn..."
+              enterKeyHint="search"
+              autoFocus
             />
             <button type="submit" aria-label="Tìm kiếm">
-              <ArrowRight size={19} />
+              <ArrowRight size={19} aria-hidden="true" />
             </button>
           </form>
-          <Link to={`${ROUTES.HOME}#khoa-hoc`} onClick={() => setMobileMenuOpen(false)}>
+          <Link to={`${ROUTES.HOME}#khoa-hoc`} onClick={closeMobilePanels}>
+            <GraduationCap size={17} aria-hidden="true" />
             Tìm kiếm lớp học
           </Link>
-          <Link to={ROUTES.FEED} onClick={() => setMobileMenuOpen(false)}>Bảng Tin</Link>
-          <Link to={teachingDestination} onClick={() => setMobileMenuOpen(false)}>{teachingLabel}</Link>
-          {isCenterAccount && <Link to={ROUTES.VERIFICATION} onClick={() => setMobileMenuOpen(false)}>Xác minh hồ sơ</Link>}
-          {isCenterAccount ? (
-            <Link to={ROUTES.CENTER_SUPPORT} onClick={() => setMobileMenuOpen(false)}>Tư vấn miễn phí</Link>
-          ) : (
-            <button onClick={() => openDialog('consultation')}>Tư vấn miễn phí</button>
-          )}
-          {isAuthenticated && (
-            <Link to={ROUTES.MESSAGES} onClick={() => setMobileMenuOpen(false)}>
-              Tin nhắn {unreadConversationCount > 0 && `(${unreadConversationCount > 99 ? '99+' : unreadConversationCount})`}
-            </Link>
-          )}
-          {isAuthenticated && <button onClick={toggleNotifications}>Thông báo{unreadNotifications ? ` (${unreadNotifications})` : ''}</button>}
-          {isAuthenticated && notificationOpen && <section className="mobile-notification-panel" aria-label="Danh sách thông báo">
-            <header><strong>Thông báo</strong><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}>Đánh dấu đã đọc</button></header>
-            {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
-              const copy = formatNotificationCopy(notification, isCenterAccount);
-              return <Link
-                to={notificationDestination(notification)}
-                key={notification.id}
-                className={!notification.isRead ? 'is-unread' : ''}
-                onClick={() => openNotification(notification.id)}
-              >
-                <span className="notification-type-icon">{notification.actorAvatar ? <img src={notification.actorAvatar} alt="" /> : notificationIcon(notification.type, notification)}</span>
-                <span><strong>{copy.title}</strong>{copy.description && <p>{copy.description}</p>}<small>{notificationTime(notification.createdAt)}</small></span>
-              </Link>;
-            }) : <p>Chưa có thông báo nào.</p>}
-          </section>}
+        </div>
+      )}
+      {activeMobilePanel === 'menu' && (
+        <nav id="mobile-navigation" className="mobile-navigation" aria-label="Điều hướng trên điện thoại">
           {isAuthenticated && (
             <Link
               to={ROUTES.TEACHER_PROFILE(user.id)}
-              onClick={(event) => { setMobileMenuOpen(false); openOwnProfile(event); }}
+              onClick={(event) => { closeMobilePanels(); openOwnProfile(event); }}
               className="mobile-navigation__profile-link"
             >
               <span className="account-menu__avatar" aria-hidden="true">
@@ -477,23 +512,29 @@ export const Header = ({ theme, onToggleTheme }) => {
                   <span className="account-menu__avatar-fallback"><DefaultRoleAvatar role={user?.role} name={user?.name} userId={user?.id} size={16} /></span>
                 )}
               </span>
-              <span>Trang cá nhân ({user?.name})</span>
+              <span>{user?.name}</span>
             </Link>
           )}
-          {isAuthenticated && <Link to={`${ROUTES.PROFILE}?tab=security`} onClick={() => setMobileMenuOpen(false)}>Thông tin và bảo mật</Link>}
+          <Link to={teachingDestination} onClick={closeMobilePanels}>{teachingLabel}</Link>
+          {isCenterAccount && <Link to={ROUTES.VERIFICATION} onClick={closeMobilePanels}>Xác minh hồ sơ</Link>}
+          {canUseStudentConsultation && (
+            <button type="button" onClick={openStudentConsultation}>Tư vấn miễn phí</button>
+          )}
+          {isAuthenticated && <Link to={`${ROUTES.PROFILE}?tab=security`} onClick={closeMobilePanels}>Thông tin và bảo mật</Link>}
           {isAuthenticated ? (
             <button
+              type="button"
               onClick={() => {
+                closeMobilePanels();
                 logout();
-                setMobileMenuOpen(false);
               }}
             >
               Đăng xuất
             </button>
           ) : (
             <>
-              <Link to={ROUTES.LOGIN} onClick={() => setMobileMenuOpen(false)}>Đăng nhập</Link>
-              <Link to={ROUTES.REGISTER} onClick={() => setMobileMenuOpen(false)}>Đăng ký</Link>
+              <Link to={ROUTES.LOGIN} onClick={closeMobilePanels}>Đăng nhập</Link>
+              <Link to={ROUTES.REGISTER} onClick={closeMobilePanels}>Đăng ký</Link>
             </>
           )}
         </nav>

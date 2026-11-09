@@ -464,7 +464,7 @@ function PendingFile({ file, remove }) {
   return <div className="em-pending">{file.type.startsWith('image/') && <img ref={imageRef} alt={file.name}/>}<Paperclip size={16}/><span>{file.name} · {Math.ceil(file.size / 1024)} KB</span><ChatIcon label={`Bỏ ${file.name}`} onClick={remove}><X size={15}/></ChatIcon></div>;
 }
 
-export function ChatComposer({ thread, theme = 'light', replyingTo = null, onCancelReply }) {
+export function ChatComposer({ thread, replyingTo = null, onCancelReply }) {
   const { user } = useAuth();
   const [body, setBody] = useState('');
   const [files, setFiles] = useState([]);
@@ -569,7 +569,7 @@ export function ChatComposer({ thread, theme = 'light', replyingTo = null, onCan
     {files.map((file, index) => <PendingFile key={`${file.name}:${file.lastModified}:${index}`} file={file} remove={() => setFiles((current) => current.filter((_, position) => position !== index))}/>)}
     <div className="em-composer__row"><div className="em-composer__field">
       <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
-        {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme={theme} searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
+        {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme="light" searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
       </div>
       <textarea ref={inputRef} aria-label="Soạn tin nhắn" placeholder="Soạn tin nhắn" rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
       <div className="em-sticker-anchor">

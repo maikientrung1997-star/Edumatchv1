@@ -93,37 +93,54 @@
   }
 }
 
-.discovery-continuation {
+.discovery-arrow {
   position: fixed;
   z-index: 25;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   left: 50%;
-  width: max-content;
-  max-width: calc(100% - 32px);
   transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--edu-green);
+  --arrow-offset: 3px;
 }
 
-.discovery-continuation button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 12px 22px;
-  border: 1px solid var(--edu-green);
-  border-radius: 28px;
-  background: var(--edu-green);
-  color: white;
-  box-shadow: 0 4px 18px rgb(16 70 59 / 18%);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
+.discovery-arrow[data-direction="up"] {
+  --arrow-offset: -3px;
 }
 
-.discovery-continuation button:hover { filter: brightness(1.08); }
-.discovery-continuation button:focus-visible,
+.discovery-arrow svg {
+  opacity: .72;
+  filter: drop-shadow(0 0 2px var(--edu-surface));
+}
+
+.discovery-arrow[data-direction="up"] svg { rotate: 180deg; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .discovery-arrow:not(:disabled) svg {
+    animation: discovery-arrow-pulse 1.7s ease-in-out infinite;
+  }
+
+  @keyframes discovery-arrow-pulse {
+    0%, 100% { opacity: .48; translate: 0 0; }
+    50% { opacity: .85; translate: 0 var(--arrow-offset); }
+  }
+}
+
+.discovery-arrow:is(:hover, :focus-visible) svg {
+  animation: none;
+  opacity: 1;
+}
+
+.discovery-arrow:disabled { visibility: hidden; }
+
+.discovery-arrow:focus-visible,
 .discovery-more button:focus-visible {
   outline: 3px solid var(--edu-green);
   outline-offset: 3px;
@@ -200,9 +217,6 @@
   .edu-home--discovery .sponsored-course-grid > .course-card {
     padding: 10px !important;
     gap: 8px !important;
-  }
-  .edu-site:has(.discovery-continuation) .floating-chat-layer {
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
   .discovery-sponsored-sort {
     display: grid;

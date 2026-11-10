@@ -1011,91 +1011,6 @@ export const markConversationUnread = (thread, userId) =>
     unreadFor: Array.from(new Set([...(message.unreadFor || []), userId])),
   }));
 
-export const setConversationTags = (arg1, arg2, arg3) => {
-  if (arg3 !== undefined) {
-    const userId = arg1;
-    const conversationId = arg2;
-    const tags = arg3;
-    if (!userId || !conversationId) return [];
-    const allTags = read(STORAGE_KEYS.CONVERSATION_TAGS, {});
-    const userTags = allTags[String(userId)] || {};
-    const nextUserTags = { ...userTags, [String(conversationId)]: tags.map(normalizeTag) };
-    write(STORAGE_KEYS.CONVERSATION_TAGS, { ...allTags, [String(userId)]: nextUserTags });
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:conversation-tags-updated'));
-    return tags;
-  }
-  return updateConversationThread(arg1, (message) => ({ ...message, tags: arg2 }));
-};
-
-export const TAG_COLORS = [
-  { id: 'emerald', label: 'Xanh lá', value: '#087f69' },
-  { id: 'teal', label: 'Xanh ngọc', value: '#0f766e' },
-  { id: 'cyan', label: 'Xanh cyan', value: '#0891b2' },
-  { id: 'sky', label: 'Xanh da trời', value: '#0284c7' },
-  { id: 'blue', label: 'Xanh dương', value: '#2563eb' },
-  { id: 'indigo', label: 'Chàm', value: '#4f46e5' },
-  { id: 'violet', label: 'Tím', value: '#7c3aed' },
-  { id: 'fuchsia', label: 'Hồng tím', value: '#c026d3' },
-  { id: 'rose', label: 'Hồng', value: '#c74d68' },
-  { id: 'red', label: 'Đỏ', value: '#dc2626' },
-  { id: 'orange', label: 'Cam', value: '#ea580c' },
-  { id: 'amber', label: 'Cam', value: '#b87918' },
-  { id: 'lime', label: 'Xanh chanh', value: '#65a30d' },
-  { id: 'slate', label: 'Xám xanh', value: '#475569' },
-];
-
-export const normalizeTag = (tag) => (typeof tag === 'string'
-  ? { id: tag.toLowerCase(), name: tag, color: TAG_COLORS[0].value }
-  : (tag && tag.id ? { ...tag, color: tag.color || TAG_COLORS[0].value } : tag));
-
-export const getConversationTags = (userId, conversationId) => {
-  if (!userId || !conversationId) return [];
-  const allTags = read(STORAGE_KEYS.CONVERSATION_TAGS, {});
-  const userTags = allTags[String(userId)] || {};
-  return (userTags[String(conversationId)] || []).map(normalizeTag);
-};
-
-export const getAllUserConversationTags = (userId) => {
-  if (!userId) return {};
-  const allTags = read(STORAGE_KEYS.CONVERSATION_TAGS, {});
-  return allTags[String(userId)] || {};
-};
-
-export const getMessageTags = (userId) =>
-  read(STORAGE_KEYS.MESSAGE_TAGS, []).filter((tag) => tag.userId === userId);
-
-export const saveMessageTag = (userId, tag) => {
-  if (!userId || !tag?.id || !tag?.name) return getMessageTags(userId);
-  const saved = read(STORAGE_KEYS.MESSAGE_TAGS, []);
-  const existing = saved.find((item) => item.userId === userId && item.id === tag.id);
-  const nextTag = { ...tag, userId };
-  const next = existing
-    ? saved.map((item) => item.userId === userId && item.id === tag.id ? { ...item, ...nextTag } : item)
-    : [...saved, nextTag];
-  write(STORAGE_KEYS.MESSAGE_TAGS, next);
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:message-tags-updated'));
-  return next.filter((item) => item.userId === userId);
-};
-
-export const deleteMessageTag = (userId, tagId) => {
-  const next = read(STORAGE_KEYS.MESSAGE_TAGS, []).filter(
-    (tag) => tag.userId !== userId || tag.id !== tagId
-  );
-  write(STORAGE_KEYS.MESSAGE_TAGS, next);
-  const allTags = read(STORAGE_KEYS.CONVERSATION_TAGS, {});
-  const userTags = allTags[String(userId)] || {};
-  const cleanedUserTags = {};
-  Object.entries(userTags).forEach(([convId, tags]) => {
-    cleanedUserTags[convId] = (tags || []).filter((tag) => (typeof tag === 'string' ? tag.toLowerCase() : tag.id) !== tagId);
-  });
-  write(STORAGE_KEYS.CONVERSATION_TAGS, { ...allTags, [String(userId)]: cleanedUserTags });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('edumatch:message-tags-updated'));
-    window.dispatchEvent(new Event('edumatch:conversation-tags-updated'));
-  }
-  return next.filter((tag) => tag.userId === userId);
-};
-
 export const getMessageTemplates = (userId) =>
   read(STORAGE_KEYS.MESSAGE_TEMPLATES, []).filter((template) => template.userId === userId);
 
@@ -1119,15 +1034,6 @@ export const deleteMessageTemplate = (userId, templateId) => {
   write(STORAGE_KEYS.MESSAGE_TEMPLATES, next);
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:message-templates-updated'));
   return next.filter((template) => template.userId === userId);
-};
-
-export const removeMessageTagFromUserConversations = (userId, tagId) => {
-  const next = read(STORAGE_KEYS.CONVERSATIONS, []).map((message) => {
-    if (message.studentId !== userId && message.teacherId !== userId) return message;
-    return { ...message, tags: (message.tags || []).filter((tag) => (typeof tag === 'string' ? tag.toLowerCase() : tag.id) !== tagId) };
-  });
-  write(STORAGE_KEYS.CONVERSATIONS, next);
-  return next.filter((message) => message.studentId === userId || message.teacherId === userId);
 };
 
 export const getAge = (dob) => {
@@ -1155,31 +1061,3 @@ export const modeLabel = (course) => {
 
 export const enrollmentLabel = (course) =>
   course.enrollmentStatus === 'closed' ? 'Đã đóng lớp' : 'Mở lớp';
-
-export const getMarkedUnreadConversations = (userId) => {
-  if (!userId) return [];
-  const all = read(STORAGE_KEYS.MARKED_UNREAD, {});
-  return all[String(userId)] || [];
-};
-
-export const setMarkedUnreadConversation = (userId, conversationId, isUnread = true) => {
-  if (!userId || !conversationId) return [];
-  const all = read(STORAGE_KEYS.MARKED_UNREAD, {});
-  const current = new Set(all[String(userId)] || []);
-  if (isUnread) {
-    current.add(Number(conversationId));
-  } else {
-    current.delete(Number(conversationId));
-  }
-  const nextList = Array.from(current);
-  all[String(userId)] = nextList;
-  write(STORAGE_KEYS.MARKED_UNREAD, all);
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(
-      new CustomEvent('edumatch:marked-unread-updated', {
-        detail: { conversationId: Number(conversationId), isUnread },
-      })
-    );
-  }
-  return nextList;
-};

@@ -4,7 +4,6 @@ import { acquirePusherChannel } from '@/services/pusherService';
 import { chatService, chatError } from '@/services/chatService';
 import { createThreadStore } from '@/services/chatThreadStore';
 import { mergeConversations } from '@/utils/chatState';
-import { getMarkedUnreadConversations, setMarkedUnreadConversation } from '@/features/learning/marketplace';
 import { soundService } from '@/services/soundService';
 import { ChatContext } from '@/contexts/ChatStateContext';
 
@@ -18,62 +17,13 @@ function reducer(state, action) {
   if (state.userId !== action.userId) return state;
   if (action.type === 'snapshot') {
     const fresh = Number(action.revision) >= state.revision;
-    const merged = mergeConversations(state.conversations, action.items);
-    const marked = getMarkedUnreadConversations(action.userId);
-    const markedSet = new Set(marked.map(Number));
-    let extraUnread = 0;
-    const finalConversations = merged.map((c) => {
-      if (markedSet.has(Number(c.id))) {
-        if (!c.unread_count || c.unread_count <= 0) extraUnread += 1;
-        return { ...c, unread_count: Math.max(1, c.unread_count || 1), is_manual_unread: true };
-      }
-      return c;
-    });
-    const finalCounts = action.counts
-      ? {
-          ...action.counts,
-          unread: Math.max(0, (action.counts.unread || 0) + extraUnread),
-          unread_messages: Math.max(0, (action.counts.unread_messages || 0) + extraUnread),
-        }
-      : state.counts;
     return {
       ...state,
-      conversations: finalConversations,
+      conversations: mergeConversations(state.conversations, action.items),
       loaded: true,
       ...(action.page ? { page: Math.max(state.page, action.page), lastPage: action.lastPage || state.lastPage } : {}),
-      ...(fresh ? { counts: finalCounts, revision: Number(action.revision) } : {}),
+      ...(fresh ? { counts: action.counts || state.counts, revision: Number(action.revision) } : {}),
       error: '',
-    };
-  }
-  if (action.type === 'mark_unread') {
-    const targetId = Number(action.id);
-    const isUnread = action.unread !== false;
-    let unreadConvDelta = 0;
-    let unreadMsgDelta = 0;
-    const conversations = state.conversations.map((c) => {
-      if (Number(c.id) === targetId) {
-        const wasCount = c.unread_count || 0;
-        const wasUnread = wasCount > 0;
-        const newCount = isUnread ? Math.max(1, wasCount) : 0;
-        if (!wasUnread && isUnread) {
-          unreadConvDelta = 1;
-          unreadMsgDelta = newCount;
-        } else if (wasUnread && !isUnread) {
-          unreadConvDelta = -1;
-          unreadMsgDelta = -wasCount;
-        }
-        return { ...c, unread_count: newCount, is_manual_unread: isUnread };
-      }
-      return c;
-    });
-    return {
-      ...state,
-      conversations,
-      counts: {
-        ...state.counts,
-        unread: Math.max(0, (state.counts?.unread || 0) + unreadConvDelta),
-        unread_messages: Math.max(0, (state.counts?.unread_messages || 0) + unreadMsgDelta),
-      },
     };
   }
   if (action.type === 'upsert') return { ...state, conversations: mergeConversations(state.conversations, [action.item]) };
@@ -103,16 +53,18 @@ export function ChatProvider({ children }) {
   const pageRef = useRef(1);
   useEffect(() => { conversationsRef.current = visible.conversations; pageRef.current = visible.page; });
 
-  const ingest = useCallback((response) => dispatch({ type: 'snapshot', userId, items: response.data,
-    counts: response.meta.counts, revision: response.meta.revision, page: response.meta.page, lastPage: response.meta.last_page }), [userId]);
+  const ingest = useCallback((response, includePagination = true) => dispatch({ type: 'snapshot', userId, items: response.data,
+    counts: response.meta.counts, revision: response.meta.revision,
+    page: includePagination ? response.meta.page : undefined, lastPage: response.meta.last_page }), [userId]);
   const upsert = useCallback((item) => dispatch({ type: 'upsert', userId, item }), [userId]);
   const refresh = useCallback(() => chatService.conversations().then((response) => { ingest(response); return response; }), [ingest]);
   const loadMore = useCallback(() => chatService.conversations({ page: pageRef.current + 1 }).then((response) => { ingest(response); return response; }), [ingest]);
-  const markUnread = useCallback((id, isUnread = true) => {
-    dispatch({ type: 'mark_unread', userId, id, unread: isUnread });
-    setMarkedUnreadConversation(userId, id, isUnread);
-    void chatService.markUnread(id, isUnread);
-  }, [userId]);
+  const applyInboxUpdate = useCallback((event) => {
+    ingest({ data: [event.conversation], meta: { counts: event.counts, revision: event.revision } });
+  }, [ingest]);
+  const markUnread = useCallback(async (id, unread, lastMessageId) => {
+    applyInboxUpdate(await chatService.markUnread(id, unread, lastMessageId));
+  }, [applyInboxUpdate]);
 
   const threads = useMemo(() => createThreadStore({
     acquire: acquirePusherChannel, api: chatService, formatError: chatError,
@@ -144,8 +96,8 @@ export function ChatProvider({ children }) {
     const subscribed = () => { if (!loadFirst()) void resync(); };
     const update = (event) => {
       if (!active || !event?.conversation?.id) return;
-      ingest({ data: [event.conversation], meta: { counts: event.counts, revision: event.revision } });
-      if (event.conversation.last_sender_user_id !== userId && event.conversation.unread_count > 0) {
+      applyInboxUpdate(event);
+      if ((!event.reason || event.reason === 'message') && Number(event.conversation.last_sender_user_id) !== Number(userId) && event.conversation.unread_count > 0) {
         dispatch({ type: 'incoming', userId, id: event.conversation.id });
         soundService.playMessageSound();
       }
@@ -185,7 +137,7 @@ export function ChatProvider({ children }) {
       pusher.connection.unbind('state_change', connection);
       userLease.release(); presenceLease.release();
     };
-  }, [userId, token, ingest, refresh]);
+  }, [userId, token, applyInboxUpdate, refresh]);
 
   return <ChatContext.Provider value={{ ...visible, ingest, upsert, refresh, loadMore, threads, markUnread }}>{children}</ChatContext.Provider>;
 }

@@ -1,3 +1,5 @@
+export const isConversationUnread = (conversation) => Boolean(conversation?.unread_count > 0 || conversation?.is_manual_unread);
+
 export function mergeConversations(current, incoming) {
   const map = new Map(current.map((item) => [Number(item.id), item]));
   for (const item of incoming) {

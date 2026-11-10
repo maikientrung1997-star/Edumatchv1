@@ -15,12 +15,9 @@ export const STORAGE_KEYS = {
   FEED_AFFINITY: 'edumatch:feed-affinity',
   PROVIDER_TRUSTS: 'edumatch:provider-trusts',
   CONVERSATIONS: 'edumatch:conversations',
-  MESSAGE_TAGS: 'edumatch:message-tags',
-  CONVERSATION_TAGS: 'edumatch:conversation-tags',
   MESSAGE_TEMPLATES: 'edumatch:message-templates',
   CHAT_WIDGET: 'edumatch:chat-widget',
   ONLINE_PRESENCE: 'edumatch:online-presence',
   REGISTERED_ACCOUNTS: 'edumatch:registered-accounts',
   ALBUM_MEDIA_INTERACTIONS: 'edumatch:album-media-interactions',
-  MARKED_UNREAD: 'edumatch:marked-unread',
 };

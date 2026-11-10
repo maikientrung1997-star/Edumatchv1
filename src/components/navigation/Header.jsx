@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -20,45 +20,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { DefaultRoleAvatar, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 import { useChat } from '@/hooks/useChat';
 import { ROUTES } from '@/constants/routes';
-import { accountNotificationService } from '@/services/accountNotificationService';
-import { subscribeUserNotifications } from '@/services/pusherService';
-import { soundService } from '@/services/soundService';
+import { AccountNotificationContext } from '@/contexts/AccountNotificationContext';
+import {
+  formatNotificationCopy,
+  isApprovedVerificationNotification,
+  notificationDestination,
+} from '@/utils/accountNotificationCopy';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/features/learning/marketplace';
-import toast from 'react-hot-toast';
 import './header.css';
-
-const isApprovedVerificationNotification = (notification) =>
-  notification?.type === 'verification_result' &&
-  (String(notification?.title || '').toLowerCase().includes('phê duyệt') ||
-    String(notification?.description || '').toLowerCase().includes('phê duyệt'));
-
-const formatNotificationCopy = (notification, isCenterAccount) => {
-  if (
-    isCenterAccount &&
-    notification?.type === 'verification_result' &&
-    !isApprovedVerificationNotification(notification)
-  ) {
-    const rawDesc = String(notification?.description || '').trim();
-    const description = rawDesc.includes('liên hệ trực tiếp qua SĐT')
-      ? rawDesc
-      : `Hồ sơ chưa được xét duyệt${rawDesc ? `. Lý do: ${rawDesc}` : ''}. Đội ngũ EduMatch sẽ liên hệ trực tiếp qua SĐT để hướng dẫn.`;
-    return {
-      title: 'Hồ sơ xác thực chưa được xét duyệt',
-      description,
-    };
-  }
-  return {
-    title: notification?.title || 'Bạn có thông báo mới',
-    description: notification?.description || '',
-  };
-};
-
-const notificationDestination = (notification) => {
-  if (isApprovedVerificationNotification(notification)) {
-    return `${ROUTES.VERIFICATION}?celebrate=1`;
-  }
-  return notification?.link || ROUTES.HOME;
-};
 
 const notificationIcon = (type, notification) => {
   if (isApprovedVerificationNotification(notification)) return <PartyPopper size={15} />;
@@ -83,11 +52,10 @@ export const Header = () => {
   const locationKey = `${location.pathname}${location.search}${location.hash}`;
   const activeMobilePanel = mobilePanel?.locationKey === locationKey ? mobilePanel.name : null;
   const [notificationPanel, setNotificationPanel] = useState({ open: false, locationKey: '' });
-  const { isAuthenticated, user, token, logout, canUseStudentConsultation } = useAuth();
+  const { isAuthenticated, user, logout, canUseStudentConsultation } = useAuth();
   const { counts: chatCounts } = useChat();
   const [notifications, setNotifications] = useState(() => user?.id ? getNotifications(user.id) : []);
-  const [serverNotifications, setServerNotifications] = useState({ userId: null, items: [] });
-  const receivedServerNotificationIds = useRef(new Set());
+  const { items: serverNotifications, read, readAll } = useContext(AccountNotificationContext);
   const accountMenuRef = useRef(null);
   const desktopNotificationRef = useRef(null);
   const headerRef = useRef(null);
@@ -158,7 +126,7 @@ export const Header = () => {
       site.style.removeProperty('--edu-header-height');
     };
   }, []);
-  const allNotifications = [...(serverNotifications.userId === user?.id ? serverNotifications.items : []), ...notifications]
+  const allNotifications = [...serverNotifications, ...notifications]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const isEducationProvider = isAuthenticated && ['teacher', 'center'].includes(user?.role);
   const isCenterAccount = isAuthenticated && user?.role === 'center';
@@ -184,101 +152,13 @@ export const Header = () => {
     return () => window.removeEventListener('edumatch:notifications-updated', refreshNotifications);
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) {
-      receivedServerNotificationIds.current = new Set();
-      return undefined;
-    }
-    let active = true;
-    let initialLoaded = false;
-
-    const showIncomingToast = (notification) => {
-      const approved = isApprovedVerificationNotification(notification);
-      const copy = formatNotificationCopy(notification, isCenterAccount);
-      if (notification?.type === 'verification_result') {
-        window.dispatchEvent(new Event('edumatch:verification-updated'));
-      }
-      toast(
-        (t) => (
-          <div
-            role="button"
-            tabIndex={0}
-            style={{ cursor: 'pointer' }}
-            onClick={() => {
-              toast.dismiss(t.id);
-              window.dispatchEvent(new Event('edumatch:verification-celebrate'));
-              navigate(notificationDestination(notification));
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                toast.dismiss(t.id);
-                window.dispatchEvent(new Event('edumatch:verification-celebrate'));
-                navigate(notificationDestination(notification));
-              }
-            }}
-          >
-            <strong>{copy.title}</strong>
-            {copy.description && <p>{copy.description}</p>}
-          </div>
-        ),
-        {
-          icon: approved ? '🎉' : '🔔',
-          duration: 6000,
-        }
-      );
-    };
-
-    const fetchServerNotifications = () => {
-      accountNotificationService.list().then((items) => {
-        if (!active || !Array.isArray(items)) return;
-        const newlyArrived = [];
-        items.forEach((item) => {
-          if (!receivedServerNotificationIds.current.has(item.id)) {
-            receivedServerNotificationIds.current.add(item.id);
-            if (initialLoaded && !item.isRead) {
-              newlyArrived.push(item);
-            }
-          }
-        });
-        initialLoaded = true;
-        setServerNotifications({ userId: user.id, items });
-        newlyArrived.forEach(showIncomingToast);
-      }).catch(() => { /* The next login still attempts the initial history load. */ });
-    };
-
-    fetchServerNotifications();
-    window.addEventListener('focus', fetchServerNotifications);
-    const pollInterval = window.setInterval(fetchServerNotifications, 15000);
-
-    const unsubscribe = subscribeUserNotifications(user.id, (notification) => {
-      if (!notification?.id || receivedServerNotificationIds.current.has(notification.id)) return;
-      receivedServerNotificationIds.current.add(notification.id);
-      setServerNotifications((current) => ({
-        userId: user.id,
-        items: [notification, ...current.items.filter((item) => item.id !== notification.id)],
-      }));
-      showIncomingToast(notification);
-      soundService.playNotificationSound();
-    });
-    return () => {
-      active = false;
-      window.removeEventListener('focus', fetchServerNotifications);
-      window.clearInterval(pollInterval);
-      unsubscribe();
-    };
-  }, [isAuthenticated, user?.id, isCenterAccount, token, navigate]);
-
   const openNotification = (notificationId) => {
     if (String(notificationId).startsWith('server-')) {
-      const item = serverNotifications.items.find((record) => record.id === notificationId);
-      if (item) {
-        if (item.type === 'verification_result') {
-          window.dispatchEvent(new Event('edumatch:verification-celebrate'));
-        }
-        accountNotificationService.read(item.server_id).then(() => {
-          setServerNotifications((current) => ({ ...current, items: current.items.map((n) => n.id === notificationId ? { ...n, isRead: true } : n) }));
-        }).catch(() => {});
+      const item = serverNotifications.find((record) => record.id === notificationId);
+      if (item?.type === 'verification_result') {
+        window.dispatchEvent(new Event('edumatch:verification-celebrate'));
       }
+      if (item) read(item);
     } else markNotificationRead(notificationId);
     setNotificationPanel({ open: false, locationKey });
   };
@@ -287,8 +167,7 @@ export const Header = () => {
       markAllNotificationsRead(user.id);
       setNotifications((current) => current.map((notification) => ({ ...notification, isRead: true })));
     }
-    setServerNotifications((current) => ({ ...current, items: current.items.map((notification) => ({ ...notification, isRead: true })) }));
-    accountNotificationService.readAll().catch(() => {});
+    readAll();
   };
   const toggleNotifications = () => {
     markAllAsRead();

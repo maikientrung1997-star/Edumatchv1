@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Maximize2, MessageCircle, Minus, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { useRealtimeChat } from '@/hooks/useRealtimeChat';
 import { ROUTES } from '@/constants/routes';
+import { isConversationUnread } from '@/utils/chatState';
 import { formatRelativeTime } from '@/utils/formatDate';
 import { getChatWidgets, setChatWidget, updateChatWidget } from '@/features/learning/chatWidget';
 import { ChatAvatar, ChatComposer, ChatHistory, ChatLightbox } from './ChatPieces';
@@ -18,17 +19,10 @@ function ServerChatWindow({ conversationId, onMinimize, onClose }) {
   const [preview, setPreview] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [forwarding, setForwarding] = useState(null);
-  const { conversations, online, presenceReady, markUnread } = useChat();
+  const { conversations, online, presenceReady } = useChat();
 
   const conv = conversations.find((c) => Number(c.id) === Number(conversationId));
 
-  const readDoneRef = useRef(false);
-  useEffect(() => {
-    if (!readDoneRef.current && conversationId && conv && ((conv.unread_count || 0) > 0 || conv.is_manual_unread)) {
-      readDoneRef.current = true;
-      markUnread?.(conversationId, false);
-    }
-  }, [conversationId, conv, markUnread]);
   const detail = thread.detail || conv;
   const partner = detail?.partner || conv?.partner;
   const isGroup = detail?.type === 'group' || conv?.type === 'group';
@@ -174,7 +168,7 @@ export function FloatingChat() {
   const minimizedWidgets = widgets.filter((w) => w.isMinimized);
 
   const handleOpenCandidate = () => {
-    const candidate = incomingId || conversations.find((item) => item.unread_count > 0)?.id || conversations[0].id;
+    const candidate = incomingId || conversations.find(isConversationUnread)?.id || conversations[0].id;
     if (candidate) {
       setChatWidget(user.id, String(candidate), { isClosed: false, isMinimized: false });
     }
@@ -193,7 +187,7 @@ export function FloatingChat() {
   };
 
   if (!openedWidgets.length && !minimizedWidgets.length) {
-    if ((counts.unread_messages || 0) > 0) {
+    if (counts.unread > 0) {
       return (
         <div className="floating-chat-layer">
           <div className="floating-chat-layer__minimized">
@@ -201,8 +195,8 @@ export function FloatingChat() {
               type="button"
               className="floating-chat__minimized"
               onClick={handleOpenCandidate}
-              aria-label={`Mở tin nhắn, ${counts.unread_messages} tin chưa đọc`}
-              title="Tin nhắn mới"
+              aria-label={`Mở tin nhắn, ${counts.unread} hội thoại chưa đọc`}
+              title="Hội thoại chưa đọc"
             >
               <span className="floating-chat__minimized-avatar">
                 <MessageCircle size={22} />

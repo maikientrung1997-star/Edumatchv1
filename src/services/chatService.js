@@ -13,6 +13,8 @@ export const chatService = {
   // Server limits/feature flags rarely change: fetch once per session (cache is keyed by token).
   config: () => sharedGet('/chat/config', {}, { ttlMs: 3600000 }),
   conversations: (params) => sharedGet('/chat/conversations', parameters(params)),
+  tags: () => sharedGet('/chat/tags'),
+  assignTag: (id, tagId, applied) => api.put(`/chat/conversations/${id}/tags/${tagId}`, { applied }, sessionConfig()),
   conversation: (id) => sharedGet(`/chat/conversations/${id}`),
   openDirect: async (recipientId) => (await api.post('/chat/conversations', { recipient_id: Number(recipientId) }, sessionConfig())).data,
   startDirect: async (recipientId, body) => {
@@ -76,13 +78,10 @@ export const chatService = {
     if (!lastMessageId || Number(lastMessageId) <= 0) return Promise.resolve({ data: {} });
     return api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig());
   },
-  markUnread: (id, unread = true) => {
-    if (!unread && id) {
-      // Khi đánh dấu đã đọc mà không có last_message_id, không gọi API để tránh lỗi 422
-      return Promise.resolve({ data: {} });
-    }
-    return Promise.resolve({ data: {} });
-  },
+  markUnread: (id, unread, lastMessageId) => api.put(`/chat/conversations/${id}/unread`, {
+    unread,
+    ...(!unread && lastMessageId ? { last_message_id: lastMessageId } : {}),
+  }, sessionConfig()),
   react: async (id, emoji) => (await api.post(`/chat/messages/${id}/reactions`, { emoji }, sessionConfig())).data,
   media: (id, params) => sharedGet(`/chat/conversations/${id}/media`, parameters(params)),
   saveNote: (id, notes, expectedToken = storage.get(STORAGE_KEYS.ACCESS_TOKEN)) => {

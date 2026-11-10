@@ -9,14 +9,13 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useDesktopChat } from '@/hooks/useDesktopChat';
 import { useRealtimeChat } from '@/hooks/useRealtimeChat';
 import { chatService, chatError, chatRole } from '@/services/chatService';
-import { chatTime } from '@/utils/chatState';
+import { chatTime, isConversationUnread } from '@/utils/chatState';
 import { Modal } from '@/components/feedback/Modal';
 import { ChatAttachmentView, ChatAvatar, ChatComposer, ChatHistory, ChatIcon, ChatLightbox, PrivateChatNote } from '@/components/messages/ChatPieces';
 import { ChatHeaderLoading, ChatLoading } from '@/components/messages/ChatLoading';
 import { ConversationTagBar } from '@/components/messages/ConversationTagBar';
 import { ForwardDialog } from '@/components/messages/ForwardDialog';
 import { setChatWidget } from '@/features/learning/chatWidget';
-import { getAllUserConversationTags, getMessageTags } from '@/features/learning/marketplace';
 import './messages.css';
 import './messenger-workspace.css';
 import './realtime-chat.css';
@@ -348,7 +347,7 @@ function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia })
   </section>;
 }
 
-function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
+function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user, tagControls }) {
   const thread = useRealtimeChat(conversationId);
   const chat = useChat();
   const { online, presenceReady, conversations } = chat;
@@ -356,6 +355,8 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
   const [replyingTo, setReplyingTo] = useState(null);
   const [forwarding, setForwarding] = useState(null);
   const [avatarUpdating, setAvatarUpdating] = useState(false);
+  const [markingUnread, setMarkingUnread] = useState(false);
+  const [unreadError, setUnreadError] = useState('');
   const groupAvatarFileRef = useRef(null);
   const detail = thread.detail;
   const partner = detail?.partner;
@@ -363,11 +364,15 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
   const onlineText = !presenceReady ? 'Chưa rõ trạng thái' : onlineNow ? 'Đang hoạt động' : 'Ngoại tuyến';
 
   const currentConv = conversations.find((c) => Number(c.id) === Number(conversationId));
-  const isUnread = Boolean(currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread));
+  const isUnread = isConversationUnread(currentConv);
 
-  const handleToggleUnreadInChat = () => {
-    const nextUnread = !isUnread;
-    chat.markUnread(conversationId, nextUnread);
+  const handleToggleUnreadInChat = async () => {
+    if (!currentConv || markingUnread) return;
+    setMarkingUnread(true);
+    setUnreadError('');
+    try { await chat.markUnread(conversationId, !isUnread, currentConv.last_message_id); }
+    catch (failure) { setUnreadError(chatError(failure)); }
+    finally { setMarkingUnread(false); }
   };
 
   const handleGroupAvatarChange = async (event) => {
@@ -405,6 +410,7 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
               className={`em-icon ${isUnread ? 'is-unread is-active' : ''}`}
               aria-label={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
               title={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
+              disabled={!currentConv || markingUnread}
               onClick={handleToggleUnreadInChat}
             >
               {isUnread ? <MailCheck size={18} style={{ color: 'var(--color-primary, #0f766e)' }} /> : <Mail size={18}/>}
@@ -422,8 +428,8 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
           </button>
         </div>
       </div>
-      <ConversationTagBar conversationId={conversationId} user={user} />
-      {thread.error && <p className="em-error em-thread-status" role="alert">{thread.error}</p>}
+      <ConversationTagBar conversationId={conversationId} {...tagControls} />
+      {(unreadError || thread.error) && <p className="em-error em-thread-status" role="alert">{unreadError || thread.error}</p>}
       <ChatHistory
         thread={thread}
         onPreview={setPreview}
@@ -538,7 +544,7 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
 
 export function MessengerWorkspace() {
   const desktopChat = useDesktopChat();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const chat = useChat();
   const [params, setParams] = useSearchParams();
   const selectedId = /^\d+$/.test(params.get('conversation') || '') ? Number(params.get('conversation')) : null;
@@ -563,54 +569,60 @@ export function MessengerWorkspace() {
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(() => {
-    try {
-      return localStorage.getItem('edumatch:messenger:info-open') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const handleToggleInfo = () => {
-    setInfoOpen((curr) => {
-      const next = !curr;
-      try {
-        localStorage.setItem('edumatch:messenger:info-open', String(next));
-      } catch (err) {
-        void err;
-      }
-      return next;
-    });
-  };
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [unreadPending, setUnreadPending] = useState(new Set());
+  const handleToggleInfo = () => setInfoOpen((current) => !current);
 
   const handleBack = () => {
     setParams({});
     setMobileView('list');
   };
 
-  const [convTags, setConvTags] = useState(() => getAllUserConversationTags(user?.id));
-  const [tagLibrary, setTagLibrary] = useState(() => getMessageTags(user?.id));
-  const [selectedTagId, setSelectedTagId] = useState('');
+  const [tagState, setTagState] = useState({ token, data: null, error: '' });
+  const [selectedTagId, setSelectedTagId] = useState(null);
+  const [tagPage, setTagPage] = useState(null);
+  if (tagState.token !== token) {
+    setTagState({ token, data: null, error: '' });
+    setSelectedTagId(null);
+  }
+  const applyTags = useCallback((data) => {
+    setTagState((current) => current.token === token && data.revision >= (current.data?.revision ?? -1)
+      ? { token, data, error: '' } : current);
+  }, [token]);
+  const loadTags = useCallback(() => {
+    if (!token) return;
+    chatService.tags().then(applyTags).catch((failure) => {
+      setTagState((current) => current.token === token ? { ...current, error: chatError(failure) } : current);
+    });
+  }, [token, applyTags]);
+  useEffect(loadTags, [loadTags]);
 
+  const tagLibrary = tagState.data?.tags ?? [];
+  const tagsById = new Map(tagLibrary.map((tag) => [tag.id, tag]));
+  const activeTag = tagsById.get(selectedTagId);
+  const activeTagId = activeTag?.id;
+  const tagQueryKey = activeTagId ? `${activeTagId}:${tagState.data.revision}` : null;
+  const tagsFor = (id) => {
+    const assigned = tagState.data?.assignments[id] ?? [];
+    return assigned.map((tagId) => tagsById.get(tagId)).filter(Boolean);
+  };
+  const { ingest, upsert } = chat;
   useEffect(() => {
-    const syncTags = () => {
-      setConvTags(getAllUserConversationTags(user?.id));
-      setTagLibrary(getMessageTags(user?.id));
-    };
-    window.addEventListener('edumatch:conversation-tags-updated', syncTags);
-    window.addEventListener('edumatch:message-tags-updated', syncTags);
-    return () => {
-      window.removeEventListener('edumatch:conversation-tags-updated', syncTags);
-      window.removeEventListener('edumatch:message-tags-updated', syncTags);
-    };
-  }, [user?.id]);
+    if (!activeTagId) return;
+    let active = true;
+    chatService.conversations({ tag_id: activeTagId }).then((response) => {
+      if (!active) return;
+      ingest(response, false);
+      setTagPage({ key: tagQueryKey, page: response.meta.page, lastPage: response.meta.last_page });
+    }).catch((failure) => { if (active) setError(chatError(failure)); });
+    return () => { active = false; };
+  }, [activeTagId, tagQueryKey, ingest]);
 
   const subscribeSize = useCallback((onChange) => {
     const media = window.matchMedia('(min-width: 768px)'); media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, []);
   const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
-  const { upsert, conversations, markUnread } = chat;
 
   useEffect(() => {
     if (desktopChat && user?.id && selectedId) {
@@ -618,22 +630,7 @@ export function MessengerWorkspace() {
     }
   }, [desktopChat, user?.id, selectedId]);
 
-  const lastOpenedIdRef = useRef(null);
-  useEffect(() => {
-    if (user?.id && selectedId) {
-      if (lastOpenedIdRef.current !== selectedId) {
-        lastOpenedIdRef.current = selectedId;
-        const currentConv = conversations.find((c) => Number(c.id) === Number(selectedId));
-        if (currentConv && ((currentConv.unread_count || 0) > 0 || currentConv.is_manual_unread)) {
-          markUnread(selectedId, false);
-        }
-      }
-    } else {
-      lastOpenedIdRef.current = null;
-    }
-  }, [user?.id, selectedId, conversations, markUnread]);
-  // The inbox is loaded once by ChatProvider and kept current by websocket events.
-  // Tabs, type filter and name search run on that in-memory list (no request); only looking up *new* people hits the API.
+  // The base inbox stays current via Pusher. Selecting a label requests the matching server pages.
   useEffect(() => {
     if (q.length < 2) return;
     let active = true;
@@ -641,10 +638,7 @@ export function MessengerWorkspace() {
     return () => { active = false; };
   }, [q]);
   const open = (conversation) => {
-    if ((conversation.unread_count || 0) > 0 || conversation.is_manual_unread) {
-      chat.markUnread(conversation.id, false);
-    }
-    upsert({ ...conversation, unread_count: 0, is_manual_unread: false });
+    upsert(conversation);
     setParams({ conversation: conversation.id });
     setMobileView('chat');
   };
@@ -658,18 +652,35 @@ export function MessengerWorkspace() {
   const more = async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-    try { await chat.loadMore(); }
+    try {
+      if (activeTagId) {
+        const response = await chatService.conversations({ tag_id: activeTagId, page: tagPage.page + 1 });
+        ingest(response, false);
+        setTagPage((current) => current?.key === tagQueryKey
+          ? { key: tagQueryKey, page: response.meta.page, lastPage: response.meta.last_page } : current);
+      } else {
+        await chat.loadMore();
+      }
+    }
     catch (failure) { setError(chatError(failure)); }
     finally { setLoadingMore(false); }
   };
+  const toggleUnread = async (conversation) => {
+    const { id, last_message_id: lastMessageId } = conversation;
+    setUnreadPending((current) => new Set(current).add(id));
+    setError('');
+    try { await chat.markUnread(id, !isConversationUnread(conversation), lastMessageId); }
+    catch (failure) { setError(chatError(failure)); }
+    finally { setUnreadPending((current) => new Set([...current].filter((item) => item !== id))); }
+  };
+  const hasMore = activeTagId
+    ? tagPage?.key === tagQueryKey && tagPage.page < tagPage.lastPage
+    : chat.page < chat.lastPage;
   const needle = q.toLocaleLowerCase('vi');
   const visible = chat.conversations.filter((item) => {
-    if (unread && item.unread_count <= 0) return false;
+    if (unread && !isConversationUnread(item)) return false;
     if (filter && item.type !== filter) return false;
-    if (selectedTagId) {
-      const itemTags = convTags[String(item.id)] || [];
-      if (!itemTags.some((t) => t.id === selectedTagId)) return false;
-    }
+    if (activeTagId && !tagState.data.assignments[item.id]?.includes(activeTagId)) return false;
     if (needle) {
       const matchName = item.name?.toLocaleLowerCase('vi').includes(needle);
       const matchPhone = item.partner?.phone?.includes(q);
@@ -687,7 +698,7 @@ export function MessengerWorkspace() {
         <div className="em-filter" ref={filterRef}>
           <button type="button" aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}>
             <ListFilter size={17}/>
-            <span>{selectedTagId ? `Thẻ: ${tagLibrary.find((t) => t.id === selectedTagId)?.name || 'Đã chọn'}` : 'Lọc theo'}</span>
+            <span>{activeTag ? `Thẻ: ${activeTag.name}` : 'Lọc theo'}</span>
           </button>
           {filterOpen && (
             <div className="em-filter__menu">
@@ -695,8 +706,8 @@ export function MessengerWorkspace() {
                 <button
                   type="button"
                   key={value}
-                  aria-pressed={!selectedTagId && filter===value}
-                  onClick={() => { setFilter(value); setSelectedTagId(''); setFilterOpen(false); }}
+                  aria-pressed={!activeTagId && filter===value}
+                  onClick={() => { setFilter(value); setSelectedTagId(null); setFilterOpen(false); }}
                 >
                   {label}
                 </button>
@@ -711,7 +722,7 @@ export function MessengerWorkspace() {
                       className={`em-filter__tag-item ${selectedTagId === tag.id ? 'is-active' : ''}`}
                       aria-pressed={selectedTagId === tag.id}
                       onClick={() => {
-                        setSelectedTagId(selectedTagId === tag.id ? '' : tag.id);
+                        setSelectedTagId(activeTagId === tag.id ? null : tag.id);
                         setFilterOpen(false);
                       }}
                     >
@@ -728,13 +739,14 @@ export function MessengerWorkspace() {
       <div className="em-tabs"><button type="button" className={!unread?'is-active':''} onClick={() => setUnread(false)}>{chat.loaded ? `Tất cả (${chat.counts.total})` : 'Tất cả'}</button><button type="button" className={unread?'is-active':''} onClick={() => setUnread(true)}><MailOpen size={16}/>{chat.loaded ? `Chưa đọc (${chat.counts.unread})` : 'Chưa đọc'}</button></div>
       {chat.loaded && chat.connection !== 'connected' && <p className="em-connection" role="status">{chat.connection === 'connecting' ? 'Đang kết nối realtime...' : 'Realtime chưa kết nối.'} <button type="button" onClick={() => void chat.refresh().catch((failure) => toast.error(chatError(failure)))}>Làm mới</button></p>}
       {(error || chat.error) && <p className="em-error" role="alert">{error || chat.error}</p>}
+      {tagState.error && <p className="em-error" role="alert">{tagState.error} <button type="button" onClick={loadTags}>Tải lại thẻ</button></p>}
       <div className="em-contacts" aria-busy={!chat.loaded}>
         {!chat.loaded && !chat.conversations.length && !chat.error && <ChatLoading variant="inbox"/>}
         {q.length >= 2 && people.query === q && people.items.length > 0 && <section className="em-search-people"><h3>Người dùng hệ thống</h3>{people.items.map((person) => <button type="button" className="em-contact" key={person.id} disabled={opening} onClick={() => void openPerson(person)}><ChatAvatar person={person}/><span className="em-contact__copy"><strong>{person.name}</strong><span>{person.phone || chatRole(person.role)}</span><small>{person.conversation_id ? 'Mở lại hội thoại' : 'Bắt đầu trò chuyện'}</small></span><Plus size={16}/></button>)}</section>}
         {visible.map((conversation) => {
-          const tags = convTags[String(conversation.id)] || [];
+          const tags = tagsFor(conversation.id);
           const isSelected = selectedId === conversation.id;
-          const isUnread = (conversation.unread_count || 0) > 0 || Boolean(conversation.is_manual_unread);
+          const isUnread = isConversationUnread(conversation);
           return (
             <div
               key={conversation.id}
@@ -762,7 +774,7 @@ export function MessengerWorkspace() {
                 </span>
                 <span className="em-contact__meta">
                   <time>{chatTime(conversation.last_message_at)}</time>
-                  {isUnread && <b>{conversation.unread_count > 99 ? '99+' : (conversation.unread_count || 1)}</b>}
+                  {isUnread && <b>{conversation.unread_count > 99 ? '99+' : (conversation.unread_count || '•')}</b>}
                 </span>
               </button>
               <button
@@ -770,10 +782,10 @@ export function MessengerWorkspace() {
                 className={`em-contact-action-btn ${isUnread ? 'is-unread' : ''}`}
                 title={isUnread ? 'Đánh dấu là đã đọc' : 'Đánh dấu là chưa đọc'}
                 aria-label={isUnread ? 'Đánh dấu là đã đọc' : 'Đánh dấu là chưa đọc'}
+                disabled={unreadPending.has(conversation.id)}
                 onClick={(e) => {
                   e.stopPropagation();
-                  const nextUnread = !isUnread;
-                  chat.markUnread(conversation.id, nextUnread);
+                  void toggleUnread(conversation);
                 }}
               >
                 {isUnread ? <MailCheck size={16} /> : <Mail size={16} />}
@@ -782,7 +794,7 @@ export function MessengerWorkspace() {
           );
         })}
         {chat.loaded && !visible.length && <div className="em-empty"><Search size={27}/><h3>Chưa có hội thoại phù hợp</h3><p>Tìm người dùng theo tên hoặc số điện thoại để bắt đầu.</p></div>}
-        {chat.page < chat.lastPage && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Tải thêm hội thoại</button>}
+        {hasMore && <button className="em-load-more" type="button" onClick={() => void more()} disabled={loadingMore}>Tải thêm hội thoại</button>}
       </div>
     </aside>
     {selectedId && (wide || mobileView === 'chat') ? (
@@ -793,6 +805,7 @@ export function MessengerWorkspace() {
         infoOpen={infoOpen}
         onInfo={handleToggleInfo}
         user={user}
+        tagControls={{ tags: tagsFor(selectedId), library: tagLibrary, ready: Boolean(tagState.data), onChange: applyTags }}
       />
     ) : (
       <section className="em-chat em-no-selection em-welcome">

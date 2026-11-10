@@ -21,7 +21,7 @@ const lastForeignId = (messages, userId) => {
 export function useRealtimeChat(conversationId) {
   const { user, token } = useAuth();
   const userId = user?.id;
-  const { threads, conversations } = useChat();
+  const { threads, conversations, markUnread } = useChat();
   const subscribe = useCallback((notify) => threads.subscribe(conversationId, notify), [threads, conversationId]);
   const read = useCallback(() => threads.snapshot(conversationId), [threads, conversationId]);
   const snap = useSyncExternalStore(subscribe, read, read);
@@ -34,10 +34,12 @@ export function useRealtimeChat(conversationId) {
   const memberIds = useRef(new Set());
   const atEnd = useRef(true);
   const readState = useRef({ flight: false, requested: 0, completed: 0 });
+  const openedConversation = useRef(null);
   const fresh = useRef({ foreignId: 0, ownRead: 0 });
 
   const currentReceipts = { ...snap.receipts };
-  conversations.find((item) => Number(item.id) === Number(conversationId))?.read_receipts?.forEach((item) => {
+  const conversation = conversations.find((item) => Number(item.id) === Number(conversationId));
+  conversation?.read_receipts?.forEach((item) => {
     currentReceipts[item.user_id] = Math.max(currentReceipts[item.user_id] || 0, Number(item.last_read_message_id));
   });
   const foreignId = lastForeignId(snap.messages, user?.id);
@@ -81,6 +83,17 @@ export function useRealtimeChat(conversationId) {
   }, [threads, conversationId, user?.id, token]);
 
   useEffect(() => { void markRead(); }, [markRead, foreignId, ownRead, snap.loading]);
+
+  // Clear the private reminder on opening the thread. The read watermark is still advanced by visible messages.
+  const openedId = conversation?.id;
+  const manuallyUnread = conversation?.is_manual_unread;
+  useEffect(() => {
+    if (!openedId || openedConversation.current === openedId) return;
+    openedConversation.current = openedId;
+    if (manuallyUnread) {
+      void markUnread(openedId, false).catch((failure) => threads.setError(openedId, chatError(failure)));
+    }
+  }, [openedId, manuallyUnread, markUnread, threads]);
 
   // Returning to the tab only re-sends a read receipt if something unread is on screen. It never refetches.
   useEffect(() => {

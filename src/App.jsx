@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '@/contexts';
+import { AccountNotificationProvider } from '@/contexts/AccountNotificationProvider';
 import { ChatProvider } from '@/contexts/ChatContext.jsx';
 import AppRoutes from '@/routes';
 
@@ -9,8 +10,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ChatProvider>
-          {/* Centralized Route Tree */}
-          <AppRoutes />
+          <AccountNotificationProvider>
+            <AppRoutes />
+          </AccountNotificationProvider>
         </ChatProvider>
       </AuthProvider>
     </BrowserRouter>

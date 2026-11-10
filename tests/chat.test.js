@@ -94,6 +94,33 @@ test('read receipts send a visible message watermark rather than a client clock'
   await chatService.read(4, 18);
 });
 
+test('manual unread and label changes use authenticated APIs without saving chat state locally', async () => {
+  values.set('access_token', JSON.stringify('chat-test-token'));
+  const calls = [];
+  api.defaults.adapter = async (config) => {
+    assert.equal(config.headers.Authorization, 'Bearer chat-test-token');
+    calls.push([config.method, config.url, config.data ? JSON.parse(config.data) : config.params]);
+    return response(config, {});
+  };
+  await chatService.tags();
+  await chatService.assignTag(4, 7, true);
+  await chatService.assignTag(4, 7, false);
+  await chatService.conversations({ tag_id: 7, page: 2 });
+  await chatService.markUnread(4, true, 18);
+  await chatService.markUnread(4, false, 18);
+  assert.deepEqual(calls, [
+    ['get', '/chat/tags', {}],
+    ['put', '/chat/conversations/4/tags/7', { applied: true }],
+    ['put', '/chat/conversations/4/tags/7', { applied: false }],
+    ['get', '/chat/conversations', { page: 2, tag_id: 7 }],
+    ['put', '/chat/conversations/4/unread', { unread: true }],
+    ['put', '/chat/conversations/4/unread', { unread: false, last_message_id: 18 }],
+  ]);
+  assert.deepEqual([...values.keys()], ['access_token']);
+  assert.equal(state.isConversationUnread({ unread_count: 0, is_manual_unread: true }), true);
+  assert.equal(state.isConversationUnread({ unread_count: 0, is_manual_unread: false }), false);
+});
+
 test('note autosaves are serialized so a slow older save cannot overwrite the newer note', async () => {
   const calls = [];
   let release;

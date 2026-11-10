@@ -47,19 +47,31 @@ export const acquirePusherChannel = (name) => {
 };
 
 /** Subscribe to the authenticated user's private notification channel. */
-export const subscribeUserNotifications = (userId, onNotificationReceived) => {
+export const subscribeUserNotifications = (
+  userId,
+  onNotificationReceived,
+  { onSubscribed, onSubscriptionError } = {}
+) => {
   const numericUserId = Number(userId);
   if (!Number.isInteger(numericUserId) || numericUserId < 1) return () => {};
 
   const channelName = `private-user.${numericUserId}`;
   const lease = acquirePusherChannel(channelName);
-  if (!lease) return () => {};
+  if (!lease) {
+    onSubscriptionError?.();
+    return () => {};
+  }
   const { channel } = lease;
   const listener = (notification) => onNotificationReceived?.(notification);
   channel.bind('notification.created', listener);
+  if (onSubscribed) channel.bind('pusher:subscription_succeeded', onSubscribed);
+  if (onSubscriptionError) channel.bind('pusher:subscription_error', onSubscriptionError);
+  if (channel.subscribed) onSubscribed?.();
 
   return () => {
     channel.unbind('notification.created', listener);
+    if (onSubscribed) channel.unbind('pusher:subscription_succeeded', onSubscribed);
+    if (onSubscriptionError) channel.unbind('pusher:subscription_error', onSubscriptionError);
     lease.release();
   };
 };

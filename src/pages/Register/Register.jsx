@@ -60,9 +60,19 @@ function ProfileField({ field, form, errors, onChange, onExpand }) {
           <div className="register-textarea-body">
             <textarea
               {...sharedProps}
+              readOnly={Boolean(onExpand)}
               rows={1}
               wrap="off"
-              onClick={() => onExpand?.(field)}
+              onFocus={(event) => {
+                if (!onExpand) return;
+                event.currentTarget.blur();
+                onExpand(field);
+              }}
+              onClick={(event) => {
+                if (!onExpand) return;
+                event.currentTarget.blur();
+                onExpand(field);
+              }}
             />
           </div>
         ) : (

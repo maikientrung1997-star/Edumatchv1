@@ -1,10 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  ArrowLeft,
   ArrowRight,
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsDown,
+  Clock3,
   GraduationCap,
   Headphones,
   Heart,
@@ -36,8 +41,10 @@ import heroImage from '@/assets/tutoring-hero.webp';
 import heroImageMobile from '@/assets/tutoring-hero-720.webp';
 import communityTeacherStrip from '@/assets/vietnamese-teachers-avatar-strip.png';
 import { subjects as subjectStyles, tutors } from './homeData';
+import { useDiscoveryFeed, useDiscoveryNavigation } from './useDiscoveryFeed';
 import './home.css';
 import '@/components/courses/course.css';
+import './discovery.css';
 
 const initialFilters = { subject: '', mode: '', province: '', ward: '', provider: '', description: '' };
 const initialCourseFilters = { subject: '', mode: '', province: '', ward: '', description: '' };
@@ -81,22 +88,59 @@ const inferredGender = (provider) => {
   if (match?.title === 'Thầy') return 'male';
   return provider?.gender || '';
 };
+const courseModeLabel = { 'in-person': 'truc tiep', online: 'truc tuyen', recorded: 'video quay san' };
 const scrollTo = (element, block = 'start') =>
   element?.scrollIntoView({
     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
     block,
   });
 
-function SectionHeading({ title, description, children }) {
+function SectionHeading({ title, description, children, onMobileViewAll, mobileViewAllText = 'Xem tất cả' }) {
   return (
     <div className="section-heading">
-      <div>
-        <h2>{title}</h2>
-        {description && <p>{description}</p>}
+      <div className="section-heading__header-row">
+        <div className="section-heading__text">
+          <h2 tabIndex={-1}>{title}</h2>
+          {description && <p>{description}</p>}
+        </div>
+        {onMobileViewAll && (
+          <button
+            type="button"
+            className="mobile-header-view-all"
+            onClick={onMobileViewAll}
+            aria-label={`${mobileViewAllText}`}
+          >
+            <span>{mobileViewAllText}</span>
+            <ChevronRight size={15} />
+          </button>
+        )}
       </div>
       {children}
     </div>
   );
+}
+
+function DiscoveryHeader({ enabled, active, queryKey, children }) {
+  const headerRef = useRef(null);
+  const previousQuery = useRef(queryKey);
+  useLayoutEffect(() => {
+    const changed = previousQuery.current !== queryKey;
+    previousQuery.current = queryKey;
+    if (enabled && active && changed) {
+      // Keep the new results in view even if filtering shrinks a long section.
+      headerRef.current?.parentElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  }, [enabled, active, queryKey]);
+  return enabled ? <div ref={headerRef} className="discovery-section__header">{children}</div> : children;
+}
+
+function DiscoveryMore({ feed: { count, sentinelRef, showMore }, total, label }) {
+  if (!total) return null;
+  return count < total ? (
+    <div ref={sentinelRef} className="discovery-more">
+      <button type="button" onClick={showMore}>Xem thêm {label}<ChevronDown size={16} /></button>
+    </div>
+  ) : <p className="discovery-end" role="status">Bạn đã xem hết {label}.</p>;
 }
 
 function FilterField({ label, icon: Icon, id, name, value, onChange, children }) {
@@ -203,7 +247,57 @@ function TutorCard({ tutor, saved, onSave, onOpen }) {
   );
 }
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth <= breakpoint;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= breakpoint);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+// Reveal a small batch of existing catalog results as the mobile list is scrolled.
+function useMobileResults(total, queryKey, enabled) {
+  const [batch, setBatch] = useState({ key: queryKey, count: 8 });
+  const sentinelRef = useRef(null);
+  const count = Math.min(total, batch.key === queryKey ? batch.count : 8);
+  const showMore = () => setBatch((current) => ({
+    key: queryKey,
+    count: Math.min(total, (current.key === queryKey ? current.count : 8) + 8),
+  }));
+
+  useEffect(() => {
+    if (enabled) window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [enabled, queryKey]);
+
+  useEffect(() => {
+    if (!enabled || count >= total || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      setBatch((current) => ({
+        key: queryKey,
+        count: Math.min(total, (current.key === queryKey ? current.count : 8) + 8),
+      }));
+    }, { rootMargin: '300px 0px' });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [enabled, count, total, queryKey]);
+
+  return { count, sentinelRef, showMore };
+}
+
 export const Home = () => {
+  const isMobile = useIsMobile(768);
+  const isPhone = useIsMobile(767);
   const catalog = useMasterData();
   const catalogSubjects = catalog.subjects.length ? catalog.subjects : subjectStyles;
   const subjects = catalogSubjects.map((subject) => ({ ...subject,
@@ -212,7 +306,7 @@ export const Home = () => {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading, canUseStudentConsultation } = useAuth();
   const chatOpening = useRef(false);
   const query = params.get('q') || '';
   const needQuery = params.get('need') || '';
@@ -222,7 +316,34 @@ export const Home = () => {
   const descriptionQuery = hasNeedQuery ? needQuery : courseQuery;
   const hasDescriptionQuery = hasNeedQuery || hasCourseQuery;
   const isSearchResults = location.pathname === ROUTES.SEARCH_RESULTS;
+  const currentView = params.get('view');
+  const isDiscoveryHome = !(isMobile && ['courses', 'tutors'].includes(currentView));
+  const openMobileView = (viewType) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('view', viewType);
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const closeMobileView = () => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('view');
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const dialog = params.get('dialog');
+  useEffect(() => {
+    if (dialog !== 'consultation' || loading || canUseStudentConsultation) return;
+    const next = new URLSearchParams(params);
+    next.delete('dialog');
+    navigate(
+      { pathname: location.pathname, search: next.toString(), hash: location.hash },
+      { replace: true, preventScrollReset: true },
+    );
+  }, [dialog, loading, canUseStudentConsultation, params, navigate, location.pathname, location.hash]);
   const [filters, setFilters] = useState(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState(initialFilters);
   const [courseFilters, setCourseFilters] = useState(initialCourseFilters);
@@ -255,7 +376,36 @@ const profileCourses = profile
   const filterRef = useRef(null);
   const courseRef = useRef(null);
   const sponsoredRef = useRef(null);
+  const discoveryHeroRef = useRef(null);
+  const discoveryEndRef = useRef(null);
+  const discovery = useDiscoveryNavigation(isDiscoveryHome, {
+    heroRef: discoveryHeroRef,
+    courseRef,
+    tutorRef: resultsRef,
+    sponsoredRef,
+    endRef: discoveryEndRef,
+  });
+  const [sponsoredFilters, setSponsoredFilters] = useState({ description: '', mode: '' });
+  const [appliedSponsoredFilters, setAppliedSponsoredFilters] = useState({ description: '', mode: '' });
+  const [sponsoredSort, setSponsoredSort] = useState('top-rated');
   const otherSubjectInputRef = useRef(null);
+  const otherSubjectTriggerRef = useRef(null);
+  const otherSubjectSearchRef = useRef(null);
+
+  useEffect(() => {
+    if (!showOtherSubjectSearch) return;
+    const closeOtherSubjectOutside = (event) => {
+      if (
+        !otherSubjectTriggerRef.current?.contains(event.target)
+        && !otherSubjectSearchRef.current?.contains(event.target)
+      ) {
+        setShowOtherSubjectSearch(false);
+        setOtherCourseQuery('');
+      }
+    };
+    document.addEventListener('pointerdown', closeOtherSubjectOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOtherSubjectOutside, true);
+  }, [showOtherSubjectSearch]);
   const visibleCourseFilters = hasDescriptionQuery ? { ...courseFilters, description: descriptionQuery } : courseFilters;
   const activeCourseFilters = hasDescriptionQuery ? { ...appliedCourseFilters, description: descriptionQuery } : appliedCourseFilters;
   const visibleTutorFilters = hasDescriptionQuery ? { ...filters, description: descriptionQuery } : filters;
@@ -263,11 +413,11 @@ const profileCourses = profile
   const rankedCourses = getCourses()
     .map((course) => ({ ...course, ranking: getCourseRating(course.id) }))
     .filter((course) => {
-      const courseMode = course.learningMode === 'in-person'
-        ? 'in-person'
+      const courseMode = course.learningMode === 'online'
+        ? 'online'
         : course.learningMode === 'recorded'
           ? 'recorded'
-          : 'online';
+          : 'in-person';
       const courseSearchText = normalize([
         course.title,
         course.subject,
@@ -285,7 +435,7 @@ const profileCourses = profile
         (!activeCourseFilters.mode || courseMode === activeCourseFilters.mode) &&
         (!activeCourseFilters.province || normalize(`${course.province || ''} ${course.location || ''}`).includes(normalize(activeCourseFilters.province))) &&
         (!activeCourseFilters.ward || normalize(`${course.ward || ''} ${course.district || ''} ${course.location || ''}`).includes(normalize(activeCourseFilters.ward))) &&
-        matchesDescription(`${courseSearchText} ${courseMode === 'in-person' ? 'truc tiep' : courseMode === 'online' ? 'truc tuyen' : 'video quay san'}`, activeCourseFilters.description, inferredGender(course.teacher))
+        matchesDescription(`${courseSearchText} ${courseModeLabel[courseMode]}`, activeCourseFilters.description, inferredGender(course.teacher))
       );
     })
     .sort((first, second) => {
@@ -298,6 +448,9 @@ const profileCourses = profile
     });
   const coursePageSize = 9;
   const totalCoursePages = Math.max(1, Math.ceil(rankedCourses.length / coursePageSize));
+  const mobileCoursePageSize = 6;
+  const totalMobileCoursePages = Math.max(1, Math.ceil(rankedCourses.length / mobileCoursePageSize));
+  const paginatedMobileCourses = rankedCourses.slice((coursePage - 1) * mobileCoursePageSize, coursePage * mobileCoursePageSize);
   const visibleCourses = showAllCourses
     ? rankedCourses.slice((coursePage - 1) * coursePageSize, coursePage * coursePageSize)
     : rankedCourses.slice(0, 6);
@@ -311,6 +464,18 @@ const profileCourses = profile
   const visibleSponsoredCourses = showAllSponsored
     ? sponsoredCourses.slice((sponsoredPage - 1) * sponsoredPageSize, sponsoredPage * sponsoredPageSize)
     : sponsoredCourses.slice(0, 3);
+  const discoverySponsoredCourses = sponsoredCourses.filter((course) => {
+    const mode = course.learningMode === 'online' ? 'online' : course.learningMode === 'recorded' ? 'recorded' : 'in-person';
+    const description = [
+      course.title, course.description, course.subject, course.teacher?.name,
+      course.location, course.province, course.ward, course.district, course.schedule, courseModeLabel[mode],
+    ].filter(Boolean).join(' ');
+    return (!appliedSponsoredFilters.mode || mode === appliedSponsoredFilters.mode)
+      && matchesDescription(description, appliedSponsoredFilters.description, inferredGender(course.teacher));
+  });
+  if (sponsoredSort === 'newest') {
+    discoverySponsoredCourses.sort((first, second) => new Date(second.createdAt || 0) - new Date(first.createdAt || 0));
+  }
   const searchableTutors = (() => {
     const providers = new Map();
 
@@ -318,7 +483,7 @@ const profileCourses = profile
       const provider = course.teacher;
       const key = provider.id;
       const rating = getCourseRating(course.id);
-      const mode = course.learningMode === 'in-person' ? 'offline' : course.learningMode === 'recorded' ? 'recorded' : 'online';
+      const mode = course.learningMode === 'online' ? 'online' : course.learningMode === 'recorded' ? 'recorded' : 'offline';
       const current = providers.get(key) || {
         id: key,
         name: provider.name,
@@ -470,9 +635,24 @@ const profileCourses = profile
   const isFiltered = Boolean(query || savedOnly || trustFirst || Object.values(activeTutorFilters).some(Boolean));
   const tutorPageSize = 12;
   const totalTutorPages = Math.max(1, Math.ceil(filteredTutors.length / tutorPageSize));
+  const mobileTutorPageSize = 8;
+  const totalMobileTutorPages = Math.max(1, Math.ceil(filteredTutors.length / mobileTutorPageSize));
+  const paginatedMobileTutors = filteredTutors.slice((tutorPage - 1) * mobileTutorPageSize, tutorPage * mobileTutorPageSize);
   const visibleTutors = showAll
     ? filteredTutors.slice((tutorPage - 1) * tutorPageSize, tutorPage * tutorPageSize)
     : filteredTutors.slice(0, 8);
+  const { count: mobileCourseCount, sentinelRef: mobileCourseSentinelRef, showMore: showMoreMobileCourses } = useMobileResults(rankedCourses.length, JSON.stringify([currentView, activeCourseFilters, courseSort]), isPhone && currentView === 'courses');
+  const { count: mobileTutorCount, sentinelRef: mobileTutorSentinelRef, showMore: showMoreMobileTutors } = useMobileResults(filteredTutors.length, JSON.stringify([currentView, activeTutorFilters, query, savedOnly, trustFirst]), isPhone && currentView === 'tutors');
+  const mobileCourseResults = isPhone ? rankedCourses.slice(0, mobileCourseCount) : paginatedMobileCourses;
+  const mobileTutorResults = isPhone ? filteredTutors.slice(0, mobileTutorCount) : paginatedMobileTutors;
+  const discoveryBatchSize = isMobile ? 8 : 9;
+  const courseQueryKey = JSON.stringify([activeCourseFilters, courseSort]);
+  const tutorQueryKey = JSON.stringify([activeTutorFilters, query, savedOnly, trustFirst]);
+  const sponsoredQueryKey = JSON.stringify([appliedSponsoredFilters, sponsoredSort]);
+  const canLoadDiscovery = isDiscoveryHome && !discovery.isMoving;
+  const homeCourses = useDiscoveryFeed(rankedCourses.length, courseQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc'), discoveryBatchSize);
+  const homeTutors = useDiscoveryFeed(filteredTutors.length, tutorQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('giao-vien'), isMobile ? 8 : 12);
+  const homeSponsored = useDiscoveryFeed(discoverySponsoredCourses.length, sponsoredQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc-tai-tro'), discoveryBatchSize);
   const { administrativeProvinces, wardOptions, error: areaError } = useAdministrativeOptions(filters.province);
   const { administrativeProvinces: courseProvinces, wardOptions: courseWardOptions, error: courseAreaError } = useAdministrativeOptions(courseFilters.province);
   const registerForTutor = async (tutor) => {
@@ -542,6 +722,96 @@ const profileCourses = profile
     setSponsoredPage(page);
     requestAnimationFrame(() => scrollTo(sponsoredRef.current));
   };
+  const updateMobileTutorFilter = (event) => {
+    const { name, value } = event.target;
+    updateFilter(event);
+    setAppliedFilters((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'mode' && value !== 'in-person' ? { province: '', ward: '' } : {}),
+    }));
+    setTutorPage(1);
+  };
+
+  const mobileTutorFilterForm = (
+    <form
+      className="mobile-filter-row mobile-filter-row--tutors"
+      aria-label="Bộ lọc giáo viên và trung tâm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setAppliedFilters(filters);
+        if (currentView !== 'tutors') setShowAll(false);
+        setTutorPage(1);
+      }}
+    >
+      <div className="mobile-filter-row__input">
+        <Search size={15} aria-hidden="true" />
+        <input
+          name="description"
+          aria-label="Tìm kiếm qua mô tả"
+          placeholder="Tìm gia sư, môn học..."
+          value={visibleTutorFilters.description}
+          onChange={updateFilter}
+        />
+      </div>
+      <select className="mobile-filter-row__select" name="mode" aria-label="Hình thức giảng dạy" value={visibleTutorFilters.mode} onChange={updateMobileTutorFilter}>
+        <option value="">Hình thức</option>
+        <option value="online">Trực tuyến</option>
+        <option value="in-person">Trực tiếp</option>
+        <option value="recorded">Video</option>
+      </select>
+      <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm giáo viên">
+        <Search size={17} aria-hidden="true" />
+      </button>
+      <select className="mobile-filter-row__select" name="subject" aria-label="Môn học hoặc lĩnh vực" value={visibleTutorFilters.subject} onChange={updateMobileTutorFilter}>
+        <option value="">Tất cả môn</option>
+        {subjects.map((subject) => (
+          <option key={subject.id} value={subject.id}>{subject.name}</option>
+        ))}
+      </select>
+      <select className="mobile-filter-row__select" name="provider" aria-label="Loại hồ sơ" value={visibleTutorFilters.provider} onChange={updateMobileTutorFilter}>
+        <option value="">Loại hồ sơ</option>
+        <option value="teacher">Giáo viên</option>
+        <option value="center">Trung tâm</option>
+      </select>
+      <button
+        type="button"
+        className={`mobile-filter-row__trust-btn ${trustFirst ? 'is-active' : ''}`}
+        aria-label="Ưu tiên nhiều tin tưởng"
+        aria-pressed={trustFirst}
+        title="Ưu tiên nhiều tin tưởng"
+        onClick={() => {
+          setTrustFirst((current) => !current);
+          if (currentView === 'tutors') setTutorPage(1);
+        }}
+      >
+        <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} aria-hidden="true" />
+      </button>
+      {filters.mode === 'in-person' && (
+        <div className="mobile-tutor-location">
+          <AdministrativePicker
+            id="mobile-tutor-province"
+            label="Tỉnh / Thành phố"
+            value={filters.province}
+            options={administrativeProvinces}
+            placeholder="Tỉnh/thành"
+            onSelect={selectLocation('province')}
+          />
+          <AdministrativePicker
+            id="mobile-tutor-ward"
+            label="Xã / Phường"
+            value={filters.ward}
+            options={wardOptions}
+            placeholder={filters.province ? 'Xã/phường' : 'Chọn tỉnh/thành trước'}
+            disabled={!filters.province}
+            onSelect={selectLocation('ward')}
+          />
+          {areaError && <p className="account-error" role="alert">{areaError}</p>}
+        </div>
+      )}
+    </form>
+  );
+
   const closeDialog = () => {
     setConsultationComplete(false);
     setParams(
@@ -612,25 +882,323 @@ const profileCourses = profile
   };
 
   return (
-    <div className={`edu-home ${isSearchResults ? 'edu-home--search-results' : ''}`}>
+    <div className={`edu-home ${isSearchResults ? 'edu-home--search-results' : ''} ${isDiscoveryHome ? 'edu-home--discovery' : ''}`}>
       {catalog.error && <p className="edu-container account-error" role="alert">{catalog.error}</p>}
+      {isMobile && currentView === 'courses' ? (
+        <div className="edu-container mobile-listing-page">
+          <div className="mobile-listing-topbar">
+            <button
+              type="button"
+              className="mobile-back-to-home-btn"
+              onClick={closeMobileView}
+            >
+              <ArrowLeft size={16} />
+              <span>Quay lại</span>
+            </button>
+            <span className="mobile-listing-badge">Danh sách khóa học</span>
+          </div>
+
+          <div className="mobile-listing-heading">
+            <h1>Khóa học <span className="accent-text">phù hợp</span></h1>
+            <p>{descriptionQuery ? <>Kết quả lọc theo: <strong>“{descriptionQuery}”</strong></> : 'Khám phá tất cả các khóa học chất lượng trên EduMatch'}</p>
+          </div>
+
+          <form
+            className="mobile-filter-row mobile-filter-row--courses"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setAppliedCourseFilters(courseFilters);
+              setCoursePage(1);
+            }}
+          >
+            <div className="mobile-filter-row__input">
+              <Search size={14} />
+              <input
+                type="text"
+                placeholder="Tìm khóa học, mô tả..."
+                value={visibleCourseFilters.description}
+                onChange={updateCourseFilter}
+                name="description"
+              />
+            </div>
+            <select
+              name="mode"
+              value={visibleCourseFilters.mode}
+              onChange={(e) => {
+                updateCourseFilter(e);
+                setAppliedCourseFilters((curr) => ({ ...curr, mode: e.target.value }));
+                setCoursePage(1);
+              }}
+              className="mobile-filter-row__select"
+              aria-label="Hình thức học"
+            >
+              <option value="">Hình thức</option>
+              <option value="online">Online</option>
+              <option value="in-person">Trực tiếp</option>
+              <option value="recorded">Video</option>
+            </select>
+            {isPhone ? (
+              <div className="mobile-course-sort" role="group" aria-label="Sắp xếp khóa học">
+                {[
+                  ['newest', 'Mới nhất'],
+                  ['top-rated', 'Theo đánh giá'],
+                ].map(([value, label]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    aria-pressed={courseSort === value}
+                    onClick={() => {
+                      setCourseSort(value);
+                      setCoursePage(1);
+                    }}
+                  >
+                    {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : <select
+              value={courseSort}
+              onChange={(event) => {
+                setCourseSort(event.target.value);
+                setCoursePage(1);
+              }}
+              className="mobile-filter-row__select"
+              aria-label="Sắp xếp"
+            >
+              <option value="newest">Mới nhất</option>
+              <option value="top-rated">Đánh giá</option>
+            </select>}
+            <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm">
+              <Search size={15} />
+            </button>
+          </form>
+
+          <div className="mobile-listing-meta mobile-course-count">
+            <span>Hiển thị <strong>{mobileCourseResults.length}</strong> / <strong>{rankedCourses.length}</strong> khóa học</span>
+            {!isPhone && <span className="mobile-listing-page-info">Trang {coursePage} / {totalMobileCoursePages}</span>}
+          </div>
+
+          <div className="mobile-listing-grid">
+            {mobileCourseResults.map((course) => (
+              <CourseCard key={course.id} course={course} />
+            ))}
+          </div>
+
+          {rankedCourses.length === 0 && (
+            <div className="search-empty">
+              <Search size={30} />
+              <h3>Chưa tìm thấy khóa học phù hợp</h3>
+              <p>Thử điều chỉnh mô tả nhu cầu hoặc hình thức học.</p>
+              <Button className="edu-button" onClick={() => { setCourseFilters(initialCourseFilters); setAppliedCourseFilters(initialCourseFilters); }}>
+                Xóa bộ lọc
+              </Button>
+            </div>
+          )}
+
+          {isPhone && mobileCourseCount < rankedCourses.length && <div ref={mobileCourseSentinelRef} className="mobile-results-more"><button type="button" onClick={showMoreMobileCourses}>Xem thêm khóa học</button></div>}
+          {isPhone && rankedCourses.length > 0 && mobileCourseCount >= rankedCourses.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả khóa học</p>}
+          {!isPhone && totalMobileCoursePages > 1 && (
+            <div className="mobile-pagination-nav" aria-label="Điều hướng danh sách khóa học">
+              <button
+                type="button"
+                className="mobile-pagination-nav__btn"
+                disabled={coursePage === 1}
+                onClick={() => {
+                  goToCoursePage(Math.max(1, coursePage - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <ChevronLeft size={16} /> Lùi
+              </button>
+
+              <span className="mobile-pagination-nav__info">
+                Trang <strong>{coursePage}</strong> / {totalMobileCoursePages}
+              </span>
+
+              <button
+                type="button"
+                className="mobile-pagination-nav__btn"
+                disabled={coursePage === totalMobileCoursePages}
+                onClick={() => {
+                  goToCoursePage(Math.min(totalMobileCoursePages, coursePage + 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Next <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {!isPhone && totalMobileCoursePages > 1 && (
+            <div className="mobile-pagination-pages-list">
+              {Array.from({ length: totalMobileCoursePages }, (_, index) => index + 1).map((page) => (
+                <button
+                  type="button"
+                  key={page}
+                  className={`mobile-page-number ${page === coursePage ? 'is-active' : ''}`}
+                  onClick={() => {
+                    goToCoursePage(page);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mobile-listing-footer-action">
+            <button
+              type="button"
+              className="mobile-back-to-home-link"
+              onClick={closeMobileView}
+            >
+              <ArrowLeft size={15} /> Quay lại trang chủ EduMatch
+            </button>
+          </div>
+        </div>
+      ) : isMobile && currentView === 'tutors' ? (
+        <div className="edu-container mobile-listing-page">
+          <div className="mobile-listing-topbar">
+            <button
+              type="button"
+              className="mobile-back-to-home-btn"
+              onClick={closeMobileView}
+            >
+              <ArrowLeft size={16} />
+              <span>Quay lại</span>
+            </button>
+            <span className="mobile-listing-badge">Danh sách giáo viên</span>
+          </div>
+
+          <div className="mobile-listing-heading">
+            <h1>Giáo viên & Trung tâm <span className="accent-text">phù hợp</span></h1>
+            <p>{descriptionQuery ? <>Kết quả lọc theo: <strong>“{descriptionQuery}”</strong></> : 'Những người thầy và trung tâm uy tín đồng hành cùng bạn'}</p>
+          </div>
+
+          {mobileTutorFilterForm}
+
+          <div className="mobile-listing-meta">
+            <span>Hiển thị <strong>{mobileTutorResults.length}</strong> / <strong>{filteredTutors.length}</strong> hồ sơ</span>
+            {!isPhone && <span className="mobile-listing-page-info">Trang {tutorPage} / {totalMobileTutorPages}</span>}
+          </div>
+
+          <div className="mobile-listing-grid tutors-grid">
+            {mobileTutorResults.map((tutor) => (
+              <TutorCard
+                key={tutor.id}
+                tutor={tutor}
+                saved={isAuthenticated ? hasProviderTrust(user.id, tutor.id) : savedIds.includes(tutor.id)}
+                onSave={() => {
+                  if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng giáo viên hoặc trung tâm.'); return; }
+                  const isTrusted = toggleProviderTrust(user.id, tutor.id);
+                  setSavedIds((current) => isTrusted ? [...new Set([...current, tutor.id])] : current.filter((id) => id !== tutor.id));
+                  if (isTrusted) {
+                    trackProviderAffinity(user.id, tutor.id, 'saved-profile', 4);
+                    createNotification({ recipientId: tutor.id, actorName: user.name || 'Một học viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một học viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(tutor.id) });
+                  }
+                }}
+                onOpen={() => {
+                  if (isAuthenticated) trackProviderAffinity(user.id, tutor.id, 'viewed-profile', 1);
+                  setProfile(tutor);
+                }}
+              />
+            ))}
+          </div>
+
+          {filteredTutors.length === 0 && (
+            <div className="search-empty">
+              <Search size={30} />
+              <h3>Chưa tìm thấy hồ sơ phù hợp</h3>
+              <p>Thử chọn môn học, hình thức học hoặc khu vực khác.</p>
+              <Button className="edu-button" onClick={resetSearch}>
+                Xóa bộ lọc
+              </Button>
+            </div>
+          )}
+
+          {isPhone && mobileTutorCount < filteredTutors.length && <div ref={mobileTutorSentinelRef} className="mobile-results-more"><button type="button" onClick={showMoreMobileTutors}>Xem thêm hồ sơ</button></div>}
+          {isPhone && filteredTutors.length > 0 && mobileTutorCount >= filteredTutors.length && <p className="mobile-results-end" role="status">Đã hiển thị tất cả hồ sơ</p>}
+          {!isPhone && totalMobileTutorPages > 1 && (
+            <div className="mobile-pagination-nav" aria-label="Điều hướng danh sách giáo viên">
+              <button
+                type="button"
+                className="mobile-pagination-nav__btn"
+                disabled={tutorPage === 1}
+                onClick={() => {
+                  goToTutorPage(Math.max(1, tutorPage - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <ChevronLeft size={16} /> Lùi
+              </button>
+
+              <span className="mobile-pagination-nav__info">
+                Trang <strong>{tutorPage}</strong> / {totalMobileTutorPages}
+              </span>
+
+              <button
+                type="button"
+                className="mobile-pagination-nav__btn"
+                disabled={tutorPage === totalMobileTutorPages}
+                onClick={() => {
+                  goToTutorPage(Math.min(totalMobileTutorPages, tutorPage + 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Next <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {!isPhone && totalMobileTutorPages > 1 && (
+            <div className="mobile-pagination-pages-list">
+              {Array.from({ length: totalMobileTutorPages }, (_, index) => index + 1).map((page) => (
+                <button
+                  type="button"
+                  key={page}
+                  className={`mobile-page-number ${page === tutorPage ? 'is-active' : ''}`}
+                  onClick={() => {
+                    goToTutorPage(page);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mobile-listing-footer-action">
+            <button
+              type="button"
+              className="mobile-back-to-home-link"
+              onClick={closeMobileView}
+            >
+              <ArrowLeft size={15} /> Quay lại trang chủ EduMatch
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
       {!isSearchResults && catalog.banners.length > 0 && <section className="cms-banners edu-container" aria-label="Thông tin từ EduMatch">{catalog.banners.map((banner) => /^https?:\/\//i.test(banner.link_url || '') ? <a key={banner.id} href={banner.link_url} target="_blank" rel="noopener noreferrer"><img src={banner.image_url} alt={banner.title || 'Thông tin EduMatch'} loading="lazy" /></a> : <img key={banner.id} src={banner.image_url} alt={banner.title || 'Thông tin EduMatch'} loading="lazy" />)}</section>}
       {isSearchResults ? (
-        <section className="search-results-hero" aria-labelledby="search-results-title">
+        <section id="gioi-thieu" className="search-results-hero" ref={discoveryHeroRef} aria-labelledby="search-results-title">
           <div className="edu-container">
             <span><Search size={16} /> KẾT QUẢ THEO NHU CẦU</span>
-            <h1 id="search-results-title">Khóa học và người đồng hành <em>phù hợp với bạn</em></h1>
+            <h1 id="search-results-title" tabIndex={-1}>Khóa học và người đồng hành <em>phù hợp với bạn</em></h1>
             <p>{descriptionQuery ? <>Kết quả cho mô tả: <strong>“{descriptionQuery}”</strong></> : 'Nhập mô tả nhu cầu vào ô tìm kiếm để nhận các gợi ý phù hợp.'}</p>
           </div>
         </section>
       ) : (
-      <section className="home-hero" aria-labelledby="hero-title">
+      <section id="gioi-thieu" className="home-hero" ref={discoveryHeroRef} aria-labelledby="hero-title">
         <div className="edu-container hero-grid">
           <div className="hero-copy">
             <span className="hero-eyebrow">
               <GraduationCap size={15} /> CHỌN ĐÚNG NƠI, HỌC ĐÚNG CHỖ.
             </span>
-            <h1 id="hero-title">
+            <h1 id="hero-title" tabIndex={-1}>
               Kết nối Học viên với
               <br />
               <span>Giáo viên, Trung Tâm Uy Tín</span>
@@ -643,7 +1211,7 @@ const profileCourses = profile
                 className="edu-button"
                 size="lg"
                 onClick={() => {
-                  scrollTo(courseRef.current, 'center');
+                  scrollTo(courseRef.current);
                 }}
               >
                 <Search size={19} />
@@ -654,7 +1222,7 @@ const profileCourses = profile
                 className="edu-button edu-button-outline"
                 size="lg"
                 onClick={() => {
-                  scrollTo(filterRef.current, 'center');
+                  scrollTo(resultsRef.current);
                   document.getElementById('subject-filter')?.focus({ preventScroll: true });
                 }}
               >
@@ -710,89 +1278,159 @@ const profileCourses = profile
       )}
 
       <div className="edu-container home-content">
-        <section id="khoa-hoc" className="home-section course-section" ref={courseRef} aria-labelledby="courses-heading">
+        <section id="khoa-hoc" className={`home-section course-section ${showAllCourses ? 'is-expanded' : ''}`} ref={courseRef} aria-labelledby="courses-heading">
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'khoa-hoc'} queryKey={courseQueryKey}>
           <SectionHeading
             title={<span id="courses-heading">{isSearchResults ? <>Khóa học <span className="accent-text">phù hợp</span></> : <>Lựa chọn <span className="accent-text">khóa học phù hợp</span></>}</span>}
             description={isSearchResults ? 'Các khóa học được lọc theo mô tả nhu cầu của bạn.' : undefined}
+            onMobileViewAll={!isDiscoveryHome && rankedCourses.length > 0 ? () => openMobileView('courses') : undefined}
           >
-            <fieldset className="course-sort" aria-label="Sắp xếp khóa học">
-              <legend className="sr-only">Sắp xếp khóa học</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="course-sort"
-                  value="newest"
-                  checked={courseSort === 'newest'}
-                  onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }}
-                />
-                Hiển thị khóa học mới nhất
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="course-sort"
-                  value="top-rated"
-                  checked={courseSort === 'top-rated'}
-                  onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }}
-                />
-                Hiển thị theo lượt đánh giá
-              </label>
-            </fieldset>
+            {!isMobile && (
+              <fieldset className="course-sort" aria-label="Sắp xếp khóa học">
+                <legend className="sr-only">Sắp xếp khóa học</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="course-sort"
+                    value="newest"
+                    checked={courseSort === 'newest'}
+                    onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }}
+                  />
+                  Hiển thị khóa học mới nhất
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="course-sort"
+                    value="top-rated"
+                    checked={courseSort === 'top-rated'}
+                    onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }}
+                  />
+                  Hiển thị theo lượt đánh giá
+                </label>
+              </fieldset>
+            )}
           </SectionHeading>
-          <form
-            id="tim-khoa-hoc"
-            className={`course-search ${courseFilters.mode === 'in-person' ? 'course-search--location' : ''}`}
-            aria-label="Tìm kiếm khóa học"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setAppliedCourseFilters(courseFilters);
-              setCoursePage(1);
-              setShowAllCourses(false);
-            }}
-          >
-            <DescriptionFilterField value={visibleCourseFilters.description} onChange={updateCourseFilter} />
-            <FilterField
-              id="course-mode-filter"
-              label="Hình thức học"
-              icon={Monitor}
-              name="mode"
-              value={visibleCourseFilters.mode}
-              onChange={updateCourseFilter}
+
+          {isMobile ? (
+            <form
+              className="mobile-filter-row mobile-filter-row--courses"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setAppliedCourseFilters(courseFilters);
+                setCoursePage(1);
+              }}
             >
-              <option value="">Tất cả hình thức</option>
-              <option value="online">Trực tuyến</option>
-              <option value="in-person">Học trực tiếp</option>
-              <option value="recorded">Video quay sẵn</option>
-            </FilterField>
-            {courseAreaError && <p className="account-error" role="alert">{courseAreaError}</p>}
-            {courseFilters.mode === 'in-person' && <>
-              <AdministrativePicker
-                id="course-province-filter"
-                label="Tỉnh / Thành phố"
-                value={courseFilters.province}
-                options={courseProvinces}
-                onSelect={selectCourseLocation('province')}
-                placeholder="Gõ để tìm tỉnh/thành, rồi chọn"
-              />
-              <AdministrativePicker
-                id="course-ward-filter"
-                label="Xã / Phường / Đặc khu"
-                value={courseFilters.ward}
-                options={courseWardOptions}
-                onSelect={selectCourseLocation('ward')}
-                placeholder={courseFilters.province ? 'Gõ để tìm xã/phường, rồi chọn' : 'Chọn tỉnh/thành trước'}
-                disabled={!courseFilters.province}
-                emptyText="Không tìm thấy xã/phường trong tỉnh/thành đã chọn."
-              />
-            </>}
-            <Button type="submit" className="edu-button course-search__submit">
-              <Search size={18} />
-              Tìm kiếm khóa học
-            </Button>
-          </form>
-          <div className="course-grid">
-            {visibleCourses.map((course) => <CourseCard key={course.id} course={course} />)}
+              <div className="mobile-filter-row__input">
+                <Search size={15} />
+                <input
+                  type="text"
+                  placeholder="Tìm khóa học, mô tả..."
+                  value={visibleCourseFilters.description}
+                  onChange={updateCourseFilter}
+                  name="description"
+                />
+              </div>
+              <select
+                name="mode"
+                value={visibleCourseFilters.mode}
+                onChange={(e) => {
+                  updateCourseFilter(e);
+                  setAppliedCourseFilters((curr) => ({ ...curr, mode: e.target.value }));
+                  setCoursePage(1);
+                }}
+                className="mobile-filter-row__select"
+                aria-label="Hình thức học"
+              >
+                <option value="">Hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Trực tiếp</option>
+                <option value="recorded">Video</option>
+              </select>
+              {isPhone ? <div className="mobile-course-sort" role="group" aria-label="Sắp xếp khóa học">
+                {[['newest', 'Mới nhất'], ['top-rated', 'Theo đánh giá']].map(([value, label]) => (
+                  <button key={value} type="button" aria-pressed={courseSort === value} onClick={() => { setCourseSort(value); setCoursePage(1); }}>
+                    {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}{label}
+                  </button>
+                ))}
+              </div> : <select value={courseSort} onChange={(event) => { setCourseSort(event.target.value); setCoursePage(1); }} className="mobile-filter-row__select" aria-label="Sắp xếp">
+                <option value="newest">Mới nhất</option>
+                <option value="top-rated">Đánh giá</option>
+              </select>}
+              <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm">
+                <Search size={15} />
+              </button>
+            </form>
+          ) : (
+            <form
+              id="tim-khoa-hoc"
+              className={`course-search ${courseFilters.mode === 'in-person' ? 'course-search--location' : ''}`}
+              aria-label="Tìm kiếm khóa học"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setAppliedCourseFilters(courseFilters);
+                setCoursePage(1);
+                setShowAllCourses(false);
+              }}
+            >
+              <DescriptionFilterField value={visibleCourseFilters.description} onChange={updateCourseFilter} />
+              <FilterField
+                id="course-mode-filter"
+                label="Hình thức học"
+                icon={Monitor}
+                name="mode"
+                value={visibleCourseFilters.mode}
+                onChange={updateCourseFilter}
+              >
+                <option value="">Tất cả hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Học trực tiếp</option>
+                <option value="recorded">Video quay sẵn</option>
+              </FilterField>
+              {courseAreaError && <p className="account-error" role="alert">{courseAreaError}</p>}
+              {courseFilters.mode === 'in-person' && <>
+                <AdministrativePicker
+                  id="course-province-filter"
+                  label="Tỉnh / Thành phố"
+                  value={courseFilters.province}
+                  options={courseProvinces}
+                  onSelect={selectCourseLocation('province')}
+                  placeholder="Gõ để tìm tỉnh/thành, rồi chọn"
+                />
+                <AdministrativePicker
+                  id="course-ward-filter"
+                  label="Xã / Phường / Đặc khu"
+                  value={courseFilters.ward}
+                  options={courseWardOptions}
+                  onSelect={selectCourseLocation('ward')}
+                  placeholder={courseFilters.province ? 'Gõ để tìm xã/phường, rồi chọn' : 'Chọn tỉnh/thành trước'}
+                  disabled={!courseFilters.province}
+                  emptyText="Không tìm thấy xã/phường trong tỉnh/thành đã chọn."
+                />
+              </>}
+              <Button type="submit" className="edu-button course-search__submit">
+                <Search size={18} />
+                Tìm kiếm khóa học
+              </Button>
+            </form>
+          )}
+          </DiscoveryHeader>
+            <div
+              className={`course-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : isMobile ? 'course-grid--mobile-scroll' : ''}`}
+              tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined}
+              aria-label="Danh sách khóa học"
+              onKeyDown={(event) => {
+                if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                event.preventDefault();
+                event.currentTarget.scrollBy({
+                  left: (event.key === 'ArrowRight' ? 1 : -1) * Math.round(event.currentTarget.clientWidth * 0.86),
+                  behavior: 'smooth',
+                });
+              }}
+            >
+            {(isDiscoveryHome ? rankedCourses.slice(0, homeCourses.count) : isMobile ? (isPhone ? rankedCourses : rankedCourses.slice(0, 4)) : visibleCourses).map((course) => <CourseCard key={course.id} course={course} />)}
           </div>
+          {isDiscoveryHome && <DiscoveryMore feed={homeCourses} total={rankedCourses.length} label="khóa học" />}
           {rankedCourses.length === 0 && (
             <div className="search-empty course-search__empty">
               <Search size={30} />
@@ -803,7 +1441,7 @@ const profileCourses = profile
               </Button>
             </div>
           )}
-          {rankedCourses.length > 6 && (
+          {!isDiscoveryHome && !isMobile && rankedCourses.length > 6 && (
             <div className="course-pagination" aria-label="Điều hướng danh sách khóa học">
               {!showAllCourses ? (
                 <button type="button" className="course-pagination__all" onClick={() => { setShowAllCourses(true); setCoursePage(1); }}>
@@ -827,10 +1465,11 @@ const profileCourses = profile
         </section>
         <section
           id="giao-vien"
-          className="home-section tutors-section"
+          className={`home-section tutors-section ${showAll ? 'is-expanded' : ''}`}
           ref={resultsRef}
           aria-labelledby="tutors-heading"
         >
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'giao-vien'} queryKey={tutorQueryKey}>
           <SectionHeading
             title={
               <span id="tutors-heading">
@@ -838,82 +1477,88 @@ const profileCourses = profile
               </span>
             }
             description={isSearchResults ? 'Những hồ sơ được lọc theo cùng mô tả nhu cầu của bạn.' : undefined}
+            onMobileViewAll={!isDiscoveryHome && filteredTutors.length > 0 ? () => openMobileView('tutors') : undefined}
           >
-            <button
-              type="button"
-              className={`trust-priority-sort ${trustFirst ? 'is-active' : ''}`}
-              aria-pressed={trustFirst}
-              onClick={() => setTrustFirst((current) => !current)}
-            >
-              <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} />
-              Ưu tiên nhiều tin tưởng
-            </button>
+            {!isMobile && (
+              <button
+                type="button"
+                className={`trust-priority-sort ${trustFirst ? 'is-active' : ''}`}
+                aria-pressed={trustFirst}
+                onClick={() => setTrustFirst((current) => !current)}
+              >
+                <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} />
+                Ưu tiên nhiều tin tưởng
+              </button>
+            )}
           </SectionHeading>
-          <div id="tim-gia-su" className="tutor-search tutor-search--inline" ref={filterRef} aria-label="Bộ lọc giáo viên và trung tâm">
-            <form
-              aria-label="Bộ lọc giáo viên và trung tâm"
-              className={`filter-grid ${filters.mode === 'in-person' ? 'filter-grid--location' : ''}`}
-              onSubmit={(event) => {
-                event.preventDefault();
-                setAppliedFilters(filters);
-                setShowAll(false);
-                setTutorPage(1);
-                scrollTo(resultsRef.current);
-              }}
-            >
-              <DescriptionFilterField value={visibleTutorFilters.description} onChange={updateFilter} />
-              <SubjectFilterField subjects={subjects} value={visibleTutorFilters.subject} onChange={updateFilter} />
-              {areaError && <p className="account-error" role="alert">{areaError}</p>}
-              <FilterField
-                label="Hình thức giảng dạy"
-                icon={Monitor}
-                name="mode"
-                value={visibleTutorFilters.mode}
-                onChange={updateFilter}
+
+          {isMobile ? mobileTutorFilterForm : (
+            <div id="tim-gia-su" className="tutor-search tutor-search--inline" ref={filterRef} aria-label="Bộ lọc giáo viên và trung tâm">
+              <form
+                aria-label="Bộ lọc giáo viên và trung tâm"
+                className={`filter-grid ${filters.mode === 'in-person' ? 'filter-grid--location' : ''}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setAppliedFilters(filters);
+                  setShowAll(false);
+                  setTutorPage(1);
+                  scrollTo(resultsRef.current);
+                }}
               >
-                <option value="">Tất cả hình thức</option>
-                <option value="online">Trực tuyến</option>
-                <option value="in-person">Học trực tiếp</option>
-                <option value="recorded">Video quay sẵn</option>
-              </FilterField>
-              <FilterField
-                label="Loại hồ sơ"
-                icon={Users}
-                name="provider"
-                value={visibleTutorFilters.provider}
-                onChange={updateFilter}
-              >
-                <option value="">Giáo viên & Trung tâm</option>
-                <option value="teacher">Giáo viên</option>
-                <option value="center">Trung tâm đào tạo</option>
-              </FilterField>
-              {filters.mode === 'in-person' && <>
-                <AdministrativePicker
-                  id="province-filter"
-                  label="Tỉnh / Thành phố"
-                  value={filters.province}
-                  options={administrativeProvinces}
-                  onSelect={selectLocation('province')}
-                  placeholder="Gõ để tìm tỉnh/thành, rồi chọn"
-                />
-                <AdministrativePicker
-                  id="ward-filter"
-                  label="Xã / Phường / Đặc khu"
-                  value={filters.ward}
-                  options={wardOptions}
-                  onSelect={selectLocation('ward')}
-                  placeholder={filters.province ? 'Gõ để tìm xã/phường, rồi chọn' : 'Chọn tỉnh/thành trước'}
-                  disabled={!filters.province}
-                  emptyText="Không tìm thấy xã/phường trong tỉnh/thành đã chọn."
-                />
-              </>}
-              <Button type="submit" className="edu-button search-submit">
-                <Search size={18} />
-                Tìm kiếm giáo viên
-              </Button>
-            </form>
-          </div>
-          {(isFiltered || savedIds.length > 0) && (
+                <DescriptionFilterField value={visibleTutorFilters.description} onChange={updateFilter} />
+                <SubjectFilterField subjects={subjects} value={visibleTutorFilters.subject} onChange={updateFilter} />
+                {areaError && <p className="account-error" role="alert">{areaError}</p>}
+                <FilterField
+                  label="Hình thức giảng dạy"
+                  icon={Monitor}
+                  name="mode"
+                  value={visibleTutorFilters.mode}
+                  onChange={updateFilter}
+                >
+                  <option value="">Tất cả hình thức</option>
+                  <option value="online">Trực tuyến</option>
+                  <option value="in-person">Học trực tiếp</option>
+                  <option value="recorded">Video quay sẵn</option>
+                </FilterField>
+                <FilterField
+                  label="Loại hồ sơ"
+                  icon={Users}
+                  name="provider"
+                  value={visibleTutorFilters.provider}
+                  onChange={updateFilter}
+                >
+                  <option value="">Giáo viên & Trung tâm</option>
+                  <option value="teacher">Giáo viên</option>
+                  <option value="center">Trung tâm đào tạo</option>
+                </FilterField>
+                {filters.mode === 'in-person' && <>
+                  <AdministrativePicker
+                    id="province-filter"
+                    label="Tỉnh / Thành phố"
+                    value={filters.province}
+                    options={administrativeProvinces}
+                    onSelect={selectLocation('province')}
+                    placeholder="Gõ để tìm tỉnh/thành, rồi chọn"
+                  />
+                  <AdministrativePicker
+                    id="ward-filter"
+                    label="Xã / Phường / Đặc khu"
+                    value={filters.ward}
+                    options={wardOptions}
+                    onSelect={selectLocation('ward')}
+                    placeholder={filters.province ? 'Gõ để tìm xã/phường, rồi chọn' : 'Chọn tỉnh/thành trước'}
+                    disabled={!filters.province}
+                    emptyText="Không tìm thấy xã/phường trong tỉnh/thành đã chọn."
+                  />
+                </>}
+                <Button type="submit" className="edu-button search-submit">
+                  <Search size={18} />
+                  Tìm kiếm giáo viên
+                </Button>
+              </form>
+            </div>
+          )}
+          {!isMobile && (isFiltered || savedIds.length > 0) && (
             <div className="results-toolbar">
               {isFiltered && <span role="status">{`${filteredTutors.length} hồ sơ phù hợp${descriptionQuery ? ` với “${descriptionQuery}”` : query ? ` với “${query}”` : ''}`}</span>}
               <div>
@@ -934,8 +1579,14 @@ const profileCourses = profile
               </div>
             </div>
           )}
-          <div className="tutors-grid">
-            {visibleTutors.map((tutor) => (
+          </DiscoveryHeader>
+          <div className={`tutors-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : isMobile ? 'tutors-grid--mobile-scroll' : ''}`} tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined} aria-label="Danh sách giáo viên và trung tâm" onKeyDown={(event) => {
+            if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            if (event.target !== event.currentTarget) return;
+            event.preventDefault();
+            event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
+          }}>
+            {(isDiscoveryHome ? filteredTutors.slice(0, homeTutors.count) : isMobile ? (isPhone ? filteredTutors : filteredTutors.slice(0, 4)) : visibleTutors).map((tutor) => (
               <TutorCard
                 key={tutor.id}
                 tutor={tutor}
@@ -956,6 +1607,18 @@ const profileCourses = profile
               />
             ))}
           </div>
+          {isDiscoveryHome && <DiscoveryMore feed={homeTutors} total={filteredTutors.length} label="hồ sơ" />}
+          {!isDiscoveryHome && isMobile && !isPhone && filteredTutors.length > 0 && (
+            <div className="mobile-view-all-wrap">
+              <button
+                type="button"
+                className="mobile-view-all-cta"
+                onClick={() => openMobileView('tutors')}
+              >
+                Xem tất cả giáo viên ({filteredTutors.length}) <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
           {visibleTutors.length === 0 && (
             <div className="search-empty">
               <Search size={30} />
@@ -966,14 +1629,14 @@ const profileCourses = profile
               </Button>
             </div>
           )}
-          {filteredTutors.length > 8 && !showAll && (
+          {!isDiscoveryHome && !isMobile && filteredTutors.length > 8 && !showAll && (
             <div className="course-pagination" aria-label="Mở rộng danh sách giáo viên và trung tâm">
               <button type="button" className="course-pagination__all" onClick={() => { setShowAll(true); setTutorPage(1); }}>
                 Xem tất cả giáo viên <ArrowRight size={16} />
               </button>
             </div>
           )}
-          {filteredTutors.length > 8 && showAll && (
+          {!isDiscoveryHome && !isMobile && filteredTutors.length > 8 && showAll && (
             <div className="course-pagination" aria-label="Điều hướng danh sách giáo viên và trung tâm">
               <button type="button" onClick={() => { setShowAll(false); setTutorPage(1); }}>Thu gọn danh sách</button>
               <div className="course-pagination__pages">
@@ -1021,6 +1684,7 @@ const profileCourses = profile
                 </button>
               ))}
             <button
+              ref={otherSubjectTriggerRef}
               className={`subject-tile subject-other ${showOtherSubjectSearch ? 'selected' : ''}`}
               aria-expanded={showOtherSubjectSearch}
               onClick={openOtherSubjectSearch}
@@ -1030,7 +1694,7 @@ const profileCourses = profile
             </button>
           </div>
           {showOtherSubjectSearch && (
-            <div className="other-course-search" role="search" aria-label="Tìm khóa học khác">
+            <div ref={otherSubjectSearchRef} className="other-course-search" role="search" aria-label="Tìm khóa học khác">
               <div className="other-course-search__top">
                 <button type="button" onClick={() => { setShowOtherSubjectSearch(false); setOtherCourseQuery(''); }} aria-label="Đóng tìm kiếm khóa học"><X size={17} /></button>
               </div>
@@ -1063,6 +1727,7 @@ const profileCourses = profile
           ref={sponsoredRef}
           aria-labelledby="sponsored-courses-heading"
         >
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'khoa-hoc-tai-tro'} queryKey={sponsoredQueryKey}>
           <SectionHeading
             title={
               <span id="sponsored-courses-heading">
@@ -1070,16 +1735,60 @@ const profileCourses = profile
               </span>
             }
             description="Khám phá những khóa học nổi bật đang được giới thiệu trên EduMatch."
+            onMobileViewAll={!isDiscoveryHome && isMobile ? () => openMobileView('courses') : undefined}
           >
             <span className="sponsored-caption">
               <Star size={15} fill="currentColor" />
               Được tài trợ
             </span>
           </SectionHeading>
-          <div className="course-grid sponsored-course-grid">
-            {visibleSponsoredCourses.map((course) => <CourseCard key={course.id} course={course} sponsored />)}
+          {isDiscoveryHome && <form
+            className={isMobile ? 'mobile-filter-row mobile-filter-row--courses' : 'course-search discovery-sponsored-search'}
+            aria-label="Tìm kiếm khóa học được tài trợ"
+            onSubmit={(event) => { event.preventDefault(); setAppliedSponsoredFilters(sponsoredFilters); }}
+          >
+            {isMobile ? <>
+              <div className="mobile-filter-row__input">
+                <Search size={15} aria-hidden="true" />
+                <input name="description" aria-label="Mô tả khóa học tài trợ" placeholder="Tìm khóa học, mô tả..." value={sponsoredFilters.description} onChange={(event) => setSponsoredFilters((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+              <select className="mobile-filter-row__select" name="mode" aria-label="Hình thức học tài trợ" value={sponsoredFilters.mode} onChange={(event) => {
+                const mode = event.target.value;
+                setSponsoredFilters((current) => ({ ...current, mode }));
+                setAppliedSponsoredFilters((current) => ({ ...current, mode }));
+              }}>
+                <option value="">Hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Trực tiếp</option>
+                <option value="recorded">Video</option>
+              </select>
+            </> : <>
+              <DescriptionFilterField value={sponsoredFilters.description} onChange={(event) => setSponsoredFilters((current) => ({ ...current, description: event.target.value }))} />
+              <FilterField id="sponsored-mode" label="Hình thức học" icon={Monitor} name="mode" value={sponsoredFilters.mode} onChange={(event) => setSponsoredFilters((current) => ({ ...current, mode: event.target.value }))}>
+                <option value="">Tất cả hình thức</option>
+                <option value="online">Trực tuyến</option>
+                <option value="in-person">Học trực tiếp</option>
+                <option value="recorded">Video quay sẵn</option>
+              </FilterField>
+            </>}
+            <div className="mobile-course-sort discovery-sponsored-sort" role="group" aria-label="Sắp xếp khóa học tài trợ">
+              {[['newest', 'Mới nhất'], ['top-rated', 'Theo đánh giá']].map(([value, label]) => <button key={value} type="button" aria-pressed={sponsoredSort === value} onClick={() => setSponsoredSort(value)}>
+                {value === 'newest' ? <Clock3 size={14} /> : <Star size={14} />}{label}
+              </button>)}
+            </div>
+            <button type="submit" className={isMobile ? 'mobile-filter-row__btn' : 'edu-button course-search__submit'} aria-label="Tìm kiếm khóa học tài trợ"><Search size={isMobile ? 15 : 18} />{!isMobile && 'Tìm kiếm khóa học'}</button>
+          </form>}
+          </DiscoveryHeader>
+          <div className={`course-grid sponsored-course-grid ${isDiscoveryHome ? `discovery-grid ${isMobile ? 'mobile-listing-grid' : ''}` : ''}`} tabIndex={!isDiscoveryHome && isMobile ? 0 : undefined} aria-label="Khóa học được tài trợ" onKeyDown={(event) => {
+            if (isDiscoveryHome || !isMobile || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            event.preventDefault();
+            event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
+          }}>
+            {(isDiscoveryHome ? discoverySponsoredCourses.slice(0, homeSponsored.count) : isPhone ? sponsoredCourses : visibleSponsoredCourses).map((course) => <CourseCard key={course.id} course={course} sponsored />)}
           </div>
-          {sponsoredCourses.length > 3 && (
+          {isDiscoveryHome && <DiscoveryMore feed={homeSponsored} total={discoverySponsoredCourses.length} label="khóa học tài trợ" />}
+          {isDiscoveryHome && discoverySponsoredCourses.length === 0 && <div className="search-empty"><Search size={30} /><h3>Chưa tìm thấy khóa học phù hợp</h3><p>Thử điều chỉnh mô tả nhu cầu hoặc hình thức học.</p><Button className="edu-button" onClick={() => { setSponsoredFilters({ description: '', mode: '' }); setAppliedSponsoredFilters({ description: '', mode: '' }); }}>Xóa bộ lọc</Button></div>}
+          {!isDiscoveryHome && sponsoredCourses.length > 3 && (
             <div className="course-pagination sponsored-pagination" aria-label="Điều hướng khóa học được tài trợ">
               {!showAllSponsored ? (
                 <button type="button" className="course-pagination__all" onClick={() => { setShowAllSponsored(true); setSponsoredPage(1); }}>
@@ -1102,12 +1811,12 @@ const profileCourses = profile
           )}
         </section>
 
-        <section className="bottom-cta">
+        <section id="bat-dau" className="bottom-cta" ref={discoveryEndRef}>
           <div className="cta-icon">
             <BookOpen size={37} strokeWidth={1.4} />
           </div>
           <div className="cta-copy">
-            <h2>Bắt đầu hành trình của bạn hôm nay.</h2>
+            <h2 tabIndex={-1}>Bắt đầu hành trình của bạn hôm nay.</h2>
             <p>Một người thầy phù hợp, những cơ hội mới đang chờ.</p>
           </div>
           <div className="cta-actions">
@@ -1123,6 +1832,21 @@ const profileCourses = profile
         </section>
         </>}
       </div>
+      </>
+      )}
+
+      {discovery.hasDestination && !dialog && !profile && (
+        <button
+          type="button"
+          className="discovery-arrow"
+          data-direction={discovery.direction === -1 ? 'up' : 'down'}
+          aria-label={discovery.direction === -1 ? 'Chuyển đến mục phía trên' : 'Chuyển đến mục tiếp theo'}
+          disabled={discovery.isMoving}
+          onClick={discovery.goToAdjacent}
+        >
+          <ChevronsDown size={30} strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      )}
 
       <Modal
         open={Boolean(profile)}
@@ -1218,10 +1942,12 @@ const profileCourses = profile
             Giao diện đăng ký đang được chuẩn bị. Bạn có thể tìm hiểu nhu cầu học tập hoặc sử dụng
             trang đăng nhập hiện có.
           </p>
-          <Button className="edu-button w-full" onClick={() => openDialog('consultation')}>
-            Tìm hiểu thêm
-            <ArrowRight size={16} />
-          </Button>
+          {canUseStudentConsultation && (
+            <Button className="edu-button w-full" onClick={() => openDialog('consultation')}>
+              Tìm hiểu thêm
+              <ArrowRight size={16} />
+            </Button>
+          )}
           <Link to={ROUTES.LOGIN} className="text-link join-login">
             Đã có tài khoản? Đăng nhập
           </Link>
@@ -1229,7 +1955,7 @@ const profileCourses = profile
       </Modal>
 
       <Modal
-        open={dialog === 'consultation'}
+        open={canUseStudentConsultation && dialog === 'consultation'}
         onClose={closeDialog}
         title="Tư vấn lộ trình học tập"
         description="Cùng tìm ra cách học phù hợp với bạn."
@@ -1375,16 +2101,18 @@ const profileCourses = profile
             <ShieldCheck size={32} />
             <p>
               {dialog === 'support'
-                ? 'EduMatch luôn hướng đến môi trường giáo dục an toàn, minh bạch và hiệu quả. Bạn có thể khám phá câu hỏi thường gặp hoặc điền biểu mẫu tư vấn để tìm lựa chọn học tập phù hợp.'
+                ? `EduMatch luôn hướng đến môi trường giáo dục an toàn, minh bạch và hiệu quả. Bạn có thể xem câu hỏi thường gặp${canUseStudentConsultation ? ' hoặc điền biểu mẫu tư vấn để tìm lựa chọn học tập phù hợp' : ''}.`
                 : 'Chính sách của EduMatch được xây dựng để bảo vệ trải nghiệm học tập an toàn, thông tin minh bạch và kết quả hiệu quả cho mọi thành viên.'}
             </p>
-            <Button
-              className="edu-button"
-              onClick={() => openDialog(dialog === 'support' ? 'faq' : 'consultation')}
-            >
-              {dialog === 'support' ? 'Xem câu hỏi thường gặp' : 'Tìm hiểu thêm'}
-              <ArrowRight size={16} />
-            </Button>
+            {(dialog === 'support' || canUseStudentConsultation) && (
+              <Button
+                className="edu-button"
+                onClick={() => openDialog(dialog === 'support' ? 'faq' : 'consultation')}
+              >
+                {dialog === 'support' ? 'Xem câu hỏi thường gặp' : 'Tìm hiểu thêm'}
+                <ArrowRight size={16} />
+              </Button>
+            )}
           </div>
         )}
       </Modal>

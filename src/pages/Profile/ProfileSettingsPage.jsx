@@ -80,7 +80,7 @@ export function ProfileSettingsPage() {
   const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
   const avatarInput = useRef(null);
   const isStudent = user.role === 'student';
-  const hasSubmittedVerification = Boolean(user?.verificationStatus && user.verificationStatus !== 'unverified');
+  const hasSubmittedVerification = Boolean(user?.role === 'center' && user?.verificationStatus && user.verificationStatus !== 'unverified');
   const avatarAlbumItems = getPosts()
     .filter((post) => String(post.authorId || post.teacherId) === String(user.id))
     .flatMap((post) => getPostMediaItems(post))
@@ -315,6 +315,21 @@ export function ProfileSettingsPage() {
     setIsAvatarAlbumOpen(false);
     setAvatarCropDraft({ source: image.src, variant: 'avatar' });
   };
+  const avatarSourceTriggerRef = useRef(null);
+  const avatarSourceMenuRef = useRef(null);
+  useEffect(() => {
+    if (!isAvatarSourceOpen) return;
+    const closeAvatarSourceOutside = (event) => {
+      if (
+        !avatarSourceTriggerRef.current?.contains(event.target)
+        && !avatarSourceMenuRef.current?.contains(event.target)
+      ) {
+        setIsAvatarSourceOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeAvatarSourceOutside, true);
+    return () => document.removeEventListener('pointerdown', closeAvatarSourceOutside, true);
+  }, [isAvatarSourceOpen]);
   const districts = provinceChildren.filter((area) => area.level === 'district');
   const wards = form.district_id
     ? districtWards
@@ -351,7 +366,7 @@ export function ProfileSettingsPage() {
         <aside className="profile-settings-sidebar">
           <div className="profile-settings-avatar">
             <RoleAvatar src={avatarSource} userId={user.id} name={user.name} role={user.role} size={42} alt={`Ảnh đại diện của ${user.name}`} />
-            <button type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
+            <button ref={avatarSourceTriggerRef} type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
               {avatarBusy ? <LoaderCircle className="profile-settings-avatar__spinner" size={17} /> : <Camera size={17} />}
             </button>
           </div>
@@ -366,7 +381,7 @@ export function ProfileSettingsPage() {
                   : 'Tài khoản quản trị'}
           </p>
           <input ref={avatarInput} className="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatar} disabled={avatarBusy} />
-          {isAvatarSourceOpen && <div className="profile-avatar-source-menu" role="menu" aria-label="Nguồn ảnh đại diện">
+          {isAvatarSourceOpen && <div ref={avatarSourceMenuRef} className="profile-avatar-source-menu" role="menu" aria-label="Nguồn ảnh đại diện">
             <button type="button" role="menuitem" onClick={() => { setIsAvatarSourceOpen(false); avatarInput.current?.click(); }} disabled={avatarBusy}><Camera size={16} /> Tải ảnh lên</button>
             <button type="button" role="menuitem" onClick={() => { setIsAvatarSourceOpen(false); setIsAvatarAlbumOpen(true); }}><ImagePlus size={16} /> Chọn từ album ảnh</button>
           </div>}
@@ -376,7 +391,7 @@ export function ProfileSettingsPage() {
             </p>
           )}
           {avatarBusy && <small aria-live="polite">Đang cập nhật ảnh đại diện…</small>}
-          {['teacher', 'center'].includes(user.role) && <Link className="profile-sidebar-link" to={ROUTES.VERIFICATION}><ShieldCheck size={16} /><span>{hasSubmittedVerification ? 'Hồ Sơ Xác Minh' : 'Xác Minh Hồ Sơ'}</span></Link>}
+          {user.role === 'center' && <Link className="profile-sidebar-link" to={ROUTES.VERIFICATION}><ShieldCheck size={16} /><span>{hasSubmittedVerification ? 'Hồ Sơ Xác Minh' : 'Xác Minh Hồ Sơ'}</span></Link>}
           {!isStudent && <Link className="profile-sidebar-link" to={ROUTES.TEACHER_PROFILE(user.id)}><UserRound size={16} /><span>Xem hồ sơ cá nhân</span></Link>}
         </aside>
         <section className="profile-settings-panel">
@@ -485,7 +500,8 @@ export function ProfileSettingsPage() {
                     name="bio"
                     value={form.bio}
                     readOnly
-                    onClick={() => setIsBioEditorOpen(true)}
+                    onFocus={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
+                    onClick={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
                     rows={5}
                     className="profile-bio-preview"
                   />

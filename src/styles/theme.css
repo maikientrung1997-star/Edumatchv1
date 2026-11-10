@@ -24,6 +24,7 @@
   --color-on-accent: #ffffff;
   --color-trust: #e53935;
   --color-trust-light: #fff1f3;
+  --color-reaction-active: #bf2d34;
   --color-danger: #a75656;
   --color-danger-light: #f6eeee;
   --color-online: #32b779;
@@ -111,11 +112,21 @@
 }
 @media (max-width: 767px) {
   :root {
-    --app-page-gutter: 32px;
+    --app-page-gutter: 24px;
+    --edu-auth-card-width: 100%;
     --edu-auth-card-padding: 20px;
     --edu-auth-page-padding: 24px;
-    --edu-font-auth-heading: 26px;
-    --edu-font-auth-hero: 28px;
+    --text-h1: 20px;
+    --text-h2: 18px;
+    --text-h3: 16px;
+    --edu-font-auth-heading: 22px;
+    --edu-font-auth-hero: 24px;
+  }
+}
+@media (max-width: 359px) {
+  :root {
+    --app-page-gutter: 16px;
+    --edu-auth-card-padding: 16px;
   }
 }
 
@@ -135,28 +146,6 @@
   --edu-shadow: var(--shadow-edu);
   --edu-on-primary: var(--color-on-primary);
   --edu-gold: var(--color-badge-gold);
-}
-.edu-site[data-theme="dark"] {
-  --color-on-primary: #15332a;
-  --color-badge-gold: #e6c088;
-  --color-bg: #14221f;
-  --color-surface: #1c2d27;
-  --color-soft: #23372f;
-  --color-mint: #233c32;
-  --color-ink: #e8f1ec;
-  --color-muted: #b0c1b7;
-  --color-faint: #a2b6ab;
-  --color-line: #354b40;
-  --color-primary: #85d6b7;
-  --color-primary-hover: #a4e6ce;
-  --color-tag: #2c493b;
-  --shadow-edu: 0 8px 30px rgb(5 20 12 / 20%);
-  --color-badge-gold-bg: #423622;
-  --color-trust: #efa8b8;
-  --color-trust-light: #422c34;
-  --color-danger: #efaaaa;
-  --color-danger-light: #422d2d;
-  color-scheme: dark;
 }
 
 /* Small, reusable image control used by discussions and course reviews. */
@@ -200,34 +189,25 @@
   align-items: center;
   gap: 6px;
 }
-.image-attachment > input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-}
-.image-attachment > label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--edu-line, var(--color-line));
-  border-radius: 8px;
+.media-picker-button {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--edu-green, var(--color-primary));
-  font-size: var(--text-caption-xs);
-  font-weight: 700;
-  cursor: pointer;
 }
-.image-attachment > label:hover {
-  border-color: var(--edu-green, var(--color-primary));
+.media-picker-button:hover,
+.media-picker-button:focus-visible {
   background: var(--edu-tag, var(--color-tag));
 }
-.image-attachment > label.is-preparing {
+.media-picker-button:disabled {
   cursor: wait;
-  opacity: 0.8;
+  opacity: .8;
 }
 .image-attachment__spinner {
   animation: image-attachment-spin 0.8s linear infinite;

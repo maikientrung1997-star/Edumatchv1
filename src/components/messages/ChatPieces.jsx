@@ -1,6 +1,8 @@
-import { Fragment, lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Check, CheckCheck, Clock3, Download, FileText, Image, Paperclip, Send, Smile, Users, X } from 'lucide-react';
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Check, CheckCheck, ChevronLeft, ChevronRight, Clock3, Download, FileText, Forward, Image, Paperclip, Reply, Send, Smile, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { chatService, chatError, chatAvatarUrl, CHAT_FILE_ACCEPT, CHAT_REACTIONS } from '@/services/chatService';
@@ -27,10 +29,21 @@ export function ZaloStickerIcon({ size = 20, className = '' }) {
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
-  const source = resolveAvatarSource(chatAvatarUrl(person?.avatar_url || person?.avatar), person?.id);
+  const rawUrl = chatAvatarUrl(person?.avatar_url || person?.avatar);
+  const source = group ? resolveAvatarSource(rawUrl) : resolveAvatarSource(rawUrl, person?.id);
   const [failedSource, setFailedSource] = useState(null);
   return <span className={`em-avatar ${large ? 'em-avatar--large' : ''} ${group ? 'em-avatar--group' : ''}`}>
-    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />}
+    {group ? (
+      source && failedSource !== source ? (
+        <img key={source} src={source} alt={`Ảnh ${person?.name || person?.title || 'nhóm'}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/>
+      ) : (
+        <Users size={large ? 32 : 25}/>
+      )
+    ) : source && failedSource !== source ? (
+      <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/>
+    ) : (
+      <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />
+    )}
     {!group && presenceReady && online.has(String(person?.id)) && <i aria-label="Đang hoạt động"/>}
   </span>;
 }
@@ -75,14 +88,110 @@ export function ChatAttachmentView({ attachment, compact = false, onPreview }) {
   return <button type="button" className="em-file" onClick={download}><FileText size={23}/><span><strong>{attachment.file_name}</strong><small>{Math.max(1, Math.ceil(attachment.file_size / 1024))} KB</small></span><Download size={17}/></button>;
 }
 
-export function ChatHistory({ thread, onPreview, compact = false }) {
+function extractYouTubeId(text) {
+  if (!text || typeof text !== 'string') return null;
+  const match = text.match(/(?:https?:\/\/)?(?:www\.|m\.)?(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/i);
+  return match ? match[1] : null;
+}
+
+function renderMessageBody(text) {
+  if (!text || typeof text !== 'string') return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="em-bubble-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
+export function ChatHistory({ thread, onPreview, compact = false, onReply, onForward }) {
   const { user } = useAuth();
   const historyRef = useRef(null);
   const contentRef = useRef(null);
   const pinned = useRef(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hoveredTime, setHoveredTime] = useState(null);
+  const hoverTimeTimer = useRef(null);
+  const messageRefs = useRef(new Map());
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const replyHighlightTimer = useRef(null);
   const { messages, receipts, detail, hasOlder, loadOlder, react, retryMessage, typingIds } = thread;
   const last = messages[messages.length - 1];
+
+  const allImageAttachments = useMemo(() => {
+    const list = [];
+    messages.forEach((m) => {
+      m.attachments?.forEach((a) => {
+        if (a.is_image) list.push(a);
+      });
+    });
+    return list;
+  }, [messages]);
+
+  const handleMessageMouseMove = (e, message, isLatest) => {
+    // Khi di chuyển chuột khỏi vị trí: ẩn tooltip thời gian ngay lập tức
+    if (hoverTimeTimer.current) {
+      clearTimeout(hoverTimeTimer.current);
+      hoverTimeTimer.current = null;
+    }
+    setHoveredTime(null);
+
+    const timeStr = chatTime(message.sent_at);
+    const dayStr = chatDay(message.sent_at);
+    const label = dayStr && dayStr !== 'Hôm nay' ? `${timeStr} · ${dayStr}` : timeStr;
+
+    // Tin nhắn mới nhất hôm nay đã hiển thị sẵn giờ ở chân tin nhắn rồi
+    if (isLatest && (!dayStr || dayStr === 'Hôm nay')) {
+      return;
+    }
+
+    // Giữ chuột đúng vị trí 350ms (bằng thời gian hiện icon) mới hiển thị giờ trên đầu bubble
+    hoverTimeTimer.current = setTimeout(() => {
+      setHoveredTime({ messageId: message.id, text: label });
+    }, 350);
+  };
+
+  const handleMessageMouseLeave = () => {
+    if (hoverTimeTimer.current) {
+      clearTimeout(hoverTimeTimer.current);
+      hoverTimeTimer.current = null;
+    }
+    setHoveredTime(null);
+  };
+
+  const scrollToOriginalMessage = (targetId) => {
+    if (!targetId) return;
+    const target = messageRefs.current.get(targetId);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(targetId);
+      window.clearTimeout(replyHighlightTimer.current);
+      replyHighlightTimer.current = window.setTimeout(() => setHighlightedMessageId(null), 1500);
+    } else {
+      toast('Tin nhắn gốc nằm ở phần hội thoại trước đó.', { icon: 'ℹ️' });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(replyHighlightTimer.current);
+      if (hoverTimeTimer.current) clearTimeout(hoverTimeTimer.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (last?.pending && Number(last.sender_user_id) === Number(user.id)) pinned.current = true;
     if (pinned.current && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight;
@@ -105,42 +214,236 @@ export function ChatHistory({ thread, onPreview, compact = false }) {
     requestAnimationFrame(() => { if (element?.isConnected) element.scrollTop += element.scrollHeight - previousHeight; });
     setLoadingOlder(false);
   };
-  return <div className={`em-history ${compact ? 'em-history--compact' : ''}`} ref={historyRef} role="log" aria-label="Nội dung trò chuyện" aria-busy={thread.loading} onScroll={(event) => { const el = event.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; thread.setAtEnd(pinned.current); }}>
+  return <div className={`em-history ${compact ? 'em-history--compact' : ''}`} ref={historyRef} role="log" aria-label="Nội dung trò chuyện" aria-busy={thread.loading} onScroll={(event) => { handleMessageMouseLeave(); const el = event.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; thread.setAtEnd(pinned.current); }}>
     <div className="em-history__content" ref={contentRef}>
     {thread.loading && !messages.length && <ChatLoading variant="messages"/>}
     {hasOlder && <button type="button" className="em-load-more" onClick={older} disabled={loadingOlder}>{loadingOlder ? 'Đang tải...' : 'Tải tin nhắn trước'}</button>}
     {!messages.length && !thread.loading && <div className="em-empty"><h3>Bắt đầu cuộc trò chuyện</h3><p>Gửi một lời chào hoặc chia sẻ tài liệu học tập.</p></div>}
     {messages.map((message, index) => {
       const own = Number(message.sender_user_id) === Number(user.id);
+      const youtubeId = message.body ? extractYouTubeId(message.body) : null;
       const otherMembers = detail?.participants?.filter((member) => Number(member.id) !== Number(user.id)) || [];
       const read = typeof message.id === 'number' && otherMembers.length > 0 && otherMembers.every((member) => Number(receipts[member.id] || 0) >= message.id);
       const day = chatDay(message.sent_at);
+      const isHighlighted = highlightedMessageId === message.id;
+      const isLatest = index === messages.length - 1;
+      const hasReactions = Boolean(message.reactions?.length);
+      const hasFootContent = isLatest || message.failed;
       return <Fragment key={message.client_id || message.id}>
-        {(!index || day !== chatDay(messages[index - 1].sent_at)) && <div className="em-day">{day}</div>}
-        <article className={`em-message ${own ? 'em-message--own' : ''}`}>
-          {!own && <ChatAvatar person={message.sender}/>}
-          <div className="em-message__body">
-            {detail?.type === 'group' && !own && <small>{message.sender?.name}</small>}
-            {message.metadata?.reply_to_id && <small>Trả lời tin nhắn #{message.metadata.reply_to_id}</small>}
-            {message.metadata?.sticker ? (
-              <div className="em-sticker-msg" aria-label={`Nhãn dán: ${message.metadata.sticker.name}`}>
-                <div className="em-sticker-art">
-                  <span className="em-sticker-art__emoji">{message.metadata.sticker.emoji}</span>
-                  <span className="em-sticker-art__text">{message.metadata.sticker.text || message.metadata.sticker.name}</span>
-                </div>
-              </div>
+        {day && (!index || day !== chatDay(messages[index - 1].sent_at)) && <div className="em-day">{day}</div>}
+        <article
+          className={`em-message ${own ? 'em-message--own' : ''} ${isLatest ? 'em-message--latest' : ''} ${isHighlighted ? 'is-highlighted' : ''} ${hasReactions ? 'has-reactions' : ''}`}
+          ref={(node) => {
+            if (node && message.id) messageRefs.current.set(message.id, node);
+            else if (message.id) messageRefs.current.delete(message.id);
+          }}
+          onMouseMove={(e) => handleMessageMouseMove(e, message, isLatest)}
+          onMouseLeave={handleMessageMouseLeave}
+        >
+          {!own && (
+            message.sender?.id ? (
+              <Link
+                to={ROUTES.TEACHER_PROFILE(message.sender.id)}
+                className="em-avatar-link"
+                title={`Xem trang cá nhân của ${message.sender?.name || 'thành viên'}`}
+              >
+                <ChatAvatar person={message.sender}/>
+              </Link>
             ) : (
-              message.body && <div className="em-bubble">{message.body}</div>
+              <ChatAvatar person={message.sender}/>
+            )
+          )}
+          <div className="em-message__body">
+            {detail?.type === 'group' && !own && (
+              <small className="em-group-sender">
+                {message.sender?.id ? (
+                  <Link
+                    to={ROUTES.TEACHER_PROFILE(message.sender.id)}
+                    className="em-group-sender-link"
+                    title={`Xem trang cá nhân của ${message.sender?.name || 'thành viên'}`}
+                  >
+                    {message.sender?.name}
+                  </Link>
+                ) : (
+                  message.sender?.name
+                )}
+              </small>
             )}
-            {message.metadata?.formula && <pre className="em-formula">{message.metadata.formula}</pre>}
-            {message.attachments?.map((attachment) => <ChatAttachmentView key={attachment.id} attachment={attachment} onPreview={onPreview}/>)}
-            <div className="em-message__foot">
-              {message.reactions?.map((reaction) => <button type="button" key={reaction.emoji} className={`em-reaction ${reaction.user_ids.includes(Number(user.id)) ? 'is-active' : ''}`} aria-label={`Cảm xúc ${reaction.emoji}, ${reaction.count} người`} onClick={() => void react(message, reaction.emoji)}>{reaction.emoji} <span>{reaction.count}</span></button>)}
-              <time dateTime={message.sent_at}>{chatTime(message.sent_at)}</time>
-              {own && <span className={`em-delivery ${read ? 'is-read' : ''}`} title={message.failed ? 'Gửi chưa thành công' : message.pending ? 'Đang gửi' : read ? 'Đã xem' : 'Đã gửi'} aria-label={message.failed ? 'Gửi chưa thành công' : message.pending ? 'Đang gửi' : read ? 'Đã xem' : 'Đã gửi'}>{message.pending ? <Clock3 size={14}/> : read ? <CheckCheck size={14}/> : <Check size={14}/>}</span>}
-              {message.failed && <button type="button" className="em-retry" onClick={() => void retryMessage(message).catch(() => {})}>Thử gửi lại</button>}
+            {message.metadata?.forwarded && (
+              <div className="em-forwarded-banner">
+                <Forward size={13} className="em-forwarded-icon" />
+                <span>{own ? 'Bạn đã chuyển tiếp một tin nhắn' : 'Đã chuyển tiếp một tin nhắn'}</span>
+              </div>
+            )}
+            {(message.metadata?.reply_to || message.metadata?.reply_to_id) && (
+              <button
+                type="button"
+                className="em-reply-quote"
+                onClick={() => scrollToOriginalMessage(message.metadata?.reply_to?.id || message.metadata?.reply_to_id)}
+                title="Bấm để cuộn đến tin nhắn gốc"
+              >
+                <Reply size={13} className="em-reply-quote__icon" />
+                <div className="em-reply-quote__body">
+                  <strong>{message.metadata?.reply_to?.senderName || 'Tin nhắn được trả lời'}</strong>
+                  <span>{message.metadata?.reply_to?.text || `#${message.metadata.reply_to_id}`}</span>
+                </div>
+              </button>
+            )}
+            <div className="em-message__content">
+              {hoveredTime?.messageId === message.id && (
+                <div className="em-message-hover-time" role="tooltip">
+                  {hoveredTime.text}
+                </div>
+              )}
+              {message.metadata?.sticker ? (
+                <div className="em-sticker-msg" aria-label={`Nhãn dán: ${message.metadata.sticker.name}`}>
+                  <div className="em-sticker-art">
+                    <span className="em-sticker-art__emoji">{message.metadata.sticker.emoji}</span>
+                    <span className="em-sticker-art__text">{message.metadata.sticker.text || message.metadata.sticker.name}</span>
+                  </div>
+                </div>
+              ) : (
+                message.body && <div className="em-bubble">{renderMessageBody(message.body)}</div>
+              )}
+              {youtubeId && (
+                <div className="em-youtube-card">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${youtubeId}`}
+                    title="YouTube video"
+                    className="em-youtube-embed"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                </div>
+              )}
+              {message.metadata?.formula && <pre className="em-formula">{message.metadata.formula}</pre>}
+              {message.attachments?.map((attachment) => (
+                <ChatAttachmentView
+                  key={attachment.id}
+                  attachment={attachment}
+                  onPreview={(previewData) => {
+                    const idx = allImageAttachments.findIndex((a) => a.id === attachment.id);
+                    onPreview?.({
+                      ...previewData,
+                      index: idx >= 0 ? idx : 0,
+                      items: allImageAttachments,
+                    });
+                  }}
+                />
+              ))}
+
+              {/* Thanh thao tác nhanh bên phải tin nhắn: Icon cảm xúc, Trả lời, Chuyển tiếp */}
+              <div
+                className="em-message-actions-bar"
+                role="toolbar"
+                aria-label="Thao tác tin nhắn"
+                onMouseEnter={handleMessageMouseLeave}
+                onMouseMove={(e) => e.stopPropagation()}
+              >
+                {typeof message.id === 'number' && (
+                  <div className="em-reaction-anchor">
+                    <button
+                      type="button"
+                      className="em-action-icon-btn em-reaction-trigger"
+                      aria-label="Bày tỏ cảm xúc"
+                      title="Bày tỏ cảm xúc"
+                      onClick={(e) => e.currentTarget.blur()}
+                    >
+                      <Smile size={15} />
+                    </button>
+                    <div className="em-reaction-popover" role="dialog" aria-label="Chọn cảm xúc">
+                      {CHAT_REACTIONS.map((emoji) => (
+                        <button
+                          type="button"
+                          key={emoji}
+                          onClick={(e) => {
+                            e.currentTarget.blur();
+                            void react(message, emoji);
+                          }}
+                          aria-label={`Thả cảm xúc ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {onReply && (
+                  <button
+                    type="button"
+                    className="em-action-icon-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onReply(message);
+                    }}
+                    title="Trả lời"
+                    aria-label="Trả lời"
+                  >
+                    <Reply size={14} />
+                  </button>
+                )}
+                {onForward && (
+                  <button
+                    type="button"
+                    className="em-action-icon-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onForward(message);
+                    }}
+                    title="Chuyển tiếp"
+                    aria-label="Chuyển tiếp"
+                  >
+                    <Forward size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Biểu tượng cảm xúc gắn vào góc khung tin nhắn (Phong cách Facebook Messenger) */}
+              {hasReactions && (
+                <div className="em-message-reactions-badge" role="group" aria-label="Cảm xúc tin nhắn">
+                  {message.reactions.map((reaction) => (
+                    <button
+                      type="button"
+                      key={reaction.emoji}
+                      className={`em-reaction-badge ${reaction.user_ids.includes(Number(user.id)) ? 'is-active' : ''}`}
+                      aria-label={`Cảm xúc ${reaction.emoji}, ${reaction.count} người`}
+                      title={`Cảm xúc ${reaction.emoji} (${reaction.count})`}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        void react(message, reaction.emoji);
+                      }}
+                    >
+                      <span className="em-reaction-badge__emoji">{reaction.emoji}</span>
+                      {reaction.count > 1 && <span className="em-reaction-badge__count">{reaction.count}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            {typeof message.id === 'number' && <div className="em-reaction-picker" aria-label="Thả cảm xúc tin nhắn">{CHAT_REACTIONS.map((emoji) => <button type="button" key={emoji} onClick={() => void react(message, emoji)} aria-label={`Thả cảm xúc ${emoji}`}>{emoji}</button>)}</div>}
+
+            <div className={`em-message__foot ${isLatest ? 'is-latest' : ''} ${hasFootContent ? 'has-content' : 'is-empty'}`}>
+              {isLatest && (
+                <span className="em-message__time-info">
+                  <time dateTime={message.sent_at}>{chatTime(message.sent_at)}</time>
+                  {own && (
+                    <span
+                      className={`em-delivery ${read ? 'is-read' : ''}`}
+                      title={message.failed ? 'Gửi chưa thành công' : message.pending ? 'Đang gửi' : read ? 'Đã xem' : 'Đã gửi'}
+                      aria-label={message.failed ? 'Gửi chưa thành công' : message.pending ? 'Đang gửi' : read ? 'Đã xem' : 'Đã gửi'}
+                    >
+                      {message.pending ? <Clock3 size={13}/> : read ? <CheckCheck size={13}/> : <Check size={13}/>}
+                    </span>
+                  )}
+                </span>
+              )}
+
+              {message.failed && (
+                <button type="button" className="em-retry" onClick={() => void retryMessage(message).catch(() => {})}>
+                  Thử gửi lại
+                </button>
+              )}
+            </div>
           </div>
         </article>
       </Fragment>;
@@ -161,7 +464,8 @@ function PendingFile({ file, remove }) {
   return <div className="em-pending">{file.type.startsWith('image/') && <img ref={imageRef} alt={file.name}/>}<Paperclip size={16}/><span>{file.name} · {Math.ceil(file.size / 1024)} KB</span><ChatIcon label={`Bỏ ${file.name}`} onClick={remove}><X size={15}/></ChatIcon></div>;
 }
 
-export function ChatComposer({ thread, theme = 'light' }) {
+export function ChatComposer({ thread, replyingTo = null, onCancelReply }) {
+  const { user } = useAuth();
   const [body, setBody] = useState('');
   const [files, setFiles] = useState([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -171,6 +475,18 @@ export function ChatComposer({ thread, theme = 'light' }) {
   const sendingRef = useRef(false);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const emojiAnchorRef = useRef(null);
+  const stickerAnchorRef = useRef(null);
+
+  useEffect(() => {
+    if (!emojiOpen && !stickerOpen) return;
+    const closePickerOutside = (event) => {
+      if (emojiOpen && !emojiAnchorRef.current?.contains(event.target)) setEmojiOpen(false);
+      if (stickerOpen && !stickerAnchorRef.current?.contains(event.target)) setStickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closePickerOutside, true);
+    return () => document.removeEventListener('pointerdown', closePickerOutside, true);
+  }, [emojiOpen, stickerOpen]);
   const chooseFiles = (event) => {
     const selected = [...event.target.files]; event.target.value = '';
     if (files.length + selected.length > 3) { toast.error('Mỗi tin nhắn tối đa 3 tệp.'); return; }
@@ -181,9 +497,19 @@ export function ChatComposer({ thread, theme = 'light' }) {
   const submit = async (event) => {
     event.preventDefault();
     if (sendingRef.current || (!body.trim() && !files.length)) return;
-    const payload = { body: body.trim(), files };
+    const metadata = {};
+    if (replyingTo) {
+      metadata.reply_to = {
+        id: replyingTo.id,
+        text: replyingTo.body || (replyingTo.attachments?.length ? `[${replyingTo.attachments.length} tệp đính kèm]` : ''),
+        senderName: replyingTo.sender?.name || (Number(replyingTo.sender_user_id) === Number(user?.id) ? 'Bạn' : 'Đối phương'),
+      };
+      metadata.reply_to_id = replyingTo.id;
+    }
+    const payload = { body: body.trim(), files, ...(Object.keys(metadata).length ? { metadata } : {}) };
     sendingRef.current = true; setSending(true);
     setBody(''); setFiles([]); setEmojiOpen(false); setStickerOpen(false);
+    onCancelReply?.();
     try {
       const response = await thread.send(payload);
       if (response.realtime_published === false) toast('Tin nhắn đã lưu. Realtime đang gián đoạn; đối phương có thể cần mở lại hội thoại.');
@@ -194,17 +520,27 @@ export function ChatComposer({ thread, theme = 'light' }) {
   const submitSticker = async (sticker) => {
     setStickerOpen(false);
     if (sendingRef.current) return;
+    const metadata = {
+      sticker: {
+        id: sticker.id,
+        name: sticker.name,
+        emoji: sticker.emoji,
+        text: sticker.text,
+        category: activePack,
+      },
+      ...(replyingTo ? {
+        reply_to: {
+          id: replyingTo.id,
+          text: replyingTo.body || (replyingTo.attachments?.length ? `[${replyingTo.attachments.length} tệp đính kèm]` : ''),
+          senderName: replyingTo.sender?.name || (Number(replyingTo.sender_user_id) === Number(user?.id) ? 'Bạn' : 'Đối phương'),
+        },
+        reply_to_id: replyingTo.id,
+      } : {}),
+    };
+    onCancelReply?.();
     const payload = {
       body: `[Nhãn dán: ${sticker.name}]`,
-      metadata: {
-        sticker: {
-          id: sticker.id,
-          name: sticker.name,
-          emoji: sticker.emoji,
-          text: sticker.text,
-          category: activePack,
-        },
-      },
+      metadata,
     };
     sendingRef.current = true;
     setSending(true);
@@ -221,13 +557,34 @@ export function ChatComposer({ thread, theme = 'light' }) {
   };
 
   return <form className="em-composer" onSubmit={submit}>
+    {replyingTo && (
+      <div className="em-composer-reply-bar">
+        <div className="em-composer-reply-bar__info">
+          <Reply size={15} />
+          <div className="em-composer-reply-bar__text">
+            <strong>
+              Trả lời {replyingTo.sender?.name || (Number(replyingTo.sender_user_id) === Number(user?.id) ? 'chính bạn' : 'đối phương')}
+            </strong>
+            <span>{replyingTo.body || (replyingTo.attachments?.length ? `[${replyingTo.attachments.length} tệp đính kèm]` : '')}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="em-composer-reply-bar__close"
+          onClick={onCancelReply}
+          aria-label="Hủy trả lời"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    )}
     {files.map((file, index) => <PendingFile key={`${file.name}:${file.lastModified}:${index}`} file={file} remove={() => setFiles((current) => current.filter((_, position) => position !== index))}/>)}
     <div className="em-composer__row"><div className="em-composer__field">
-      <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
-        {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme={theme} searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
+      <div className="em-emoji-anchor" ref={emojiAnchorRef}><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
+        {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme="light" searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
       </div>
-      <textarea ref={inputRef} aria-label="Nhập tin nhắn" placeholder="Nhập tin nhắn của bạn..." rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
-      <div className="em-sticker-anchor">
+      <textarea ref={inputRef} aria-label="Soạn tin nhắn" placeholder="Soạn tin nhắn" rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
+      <div className="em-sticker-anchor" ref={stickerAnchorRef}>
         <ChatIcon label="Gửi nhãn dán" aria-expanded={stickerOpen} onClick={() => { setStickerOpen((value) => !value); setEmojiOpen(false); }}>
           <ZaloStickerIcon size={20}/>
         </ChatIcon>
@@ -305,6 +662,135 @@ export function PrivateChatNote({ conversationId, initialNotes = '', onSaved }) 
   </section>;
 }
 
+function ChatLightboxInner({ image, onClose }) {
+  const items = useMemo(() => {
+    if (!image) return [];
+    if (Array.isArray(image.items) && image.items.length > 0) return image.items;
+    return [image];
+  }, [image]);
+
+  const [index, setIndex] = useState(() => (image?.index !== undefined && image.index >= 0 ? image.index : 0));
+  const blobUrlsRef = useRef(new Map());
+  const [loadedUrls, setLoadedUrls] = useState(() => ({
+    ...(image?.id && image?.url ? { [image.id]: image.url } : {}),
+  }));
+
+  const currentItem = items[index] || image;
+  const currentId = currentItem?.id;
+  const directUrl = currentItem?.url;
+  const currentUrl = directUrl || loadedUrls[currentId] || (index === (image?.index ?? 0) ? image?.url : '');
+  const loading = Boolean(currentId && !currentUrl);
+
+  useEffect(() => {
+    if (!currentId || directUrl || loadedUrls[currentId]) return;
+
+    let active = true;
+    chatService.attachment(currentId, true).then((blob) => {
+      if (active) {
+        const objectUrl = URL.createObjectURL(blob);
+        blobUrlsRef.current.set(currentId, objectUrl);
+        setLoadedUrls((prev) => ({ ...prev, [currentId]: objectUrl }));
+      }
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [currentId, directUrl, loadedUrls]);
+
+  // Clean up objectUrls only on unmount
+  useEffect(() => {
+    const urls = blobUrlsRef.current;
+    return () => {
+      urls.forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch (e) { void e; }
+      });
+      urls.clear();
+    };
+  }, []);
+
+  const total = items.length;
+  const handlePrev = useCallback(() => {
+    if (total <= 1) return;
+    setIndex((curr) => (curr > 0 ? curr - 1 : total - 1));
+  }, [total]);
+
+  const handleNext = useCallback(() => {
+    if (total <= 1) return;
+    setIndex((curr) => (curr < total - 1 ? curr + 1 : 0));
+  }, [total]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePrev, handleNext]);
+
+  const currentName = currentItem?.file_name || currentItem?.name || image.name || 'Ảnh đã chia sẻ';
+  const title = total > 1
+    ? `Ảnh (${index + 1}/${total}): ${currentName}`
+    : currentName;
+
+  return (
+    <Modal open onClose={onClose} title={title} size="xl">
+      <div className="em-lightbox-container">
+        {total > 1 && (
+          <button
+            type="button"
+            className="em-lightbox-nav em-lightbox-nav--prev"
+            onClick={handlePrev}
+            title="Ảnh trước (Phím ←)"
+            aria-label="Ảnh trước"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+
+        {loading ? (
+          <div className="em-lightbox-loading">
+            <ChatLoading variant="details" />
+          </div>
+        ) : (
+          currentUrl && <img src={currentUrl} alt={currentName} className="em-lightbox-image" />
+        )}
+
+        {total > 1 && (
+          <button
+            type="button"
+            className="em-lightbox-nav em-lightbox-nav--next"
+            onClick={handleNext}
+            title="Ảnh tiếp theo (Phím →)"
+            aria-label="Ảnh tiếp theo"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+      </div>
+      {total > 1 && (
+        <div className="em-lightbox-counter">
+          <span>{index + 1} / {total}</span>
+          <small className="em-lightbox-hint"> · Sử dụng phím mũi tên ← → hoặc bấm nút để chuyển ảnh</small>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function ChatLightbox({ image, onClose }) {
-  return <Modal open={Boolean(image)} onClose={onClose} title={image?.name || 'Ảnh đã chia sẻ'} size="xl">{image && <img src={image.url} alt={image.name} className="em-lightbox-image"/>}</Modal>;
+  if (!image) return null;
+  return (
+    <ChatLightboxInner
+      key={`${image.id || image.url}:${image.index ?? 0}`}
+      image={image}
+      onClose={onClose}
+    />
+  );
 }

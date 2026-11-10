@@ -262,13 +262,6 @@
 .center-support__success button:hover {
   color: var(--edu-on-primary);
 }
-.edu-site[data-theme="dark"] .center-support__benefits article {
-  border-color: var(--edu-line);
-}
-.edu-site[data-theme="dark"] .center-support__success {
-  border-color: var(--color-line);
-  background: var(--edu-mint);
-}
 @media (max-width: 820px) {
   .center-support__layout {
     grid-template-columns: 1fr;

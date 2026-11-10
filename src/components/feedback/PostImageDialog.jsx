@@ -1,128 +1,243 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Heart, Share2 } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@/components/feedback/Modal';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
+import { PostActions } from '@/components/feedback/PostActions';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
 
-export function PostImageDialog({
+const mobileQuery = '(max-width: 760px)';
+const isMobileViewport = () => window.matchMedia(mobileQuery).matches;
+function subscribeToViewport(callback) {
+  const query = window.matchMedia(mobileQuery);
+  query.addEventListener('change', callback);
+  return () => query.removeEventListener('change', callback);
+}
+
+function focusDiscussion(section) {
+  section?.focus({ preventScroll: true });
+  section?.scrollIntoView({ block: 'start' });
+}
+
+function MobileMediaList({ activeIndex, children }) {
+  const listRef = useRef(null);
+  const initialIndex = useRef(activeIndex);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const entry = list.children[initialIndex.current];
+    if (entry && initialIndex.current > 0) list.scrollTop = entry.offsetTop;
+  }, []);
+
+  return <div className="post-image-dialog__mobile-list" ref={listRef}>{children}</div>;
+}
+
+function MobileCommentsSheet({ children, onClose }) {
+  const dragStart = useRef(null);
+
+  return (
+    <Modal open title="Bình luận" onClose={onClose} className="post-image-comments-sheet" overlayClassName="post-image-comments-overlay">
+      <div
+        className="post-image-comments-sheet__handle"
+        aria-hidden="true"
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          dragStart.current = { x: event.clientX, y: event.clientY };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => { dragStart.current = null; }}
+        onPointerUp={(event) => {
+          if (!event.isPrimary || !dragStart.current) return;
+          const { x, y } = dragStart.current;
+          dragStart.current = null;
+          const downward = event.clientY - y;
+          if (downward >= 56 && downward > Math.abs(event.clientX - x)) onClose();
+        }}
+      />
+      {children}
+    </Modal>
+  );
+}
+
+export function PostImageDialog(props) {
+  return props.viewer?.post ? <OpenPostImageDialog {...props} /> : null;
+}
+
+function OpenPostImageDialog({
   viewer,
   onClose,
   onAuthorClick,
   discussion,
-  interactionTarget = null,
+  getInteractions,
   onActiveIndexChange,
-  onLike,
   onShowLikes,
-  onShare,
   onShowShares,
-  shareCount = 0,
-  isLiked = false,
-  ownerActions = null,
-  canManageMedia = false,
+  renderOwnerActions,
   onEditMedia,
   onDeleteMedia,
-  albumName = null,
-  title = null,
 }) {
-  const [activeIndex, setActiveIndex] = useState(viewer?.activeIndex || 0);
-  const mediaItems = viewer?.mediaItems || [];
-  const activeMedia = mediaItems[activeIndex] || mediaItems[0];
-  const post = viewer?.post;
-  const author = viewer?.author;
-  const target = interactionTarget || post;
-  const likes = target?.likes || [];
-  const comments = target?.comments || [];
-
-  const currentMediaKey = activeMedia?.id || activeMedia?.src || '';
+  const isMobile = useSyncExternalStore(subscribeToViewport, isMobileViewport, () => false);
   const [openMediaMenu, setOpenMediaMenu] = useState(null);
-  const [isEditingMedia, setIsEditingMedia] = useState(false);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  const [mediaDescription, setMediaDescription] = useState(activeMedia?.description || '');
-  const [prevMediaKey, setPrevMediaKey] = useState(currentMediaKey);
-  if (prevMediaKey !== currentMediaKey) {
-    setPrevMediaKey(currentMediaKey);
-    setMediaDescription(activeMedia?.description || '');
-    setIsEditingMedia(false);
-    setIsConfirmingDelete(false);
+  const [mediaEditor, setMediaEditor] = useState(null);
+  const [openDiscussionIndex, setOpenDiscussionIndex] = useState(null);
+  const discussionRef = useRef(null);
+  const requestedDiscussionIndex = useRef(null);
+  const activeIndex = viewer.activeIndex || 0;
+  const mediaItems = viewer.mediaItems || [];
+  const activeMedia = mediaItems[activeIndex];
+  const useCommentsSheet = isMobile && !viewer.fromAlbum && mediaItems.length > 1;
+  const showCommentsSheet = useCommentsSheet && openDiscussionIndex === activeIndex && Boolean(discussion);
+
+  useLayoutEffect(() => {
+    if (isMobile && !useCommentsSheet && requestedDiscussionIndex.current === activeIndex) {
+      focusDiscussion(discussionRef.current);
+    }
+    requestedDiscussionIndex.current = null;
+  }, [activeIndex, isMobile, useCommentsSheet]);
+
+  if (!activeMedia) return null;
+
+  const { post, author, publishedAt } = viewer;
+  const rawAlbumName = viewer.albumName || post.albumName || activeMedia.albumName;
+  const isGenericTab = ['Tất cả', 'Ảnh', 'Video', 'Album', 'all-media', 'photos', 'videos', 'albums'].includes(String(rawAlbumName || '').trim());
+  const albumName = isGenericTab ? '' : rawAlbumName;
+  const activeInteractions = getInteractions(activeIndex);
+  const postTitle = author?.name ? `Bài viết của ${author.name}` : 'Bài viết';
+  const dialogTitle = isMobile
+    ? (viewer.fromAlbum ? albumName || 'Ảnh' : postTitle)
+    : albumName || 'Ảnh bài viết';
+  const authorName = author?.name || 'Thành viên EduMatch';
+  const authorLink = author?.id ? ROUTES.TEACHER_PROFILE(author.id) : '';
+  const avatar = <RoleAvatar src={author?.avatar} userId={author?.id} name={authorName} role={author?.role} size={18} alt="" />;
+  const changeIndex = (offset) => {
+    setMediaEditor(null);
     setOpenMediaMenu(null);
-  }
-
-  const isGenericTab = (name) => ['Tất cả', 'Ảnh', 'Video', 'Album', 'all-media', 'photos', 'videos', 'albums'].includes(String(name || '').trim());
-  const rawAlbumName =
-    title
-    || albumName
-    || viewer?.albumName
-    || viewer?.album?.name
-    || post?.albumName
-    || post?.album?.name
-    || activeMedia?.albumName;
-  const currentAlbumName = isGenericTab(rawAlbumName) ? '' : String(rawAlbumName || '').trim();
-  const dialogTitle = currentAlbumName || (interactionTarget || mediaItems.length > 1 ? 'Album ảnh' : 'Ảnh bài viết');
-
-  const changeActiveIndex = useCallback((nextIndex) => {
-    setActiveIndex(nextIndex);
-    onActiveIndexChange?.(nextIndex);
-  }, [onActiveIndexChange]);
-  const showPrevious = () => changeActiveIndex((activeIndex - 1 + mediaItems.length) % mediaItems.length);
-  const showNext = () => changeActiveIndex((activeIndex + 1) % mediaItems.length);
-
-  useEffect(() => {
-    if (!viewer || mediaItems.length < 2) return undefined;
-
-    const handleAlbumKeyDown = (event) => {
-      const tagName = event.target?.tagName;
-      if (event.defaultPrevented || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) return;
-
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        changeActiveIndex((activeIndex - 1 + mediaItems.length) % mediaItems.length);
-      }
-      if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        changeActiveIndex((activeIndex + 1) % mediaItems.length);
-      }
-    };
-
-    window.addEventListener('keydown', handleAlbumKeyDown);
-    return () => window.removeEventListener('keydown', handleAlbumKeyDown);
-  }, [activeIndex, changeActiveIndex, mediaItems.length, viewer]);
-
-
-  const saveMediaDescription = () => {
-    onEditMedia?.(activeMedia, mediaDescription);
-    setIsEditingMedia(false);
+    onActiveIndexChange((activeIndex + offset + mediaItems.length) % mediaItems.length);
+  };
+  const goToComments = (index) => {
+    if (useCommentsSheet) {
+      setOpenDiscussionIndex(index);
+      if (index !== activeIndex) onActiveIndexChange(index);
+    } else if (!isMobile) {
+      discussionRef.current?.focus({ preventScroll: true });
+    } else if (index === activeIndex) {
+      focusDiscussion(discussionRef.current);
+    } else {
+      requestedDiscussionIndex.current = index;
+      onActiveIndexChange(index);
+    }
   };
 
-  const requestDeleteMedia = () => {
-    setIsConfirmingDelete(true);
+  const renderEntry = (item, index) => {
+    const { likes, commentCount, shareIds, isLiked, isMedia, like, share, canManageMedia } = index === activeIndex ? activeInteractions : getInteractions(index);
+    const kind = isMedia ? 'ảnh/video' : 'bài viết';
+    const isVideo = item.type === 'video';
+    const mediaType = isVideo ? 'video' : 'ảnh';
+    const mediaLabel = `${isVideo ? 'Video' : 'Ảnh'} ${index + 1} trong ${dialogTitle}`;
+    const itemKey = item.id || item.storageKey || item.src;
+    const showInlineDiscussion = index === activeIndex && !useCommentsSheet && Boolean(discussion);
+    const discussionIsOpen = showInlineDiscussion || (index === activeIndex && showCommentsSheet);
+    const effectiveDescription = (!viewer.fromAlbum && mediaItems.length === 1)
+      ? (post?.text || item.description || '')
+      : (item.description || (mediaItems.length === 1 ? post?.text || '' : ''));
+    const editor = mediaEditor?.key === itemKey ? mediaEditor : null;
+    const ownerActions = renderOwnerActions?.(index);
+    const mediaMenu = canManageMedia && <ContentMenu
+      id={`viewer-media-${index}`}
+      openId={openMediaMenu}
+      onToggle={setOpenMediaMenu}
+      onEdit={() => {
+        onActiveIndexChange(index);
+        setMediaEditor({ key: itemKey, caption: effectiveDescription });
+      }}
+      onDelete={() => {
+        onActiveIndexChange(index);
+        setMediaEditor({ key: itemKey, confirmingDelete: true });
+      }}
+      label={mediaType}
+    />;
+
+    const media = <section className="post-image-dialog__media" aria-label={mediaLabel}>
+      {isVideo
+        ? <video key={itemKey} src={item.src} controls playsInline autoPlay={!isMobile} preload="metadata" />
+        : <img src={item.src} alt={mediaLabel} loading={isMobile && index > activeIndex ? 'lazy' : undefined} />}
+      {!isMobile && mediaItems.length > 1 && <>
+        <button type="button" className="post-image-dialog__nav post-image-dialog__nav--previous" onClick={() => changeIndex(-1)} aria-label="Ảnh trước"><ChevronLeft size={22} /></button>
+        <button type="button" className="post-image-dialog__nav post-image-dialog__nav--next" onClick={() => changeIndex(1)} aria-label="Ảnh tiếp theo"><ChevronRight size={22} /></button>
+        <span className="post-image-dialog__counter">{index + 1} / {mediaItems.length}</span>
+      </>}
+    </section>;
+    const details = <>
+      <header className="post-image-dialog__author">
+        {authorLink ? <Link to={authorLink} onClick={onAuthorClick || onClose} aria-label={authorName}>{avatar}</Link> : <span>{avatar}</span>}
+        <div>{authorLink ? <Link to={authorLink} onClick={onAuthorClick || onClose}>{authorName}</Link> : <strong>{authorName}</strong>}{post?.id && !String(post.id).startsWith('album-') ? <Link className="post-image-dialog__time" to={ROUTES.POST_DETAIL(post.id)} state={{ fromPostList: true }} onClick={onClose}><small>{publishedAt}</small></Link> : <small>{publishedAt}</small>}</div>
+        {mediaMenu}
+        {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}
+      </header>
+      {editor && !editor.confirmingDelete ? <section className="post-image-dialog__media-editor" aria-label="Chỉnh sửa chú thích">
+        <textarea autoFocus value={editor.caption} onChange={(event) => setMediaEditor({ ...editor, caption: event.target.value })} aria-label="Chỉnh sửa chú thích" rows="3" />
+        <div><button type="button" onClick={() => setMediaEditor(null)}>Hủy</button><button type="button" onClick={() => { onEditMedia?.(item, editor.caption); setMediaEditor(null); }}>Lưu</button></div>
+      </section> : effectiveDescription && <p className="post-image-dialog__media-description">{effectiveDescription}</p>}
+      {editor?.confirmingDelete && <section className="post-image-dialog__delete-confirm" role="alert">
+        <p>Bạn có chắc muốn xóa {mediaType} này?</p>
+        <div><button type="button" onClick={() => setMediaEditor(null)}>Hủy</button><button type="button" onClick={() => { onDeleteMedia?.(item); setMediaEditor(null); }}>Xóa</button></div>
+      </section>}
+    </>;
+    const interactions = <PostActions
+      isLiked={isLiked}
+      likeCount={likes.length}
+      commentCount={commentCount}
+      shareCount={shareIds.length}
+      onLike={like}
+      onShowLikes={() => onShowLikes(likes, kind)}
+      onComment={() => goToComments(index)}
+      commentsOpen={isMobile ? discussionIsOpen : undefined}
+      commentsInDialog={useCommentsSheet}
+      onShare={share}
+      onShowShares={() => onShowShares(shareIds, kind)}
+    />;
+
+    return isMobile
+      ? <article key={`${itemKey}-${index}`} className="post-image-dialog__mobile-entry">
+          {details}{media}{interactions}
+          {showInlineDiscussion && (
+            <section ref={discussionRef} className="post-image-dialog__discussion" aria-label="Bình luận" tabIndex={-1}>
+              {discussion}
+            </section>
+          )}
+        </article>
+      : <div className="post-image-dialog__layout">{media}<aside className="post-image-dialog__panel">
+          {details}{interactions}
+          <section ref={discussionRef} className="post-image-dialog__discussion" aria-label="Bình luận" tabIndex={-1}>{discussion}</section>
+        </aside></div>;
   };
 
-  if (!viewer || !post || !activeMedia) return null;
-
-  return <Modal open onClose={onClose} title={dialogTitle} size="xl" className="post-image-dialog">
-    <div className="post-image-dialog__layout">
-      <section className="post-image-dialog__media" aria-label={`${activeMedia.type === 'video' ? 'Video' : 'Ảnh'} ${activeIndex + 1} trong ${dialogTitle}`}>
-        {activeMedia.type === 'video'
-          ? <video src={activeMedia.src} controls autoPlay preload="metadata" />
-          : <img src={activeMedia.src} alt={`${activeMedia.type === 'video' ? 'Video' : 'Ảnh'} ${activeIndex + 1} trong ${dialogTitle}`} />}
-        {mediaItems.length > 1 && <><button type="button" className="post-image-dialog__nav post-image-dialog__nav--previous" onClick={showPrevious} aria-label="Ảnh trước"><ChevronLeft size={22} /></button><button type="button" className="post-image-dialog__nav post-image-dialog__nav--next" onClick={showNext} aria-label="Ảnh tiếp theo"><ChevronRight size={22} /></button><span className="post-image-dialog__counter">{activeIndex + 1} / {mediaItems.length}</span></>}
-      </section>
-      <aside className="post-image-dialog__panel">
-        <header className="post-image-dialog__author">
-          {author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)} onClick={onAuthorClick || onClose} aria-label={author?.name || 'Trang cá nhân'}><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></Link> : <span><RoleAvatar src={author?.avatar} userId={author?.id} name={author?.name} role={author?.role} size={18} alt="" /></span>}
-          <div>{author?.id ? <Link to={ROUTES.TEACHER_PROFILE(author.id)} onClick={onAuthorClick || onClose}>{author.name}</Link> : <strong>{author?.name || 'Thành viên EduMatch'}</strong>}<small>{viewer.publishedAt}</small></div>
-          {canManageMedia && <ContentMenu id={`viewer-media-${activeMedia.id || activeIndex}`} openId={openMediaMenu} onToggle={setOpenMediaMenu} onEdit={() => setIsEditingMedia(true)} onDelete={requestDeleteMedia} label={activeMedia.type === 'video' ? 'video' : 'ảnh'} />}
-          {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}
-        </header>
-        {isEditingMedia ? <section className="post-image-dialog__media-editor" aria-label="Chỉnh sửa chú thích"><textarea id="post-image-dialog-caption" autoFocus value={mediaDescription} onChange={(event) => setMediaDescription(event.target.value)} placeholder="Viết chú thích cho ảnh hoặc video này..." rows="3" /><div><button type="button" onClick={() => { setMediaDescription(activeMedia.description || ''); setIsEditingMedia(false); }}>Hủy</button><button type="button" onClick={saveMediaDescription}>Lưu</button></div></section> : activeMedia.description && <p className="post-image-dialog__media-description">{activeMedia.description}</p>}
-        {isConfirmingDelete && <section className="post-image-dialog__delete-confirm" role="alert"><p>Bạn có chắc muốn xóa {activeMedia.type === 'video' ? 'video' : 'ảnh'} này?</p><div><button type="button" onClick={() => setIsConfirmingDelete(false)}>Hủy</button><button type="button" onClick={() => onDeleteMedia?.(activeMedia)}>Xóa</button></div></section>}
-        <div className="post-image-dialog__stats"><button type="button" onClick={onShowLikes}>{likes.length ? `${likes.length} lượt thích` : 'Chưa có lượt thích'}</button><span>{comments.length} bình luận</span>{shareCount > 0 && <button type="button" onClick={onShowShares}>{shareCount} lượt chia sẻ</button>}</div>
-        <div className="post-image-dialog__actions"><button type="button" className={isLiked ? 'is-liked' : ''} onClick={onLike}><Heart size={16} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={onShare}><Share2 size={16} /> Chia sẻ</button></div>
-        <div className="post-image-dialog__discussion">{discussion}</div>
-      </aside>
-    </div>
-  </Modal>;
+  return (<>
+    <Modal
+      open
+      onClose={onClose}
+      title={dialogTitle}
+      size="xl"
+      className="post-image-dialog"
+      overlayClassName="post-image-dialog-overlay"
+      backButton={isMobile}
+      onKeyDown={(event) => {
+        if (isMobile || mediaItems.length < 2 || event.defaultPrevented || event.target.closest('input, textarea, select, video, [contenteditable="true"]')) return;
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        changeIndex(event.key === 'ArrowLeft' ? -1 : 1);
+      }}
+    >
+      {isMobile
+        ? <MobileMediaList activeIndex={activeIndex}>{mediaItems.map(renderEntry)}</MobileMediaList>
+        : renderEntry(activeMedia, activeIndex)}
+    </Modal>
+    {showCommentsSheet && (
+      <MobileCommentsSheet onClose={() => setOpenDiscussionIndex(null)}>
+        {discussion}
+      </MobileCommentsSheet>
+    )}
+  </>);
 }

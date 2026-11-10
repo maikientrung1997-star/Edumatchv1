@@ -286,20 +286,6 @@
   transform: translateY(1px);
 }
 
-.edu-site[data-theme="dark"] .partner-terms__statement,
-.edu-site[data-theme="dark"] .partner-terms__closing,
-.edu-site[data-theme="dark"] .partner-terms__notice {
-  background: var(--edu-mint);
-  border-color: var(--color-line);
-}
-.edu-site[data-theme="dark"] .partner-terms__fee-item,
-.edu-site[data-theme="dark"] .partner-terms__collaboration-grid article,
-.edu-site[data-theme="dark"] .partner-terms__section--collaboration,
-.edu-site[data-theme="dark"] .partner-terms__principles article {
-  background: var(--edu-soft);
-  border-color: var(--color-line);
-}
-
 @media (max-width: 680px) {
   .partner-terms {
     padding: 26px 0 54px;

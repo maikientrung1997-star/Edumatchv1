@@ -96,7 +96,7 @@ const statusLabels = {
 export function VerificationPage() {
   const { user, updateUser } = useAuth();
   const isCenter = user?.role === 'center';
-  const allowed = ['teacher', 'center'].includes(user?.role);
+  const allowed = user?.role === 'center';
   const [documents, setDocuments] = useState(() =>
     (isCenter
       ? ['business_registration']

@@ -9,5 +9,8 @@ export const masterDataService = {
   provinces: async () => (await sharedGet('/administrative-areas/provinces', {}, { ttlMs: MASTER_DATA_TTL })).data,
   districts: async (id) => (await sharedGet(`/administrative-areas/districts/${id}`, {}, { ttlMs: MASTER_DATA_TTL })).data,
   wards: async (id) => (await sharedGet(`/administrative-areas/wards/${id}`, {}, { ttlMs: MASTER_DATA_TTL })).data,
-  provider: async (id) => (await sharedGet(`/providers/${id}`)).data,
+  provider: async (id) => {
+    const res = await sharedGet(`/providers/${id}`);
+    return res?.data !== undefined ? res.data : res;
+  },
 };

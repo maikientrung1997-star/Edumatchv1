@@ -25,6 +25,26 @@
     scrollbar-gutter: stable;
   }
 
+  @media (max-width: 768px) {
+    html,
+    body {
+      /* Clip horizontal overflow without creating an ancestor scroll container
+         that prevents the global navigation from sticking to the viewport. */
+      overflow-x: clip;
+      width: 100%;
+      max-width: 100vw;
+    }
+  }
+
+  body,
+  button,
+  input,
+  select,
+  textarea,
+  optgroup {
+    font-family: var(--font-sans);
+  }
+
   body {
     background-color: var(--color-bg);
     color: var(--color-ink);
@@ -116,4 +136,84 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-muted);
+}
+
+@media (max-width: 767px) {
+  .em-modal-overlay:not(.em-confirm-dialog-overlay) {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .em-confirm-dialog {
+    width: min(360px, calc(100vw - 32px)) !important;
+    max-width: min(360px, calc(100vw - 32px)) !important;
+    border-radius: 16px !important;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) > .em-modal-header {
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 10px;
+    padding: max(12px, env(safe-area-inset-top)) 14px 12px;
+    flex-shrink: 0;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) .em-modal-header__titles {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: center;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) .em-modal-close {
+    order: -1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    margin-left: -6px;
+    padding: 0;
+    border-radius: 999px;
+    color: var(--color-ink);
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) .em-modal-close__back {
+    display: block !important;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) .em-modal-close__x {
+    display: none !important;
+  }
+
+  .em-confirm-dialog .em-modal-close__back {
+    display: none !important;
+  }
+
+  .em-confirm-dialog .em-modal-close__x {
+    display: block !important;
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) > .em-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 16px 14px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .em-modal-dialog:not(.em-confirm-dialog) > .em-modal-footer {
+    flex-shrink: 0;
+    padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+    border-radius: 0 !important;
+  }
 }

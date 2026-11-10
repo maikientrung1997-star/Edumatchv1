@@ -611,6 +611,33 @@
 }
 
 @media (width < 768px) {
+  .login-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px 36px !important;
+    box-sizing: border-box !important;
+    gap: 24px !important;
+  }
+  .login-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px !important;
+    box-sizing: border-box !important;
+    border-radius: 16px !important;
+  }
+  .login-form__options {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .login-text-button {
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .login-submit {
+    height: 44px !important;
+    font-size: 15px !important;
+  }
   .login-page {
     background-attachment: scroll;
   }

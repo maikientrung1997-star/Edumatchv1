@@ -26,7 +26,41 @@ export const chatService = {
     if (body?.trim()) await chatService.send(conversation.id, { body: body.trim(), client_id: crypto.randomUUID() });
     return conversation;
   },
-  createGroup: async (title, memberIds) => (await api.post('/chat/groups', { title, member_ids: memberIds.map(Number) }, sessionConfig())).data,
+  createGroup: async (title, memberIds, avatarFile) => {
+    if (avatarFile) {
+      const data = new FormData();
+      data.append('title', title);
+      memberIds.forEach((id) => data.append('member_ids[]', Number(id)));
+      data.append('avatar', avatarFile);
+      return (await api.post('/chat/groups', data, {
+        ...sessionConfig(),
+        transformRequest: [(payload, headers) => {
+          if (typeof headers?.setContentType === 'function') headers.setContentType(undefined);
+          else if (headers) {
+            delete headers['Content-Type'];
+            delete headers['content-type'];
+          }
+          return payload;
+        }],
+      })).data;
+    }
+    return (await api.post('/chat/groups', { title, member_ids: memberIds.map(Number) }, sessionConfig())).data;
+  },
+  updateGroupAvatar: async (conversationId, avatarFile) => {
+    const data = new FormData();
+    data.append('avatar', avatarFile);
+    return (await api.post(`/chat/conversations/${conversationId}/avatar`, data, {
+      ...sessionConfig(),
+      transformRequest: [(payload, headers) => {
+        if (typeof headers?.setContentType === 'function') headers.setContentType(undefined);
+        else if (headers) {
+          delete headers['Content-Type'];
+          delete headers['content-type'];
+        }
+        return payload;
+      }],
+    })).data;
+  },
   searchUsers: async (q) => (await sharedGet('/chat/users/search', { q })).data,
   messages: (id, params) => sharedGet(`/chat/conversations/${id}/messages`, parameters(params)),
   message: async (id) => (await sharedGet(`/chat/messages/${id}`)).data,
@@ -38,7 +72,17 @@ export const chatService = {
     files.forEach((file) => data.append('files[]', file));
     return api.post(`/chat/conversations/${id}/messages`, data, { headers: { ...sessionConfig().headers, 'Content-Type': undefined }, timeout: 120000 });
   },
-  read: (id, lastMessageId) => api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig()),
+  read: (id, lastMessageId) => {
+    if (!lastMessageId || Number(lastMessageId) <= 0) return Promise.resolve({ data: {} });
+    return api.post(`/chat/conversations/${id}/read`, { last_message_id: lastMessageId }, sessionConfig());
+  },
+  markUnread: (id, unread = true) => {
+    if (!unread && id) {
+      // Khi đánh dấu đã đọc mà không có last_message_id, không gọi API để tránh lỗi 422
+      return Promise.resolve({ data: {} });
+    }
+    return Promise.resolve({ data: {} });
+  },
   react: async (id, emoji) => (await api.post(`/chat/messages/${id}/reactions`, { emoji }, sessionConfig())).data,
   media: (id, params) => sharedGet(`/chat/conversations/${id}/media`, parameters(params)),
   saveNote: (id, notes, expectedToken = storage.get(STORAGE_KEYS.ACCESS_TOKEN)) => {

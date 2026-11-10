@@ -1,0 +1,143 @@
+/* ========================================================
+   GLOBAL FOOTER COMPONENT STYLES
+   ======================================================== */
+
+.edu-footer {
+  background: var(--edu-surface);
+  border-top: 1px solid var(--edu-line);
+  padding-top: 33px;
+  width: 100%;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr 1.08fr;
+  gap: 47px;
+  padding-bottom: 31px;
+}
+
+.footer-brand .edu-brand {
+  font-size: 19px;
+}
+
+.footer-brand .brand-symbol {
+  width: 27px;
+  height: 30px;
+  font-size: 21px;
+  border-radius: 7px;
+}
+
+.footer-grid h3 {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  margin-bottom: 15px;
+}
+
+.footer-grid > div > a:not(.edu-brand):not(.footer-support),
+.footer-grid > div > button:not(.footer-support) {
+  display: block;
+  text-align: left;
+  margin-top: 9px;
+  color: var(--edu-muted);
+  font-size: var(--text-caption-xs);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.footer-grid > div > a:hover,
+.footer-grid > div > button:hover {
+  color: var(--edu-green);
+}
+
+.footer-grid p {
+  color: var(--edu-muted);
+  font-size: var(--text-caption-xs);
+  line-height: 1.9;
+}
+
+.footer-brand p {
+  margin-top: 15px;
+}
+
+.footer-socials {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  color: var(--edu-muted);
+}
+
+.footer-socials a,
+.footer-socials button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--edu-line);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.footer-socials a:hover,
+.footer-socials button:hover {
+  background: var(--edu-tag);
+  color: var(--edu-green);
+}
+
+.footer-support {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--edu-green);
+  font-size: var(--text-caption-xs);
+  font-weight: 500;
+}
+
+.footer-contact__address {
+  max-width: 230px;
+  margin-bottom: 7px;
+}
+
+.footer-grid > div > a.footer-contact__hotline {
+  display: block;
+  margin-top: 6px;
+  color: var(--edu-muted);
+  font-size: var(--text-caption-xs);
+}
+
+.footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 22px;
+  border-top: 1px solid var(--edu-line);
+  color: var(--edu-muted);
+  font-size: var(--text-caption-xs);
+}
+
+@media (max-width: 1023px) {
+  .footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 31px;
+  }
+}
+
+@media (max-width: 767px) {
+  .edu-footer {
+    padding-top: 24px;
+  }
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding-block: 16px;
+  }
+}

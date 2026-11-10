@@ -97,9 +97,8 @@ cả CSS và JS. `@theme static` bảo đảm biến tồn tại dù chưa dùng
 ## Thay đổi theme
 
 Sửa token trong `theme.css`, sau đó kiểm tra Home, `/login`, `/register` và
-`/register?role=teacher` ở desktop/mobile. Palette tối của Home tiếp tục được
-override trong `home.css`; không thay các màu trạng thái hoặc màu minh họa
-riêng của môn học bằng màu thương hiệu.
+`/register?role=teacher` ở desktop/mobile. Giữ màu riêng cho trạng thái
+và minh họa môn học.
 
 ## Trang khóa học trong MainLayout
 
@@ -109,6 +108,6 @@ token typography, container và màu với Home. Trong `.edu-site`, heading cũ
 font-weight và line-height bằng token tương ứng (không chỉ font-size).
 
 Màu `--edu-bg`, `--edu-surface`, `--edu-ink`, `--edu-muted`, `--edu-green`
-trỏ về theme chung ở chế độ sáng và nhận palette tối của MainLayout.
+trỏ về bảng màu chung của EduMatch.
 Chữ trên button nền thương hiệu dùng `--edu-on-primary`. Màu trạng thái
 đóng lớp/lỗi vẫn giữ ý nghĩa riêng.

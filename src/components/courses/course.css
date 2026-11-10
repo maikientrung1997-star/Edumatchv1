@@ -73,6 +73,10 @@
   gap: 4px;
   color: var(--edu-gold);
 }
+.course-card__status-compact,
+.course-card__rating-compact {
+  display: none;
+}
 .course-card h3 {
   color: var(--edu-ink);
   margin-top: 21px;

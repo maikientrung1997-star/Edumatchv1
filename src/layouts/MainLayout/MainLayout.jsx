@@ -1,24 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useLocation, useMatch } from 'react-router-dom';
 import { Header } from '@/components/navigation/Header';
 import { Footer } from '@/components/navigation/Footer';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useDesktopChat } from '@/hooks/useDesktopChat';
 import { FloatingChat } from '@/components/messages/FloatingChat';
 import { ROUTES } from '@/constants/routes';
 
 export const MainLayout = () => {
   const { pathname, hash } = useLocation();
   const isMessaging = pathname.replace(/\/$/, '') === ROUTES.MESSAGES;
-  const [theme, setTheme] = useLocalStorage('edumatch:theme', 'system');
-  const [systemDark, setSystemDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const update = (event) => setSystemDark(event.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
+  const isPostDetail = Boolean(useMatch(ROUTES.POST_DETAIL()));
+  const desktopChat = useDesktopChat();
   useEffect(() => {
     if (!hash) {
       window.scrollTo(0, 0);
@@ -29,20 +21,14 @@ export const MainLayout = () => {
     });
     return () => cancelAnimationFrame(frame);
   }, [pathname, hash]);
-  const resolvedTheme = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
   return (
-    <div className={`edu-site min-h-dvh flex flex-col${isMessaging ? ' edu-site--messaging' : ''}`} data-theme={resolvedTheme}>
-      {!isMessaging && (
-        <Header
-          theme={resolvedTheme}
-          onToggleTheme={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-        />
-      )}
+    <div className={`edu-site min-h-dvh flex flex-col${isMessaging ? ' edu-site--messaging' : ''}${isPostDetail ? ' edu-site--post-detail' : ''}`}>
+      {!isMessaging && <Header />}
       <main className="flex-1">
-        <Outlet context={{ theme: resolvedTheme }} />
+        <Outlet />
       </main>
-      {!isMessaging && <Footer />}
-      {!isMessaging && <FloatingChat />}
+      {!isMessaging && !isPostDetail && <Footer />}
+      {!isMessaging && !isPostDetail && desktopChat && <FloatingChat />}
     </div>
   );
 };

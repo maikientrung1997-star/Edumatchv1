@@ -1,10 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, BookOpen, GraduationCap, Mail, MessageCircle } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
+import { useAuth } from '@/hooks/useAuth';
+import './footer.css';
 
 export const Footer = () => {
   const homeSection = (section) => `${ROUTES.HOME}#${section}`;
   const navigate = useNavigate();
+  const { canUseStudentConsultation } = useAuth();
   const openDialog = (name) => navigate({ pathname: ROUTES.HOME, search: `?dialog=${name}` });
   return (
     <footer className="edu-footer">
@@ -28,9 +31,11 @@ export const Footer = () => {
               <button onClick={() => openDialog('support')} aria-label="Trò chuyện hỗ trợ">
                 <MessageCircle size={18} />
               </button>
-              <button onClick={() => openDialog('consultation')} aria-label="Tư vấn học tập">
-                <GraduationCap size={19} />
-              </button>
+              {canUseStudentConsultation && (
+                <button onClick={() => openDialog('consultation')} aria-label="Tư vấn học tập">
+                  <GraduationCap size={19} />
+                </button>
+              )}
               <Link to={homeSection('mon-hoc')} aria-label="Khám phá môn học">
                 <BookOpen size={18} />
               </Link>
@@ -52,7 +57,7 @@ export const Footer = () => {
             <h3>Dành cho Học viên</h3>
             <Link to={homeSection('khoa-hoc')}>Tìm kiếm lớp học phù hợp</Link>
             <Link to={homeSection('giao-vien')}>Tìm kiếm giáo viên phù hợp</Link>
-            <button onClick={() => openDialog('consultation')}>Tư vấn lộ trình học tập</button>
+            {canUseStudentConsultation && <button onClick={() => openDialog('consultation')}>Tư vấn lộ trình học tập</button>}
             <Link to={homeSection('danh-gia')}>Câu chuyện học viên</Link>
             <button onClick={() => openDialog('faq')}>Câu hỏi thường gặp</button>
           </div>

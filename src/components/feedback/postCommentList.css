@@ -1,0 +1,17 @@
+.post-comment-list__more {
+  display: block;
+  width: fit-content;
+  min-height: 32px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--edu-green);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.post-comment-list__more:hover {
+  text-decoration: underline;
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 const modalSizes = {
@@ -8,6 +8,9 @@ const modalSizes = {
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
 };
+
+const modalStack = [];
+let bodyOverflow;
 
 export const Modal = ({
   open,
@@ -19,11 +22,15 @@ export const Modal = ({
   footer,
   size = 'md',
   className,
+  overlayClassName,
+  backButton = false,
+  onKeyDown,
 }) => {
   const isModalOpen = open !== undefined ? open : isOpen;
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
+  const overlayRef = useRef(null);
   const onCloseRef = useRef(onClose);
 
   useEffect(() => {
@@ -33,17 +40,20 @@ export const Modal = ({
   useEffect(() => {
     if (!isModalOpen) return;
 
+    const dialog = dialogRef.current;
+    const overlay = overlayRef.current;
     const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
     const focusableSelector =
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex="0"]';
     const focusableElements = () =>
-      Array.from(dialogRef.current?.querySelectorAll(focusableSelector) || []).filter(
+      Array.from(dialog.querySelectorAll(focusableSelector)).filter(
         (element) => element.getClientRects().length > 0
       );
 
     const handleKeyDown = (e) => {
+      if (modalStack.at(-1)?.dialog !== dialog || e.defaultPrevented) return;
       if (e.key === 'Escape') {
+        e.preventDefault();
         onCloseRef.current?.();
       }
       if (e.key === 'Tab') {
@@ -66,21 +76,37 @@ export const Modal = ({
       }
     };
 
-    document.body.style.overflow = 'hidden';
+    if (!modalStack.length) {
+      bodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
+    const zIndex = (modalStack.at(-1)?.zIndex ?? 49) + 1;
+    modalStack.push({ dialog, zIndex });
+    overlay.style.zIndex = zIndex;
     window.addEventListener('keydown', handleKeyDown);
-    (focusableElements()[0] || dialogRef.current)?.focus({ preventScroll: true });
+    if (!dialog.contains(document.activeElement)) {
+      (focusableElements()[0] || dialogRef.current)?.focus({ preventScroll: true });
+    }
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      const wasTop = modalStack.at(-1)?.dialog === dialog;
+      modalStack.splice(modalStack.findIndex((entry) => entry.dialog === dialog), 1);
+      if (!modalStack.length) document.body.style.overflow = bodyOverflow;
+      const nextDialog = modalStack.at(-1)?.dialog;
+      if (wasTop) {
+        const focusTarget = previousFocus?.isConnected && (!nextDialog || nextDialog.contains(previousFocus))
+          ? previousFocus
+          : nextDialog;
+        focusTarget?.focus({ preventScroll: true });
+      }
     };
   }, [isModalOpen]);
 
   if (!isModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div ref={overlayRef} className={cn('em-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4', overlayClassName)}>
       {/* Overlay Backdrop */}
       <div
         className="fixed inset-0 bg-ink/40 backdrop-blur-sm transition-opacity"
@@ -95,15 +121,16 @@ export const Modal = ({
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
+        onKeyDown={onKeyDown}
         className={cn(
-          'relative w-full rounded-surface bg-surface text-ink shadow-2xl border border-line flex flex-col max-h-[90vh] z-10 animate-in fade-in zoom-in-95 duration-150',
+          'em-modal-dialog relative w-full rounded-surface bg-surface text-ink shadow-2xl border border-line flex flex-col max-h-[90vh] z-10 animate-in fade-in zoom-in-95 duration-150',
           modalSizes[size] || modalSizes.md,
           className
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
-          <div>
+        <div className="em-modal-header flex items-center justify-between px-6 py-4 border-b border-line">
+          <div className="em-modal-header__titles min-w-0">
             {title && (
               <h3 id={titleId} className="text-h3 font-semibold text-ink">
                 {title}
@@ -118,19 +145,20 @@ export const Modal = ({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Đóng hộp thoại"
-            className="p-1.5 text-faint hover:text-ink rounded-control hover:bg-soft transition-colors"
+            aria-label={backButton ? 'Quay lại' : 'Đóng hộp thoại'}
+            className="em-modal-close p-1.5 text-faint hover:text-ink rounded-control hover:bg-soft transition-colors"
           >
-            <X className="w-5 h-5" />
+            <ArrowLeft size={21} aria-hidden="true" className={cn('em-modal-close__back', !backButton && 'md:hidden')} />
+            {!backButton && <X className="em-modal-close__x hidden md:block w-5 h-5" aria-hidden="true" />}
           </button>
         </div>
 
         {/* Body Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className="em-modal-body px-6 py-5 overflow-y-auto flex-1">{children}</div>
 
         {/* Footer Actions */}
         {footer && (
-          <div className="px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface">
+          <div className="em-modal-footer px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface">
             {footer}
           </div>
         )}

@@ -3,6 +3,7 @@
   margin: 0 auto;
   padding: 44px 24px 72px;
   color: var(--color-ink, #153e35);
+  font-family: var(--font-sans);
 }
 .profile-settings-heading {
   margin-bottom: 30px;
@@ -15,8 +16,8 @@
   margin: 0 0 10px;
 }
 .profile-settings-heading h1 {
-  font-size: clamp(26px, 4vw, 36px);
-  line-height: 1.2;
+  font-size: var(--text-h1);
+  line-height: 1.25;
   font-weight: 700;
   margin: 0 0 12px;
 }
@@ -241,4 +242,23 @@
     font-size: 12px;
   }
   .profile-avatar-album__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .profile-bio-editor {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+  .profile-bio-editor > .em-modal-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .profile-bio-editor textarea {
+    flex: 1 1 auto;
+    min-height: 220px;
+    height: 100%;
+    padding: 13px;
+    font-size: var(--text-control);
+  }
 }

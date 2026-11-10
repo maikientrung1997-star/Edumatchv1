@@ -233,9 +233,12 @@ export const AuthProvider = ({ children }) => {
     });
   }, []);
 
+  const isAuthenticated = Boolean(token && user);
+
   return (
     <AuthContext.Provider value={{
-      user, token, isAuthenticated: Boolean(token && user), loading,
+      user, token, isAuthenticated, loading,
+      canUseStudentConsultation: isAuthenticated && user?.role === 'student',
       login: (data) => authenticate('login', data),
       register: (data) => authenticate('register', data),
       loginWithGoogle: (data) => authenticate('googleLogin', data),

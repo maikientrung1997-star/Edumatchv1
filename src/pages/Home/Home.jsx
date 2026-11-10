@@ -389,6 +389,23 @@ const profileCourses = profile
   const [appliedSponsoredFilters, setAppliedSponsoredFilters] = useState({ description: '', mode: '' });
   const [sponsoredSort, setSponsoredSort] = useState('top-rated');
   const otherSubjectInputRef = useRef(null);
+  const otherSubjectTriggerRef = useRef(null);
+  const otherSubjectSearchRef = useRef(null);
+
+  useEffect(() => {
+    if (!showOtherSubjectSearch) return;
+    const closeOtherSubjectOutside = (event) => {
+      if (
+        !otherSubjectTriggerRef.current?.contains(event.target)
+        && !otherSubjectSearchRef.current?.contains(event.target)
+      ) {
+        setShowOtherSubjectSearch(false);
+        setOtherCourseQuery('');
+      }
+    };
+    document.addEventListener('pointerdown', closeOtherSubjectOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOtherSubjectOutside, true);
+  }, [showOtherSubjectSearch]);
   const visibleCourseFilters = hasDescriptionQuery ? { ...courseFilters, description: descriptionQuery } : courseFilters;
   const activeCourseFilters = hasDescriptionQuery ? { ...appliedCourseFilters, description: descriptionQuery } : appliedCourseFilters;
   const visibleTutorFilters = hasDescriptionQuery ? { ...filters, description: descriptionQuery } : filters;
@@ -1667,6 +1684,7 @@ const profileCourses = profile
                 </button>
               ))}
             <button
+              ref={otherSubjectTriggerRef}
               className={`subject-tile subject-other ${showOtherSubjectSearch ? 'selected' : ''}`}
               aria-expanded={showOtherSubjectSearch}
               onClick={openOtherSubjectSearch}
@@ -1676,7 +1694,7 @@ const profileCourses = profile
             </button>
           </div>
           {showOtherSubjectSearch && (
-            <div className="other-course-search" role="search" aria-label="Tìm khóa học khác">
+            <div ref={otherSubjectSearchRef} className="other-course-search" role="search" aria-label="Tìm khóa học khác">
               <div className="other-course-search__top">
                 <button type="button" onClick={() => { setShowOtherSubjectSearch(false); setOtherCourseQuery(''); }} aria-label="Đóng tìm kiếm khóa học"><X size={17} /></button>
               </div>

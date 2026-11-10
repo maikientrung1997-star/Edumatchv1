@@ -13,8 +13,8 @@ export function ContentMenu({ id, openId, onToggle, onEdit, onDelete, label = 'n
       if (!menuRef.current?.contains(event.target)) onToggle(null);
     };
 
-    document.addEventListener('click', closeOnOutsideClick, true);
-    return () => document.removeEventListener('click', closeOnOutsideClick, true);
+    document.addEventListener('pointerdown', closeOnOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick, true);
   }, [isOpen, onToggle]);
 
   return <div className="content-menu" ref={menuRef}>

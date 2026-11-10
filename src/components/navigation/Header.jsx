@@ -89,22 +89,61 @@ export const Header = () => {
   const [serverNotifications, setServerNotifications] = useState({ userId: null, items: [] });
   const receivedServerNotificationIds = useRef(new Set());
   const accountMenuRef = useRef(null);
+  const desktopNotificationRef = useRef(null);
   const headerRef = useRef(null);
   const mobileSearchTriggerRef = useRef(null);
+  const mobileSearchPanelRef = useRef(null);
+  const mobileNotificationTriggerRef = useRef(null);
+  const mobileNotificationPopoverRef = useRef(null);
   const mobileMenuTriggerRef = useRef(null);
   const mobileMenuRef = useRef(null);
+  const notificationOpen = notificationPanel.open && notificationPanel.locationKey === locationKey;
 
   useEffect(() => {
-    if (activeMobilePanel !== 'menu') return;
+    if (!activeMobilePanel && !notificationOpen && !accountMenuOpen) return;
 
-    const closeMenuOutside = (event) => {
-      if (mobileMenuTriggerRef.current?.contains(event.target) || mobileMenuRef.current?.contains(event.target)) return;
-      setMobilePanel(null);
+    const closePanelsOutside = (event) => {
+      const target = event.target;
+      if (activeMobilePanel === 'menu') {
+        if (!mobileMenuTriggerRef.current?.contains(target) && !mobileMenuRef.current?.contains(target)) {
+          setMobilePanel(null);
+        }
+      }
+      if (activeMobilePanel === 'search') {
+        if (!mobileSearchTriggerRef.current?.contains(target) && !mobileSearchPanelRef.current?.contains(target)) {
+          setMobilePanel(null);
+        }
+      }
+      if (notificationOpen) {
+        if (
+          !desktopNotificationRef.current?.contains(target)
+          && !mobileNotificationTriggerRef.current?.contains(target)
+          && !mobileNotificationPopoverRef.current?.contains(target)
+        ) {
+          setNotificationPanel({ open: false, locationKey });
+        }
+      }
+      if (accountMenuOpen) {
+        if (!accountMenuRef.current?.contains(target)) {
+          setAccountMenuOpen(false);
+        }
+      }
     };
 
-    document.addEventListener('pointerdown', closeMenuOutside, true);
-    return () => document.removeEventListener('pointerdown', closeMenuOutside, true);
-  }, [activeMobilePanel]);
+    const closeOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      if (activeMobilePanel) setMobilePanel(null);
+      if (notificationOpen) setNotificationPanel({ open: false, locationKey });
+      if (accountMenuOpen) setAccountMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closePanelsOutside, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closePanelsOutside, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [activeMobilePanel, notificationOpen, accountMenuOpen, locationKey]);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -128,7 +167,6 @@ export const Header = () => {
   const unreadNotifications = allNotifications.filter((notification) => !notification.isRead).length;
   // Hiển thị số người/hội thoại có tin nhắn mới (chưa đọc), thay vì tổng số tin nhắn
   const unreadConversationCount = isAuthenticated ? (chatCounts.unread || 0) : 0;
-  const notificationOpen = notificationPanel.open && notificationPanel.locationKey === locationKey;
   const resolvedUserAvatar = resolveAvatarSource(user?.avatar, user?.id);
   const userAvatarUrl = resolvedUserAvatar
     ? (user?.avatarVersion && !resolvedUserAvatar.startsWith('data:image/') && !resolvedUserAvatar.startsWith('blob:')
@@ -230,14 +268,6 @@ export const Header = () => {
     };
   }, [isAuthenticated, user?.id, isCenterAccount, token, navigate]);
 
-  useEffect(() => {
-    const closeAccountMenu = (event) => {
-      if (!accountMenuRef.current?.contains(event.target)) setAccountMenuOpen(false);
-    };
-    document.addEventListener('mousedown', closeAccountMenu);
-    return () => document.removeEventListener('mousedown', closeAccountMenu);
-  }, []);
-
   const openNotification = (notificationId) => {
     if (String(notificationId).startsWith('server-')) {
       const item = serverNotifications.items.find((record) => record.id === notificationId);
@@ -300,8 +330,8 @@ export const Header = () => {
     event.preventDefault();
     window.location.reload();
   };
-  const renderNotificationPopover = (className, id) => (
-    <section id={id} className={className} aria-label="Danh sách thông báo">
+  const renderNotificationPopover = (className, id, ref = null) => (
+    <section id={id} ref={ref} className={className} aria-label="Danh sách thông báo">
       <header><div><strong>Thông báo</strong><span>{unreadNotifications ? `${unreadNotifications} chưa đọc` : 'Bạn đã đọc tất cả'}</span></div><button type="button" onClick={readAllNotifications} disabled={!unreadNotifications}><CheckCheck size={15} /> Đánh dấu đã đọc</button></header>
       <div className="notification-popover__list">
         {allNotifications.length ? allNotifications.slice(0, 8).map((notification) => {
@@ -364,7 +394,7 @@ export const Header = () => {
               <MessageCircle size={15} /> Tin nhắn {unreadConversationCount > 0 && <b className="message-count">{unreadConversationCount > 99 ? '99+' : unreadConversationCount}</b>}
             </Link>
           )}
-          {isAuthenticated && <div className="notification-menu">
+          {isAuthenticated && <div className="notification-menu" ref={desktopNotificationRef}>
             <button
               type="button"
               className="notification-trigger"
@@ -412,6 +442,7 @@ export const Header = () => {
             {isAuthenticated ? (
               <button
                 type="button"
+                ref={mobileNotificationTriggerRef}
                 onClick={toggleMobileNotifications}
                 aria-label={`Thông báo${unreadNotifications ? `, ${unreadNotifications} chưa đọc` : ''}`}
                 aria-expanded={notificationOpen}
@@ -476,10 +507,11 @@ export const Header = () => {
           {activeMobilePanel === 'menu' ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
-      {isAuthenticated && notificationOpen && renderNotificationPopover('notification-popover mobile-header-notifications', 'mobile-header-notifications')}
+      {isAuthenticated && notificationOpen && renderNotificationPopover('notification-popover mobile-header-notifications', 'mobile-header-notifications', mobileNotificationPopoverRef)}
       {activeMobilePanel === 'search' && (
         <div
           id="mobile-header-search"
+          ref={mobileSearchPanelRef}
           className="mobile-header-search"
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;

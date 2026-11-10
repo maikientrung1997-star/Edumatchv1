@@ -315,6 +315,21 @@ export function ProfileSettingsPage() {
     setIsAvatarAlbumOpen(false);
     setAvatarCropDraft({ source: image.src, variant: 'avatar' });
   };
+  const avatarSourceTriggerRef = useRef(null);
+  const avatarSourceMenuRef = useRef(null);
+  useEffect(() => {
+    if (!isAvatarSourceOpen) return;
+    const closeAvatarSourceOutside = (event) => {
+      if (
+        !avatarSourceTriggerRef.current?.contains(event.target)
+        && !avatarSourceMenuRef.current?.contains(event.target)
+      ) {
+        setIsAvatarSourceOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeAvatarSourceOutside, true);
+    return () => document.removeEventListener('pointerdown', closeAvatarSourceOutside, true);
+  }, [isAvatarSourceOpen]);
   const districts = provinceChildren.filter((area) => area.level === 'district');
   const wards = form.district_id
     ? districtWards
@@ -351,7 +366,7 @@ export function ProfileSettingsPage() {
         <aside className="profile-settings-sidebar">
           <div className="profile-settings-avatar">
             <RoleAvatar src={avatarSource} userId={user.id} name={user.name} role={user.role} size={42} alt={`Ảnh đại diện của ${user.name}`} />
-            <button type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
+            <button ref={avatarSourceTriggerRef} type="button" className={`profile-settings-avatar__camera ${avatarBusy ? 'is-uploading' : ''}`} onClick={() => setIsAvatarSourceOpen((current) => !current)} aria-label={avatarBusy ? 'Đang cập nhật ảnh đại diện' : 'Đổi ảnh đại diện'} aria-expanded={isAvatarSourceOpen} disabled={avatarBusy}>
               {avatarBusy ? <LoaderCircle className="profile-settings-avatar__spinner" size={17} /> : <Camera size={17} />}
             </button>
           </div>
@@ -366,7 +381,7 @@ export function ProfileSettingsPage() {
                   : 'Tài khoản quản trị'}
           </p>
           <input ref={avatarInput} className="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatar} disabled={avatarBusy} />
-          {isAvatarSourceOpen && <div className="profile-avatar-source-menu" role="menu" aria-label="Nguồn ảnh đại diện">
+          {isAvatarSourceOpen && <div ref={avatarSourceMenuRef} className="profile-avatar-source-menu" role="menu" aria-label="Nguồn ảnh đại diện">
             <button type="button" role="menuitem" onClick={() => { setIsAvatarSourceOpen(false); avatarInput.current?.click(); }} disabled={avatarBusy}><Camera size={16} /> Tải ảnh lên</button>
             <button type="button" role="menuitem" onClick={() => { setIsAvatarSourceOpen(false); setIsAvatarAlbumOpen(true); }}><ImagePlus size={16} /> Chọn từ album ảnh</button>
           </div>}

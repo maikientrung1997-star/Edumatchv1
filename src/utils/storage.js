@@ -4,10 +4,17 @@
 const overflowKey = (key) => `edumatch:overflow:${key}`;
 const getSessionStorage = () => (typeof window !== 'undefined' ? window.sessionStorage : null);
 const memoryOverflow = new Map();
+const parsedCache = new Map();
 
 const parseStoredValue = (item, key) => {
+  const cached = parsedCache.get(key);
+  if (cached && cached.raw === item) {
+    return cached.value;
+  }
   try {
-    return JSON.parse(item);
+    const parsed = JSON.parse(item);
+    parsedCache.set(key, { raw: item, value: parsed });
+    return parsed;
   } catch (error) {
     console.error(`Error reading key "${key}" from browser storage:`, error);
     return null;
@@ -30,6 +37,7 @@ export const storage = {
 
   set: (key, value) => {
     const serialized = JSON.stringify(value);
+    parsedCache.set(key, { raw: serialized, value });
     try {
       window.localStorage.setItem(key, serialized);
       getSessionStorage()?.removeItem(overflowKey(key));
@@ -44,7 +52,7 @@ export const storage = {
         console.warn(`LocalStorage is full for key "${key}"; using this browser session instead.`, error);
         return true;
       } catch (overflowError) {
-        memoryOverflow.set(key, parseStoredValue(serialized, key) ?? value);
+        memoryOverflow.set(key, value);
         console.warn(`Browser storage is full for key "${key}"; using in-memory session storage.`, overflowError);
         return true;
       }
@@ -53,6 +61,7 @@ export const storage = {
 
   remove: (key) => {
     try {
+      parsedCache.delete(key);
       memoryOverflow.delete(key);
       window.localStorage.removeItem(key);
       getSessionStorage()?.removeItem(overflowKey(key));
@@ -63,6 +72,7 @@ export const storage = {
 
   clear: () => {
     try {
+      parsedCache.clear();
       memoryOverflow.clear();
       window.localStorage.clear();
       getSessionStorage()?.clear();

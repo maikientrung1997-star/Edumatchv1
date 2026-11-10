@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, GripVertical, Send, Trash2, Video, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -183,6 +183,18 @@ export function PostComposerDialog({
   const [isAlbumCreationOpen, setIsAlbumCreationOpen] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState('');
   const [newAlbumDescription, setNewAlbumDescription] = useState('');
+  const albumSectionRef = useRef(null);
+
+  useEffect(() => {
+    if (!isAlbumPickerOpen) return;
+    const closeAlbumPickerOutside = (event) => {
+      if (!albumSectionRef.current?.contains(event.target)) {
+        setIsAlbumPickerOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeAlbumPickerOutside, true);
+    return () => document.removeEventListener('pointerdown', closeAlbumPickerOutside, true);
+  }, [isAlbumPickerOpen]);
   const {
     draggedMediaIndex,
     getMediaKey,
@@ -270,7 +282,7 @@ export function PostComposerDialog({
             </div>)}
           </div>
         </section>}
-        {media.length > 0 && <section className="post-composer-dialog__album">
+        {media.length > 0 && <section ref={albumSectionRef} className="post-composer-dialog__album">
           <button className="post-composer-dialog__album-trigger" type="button" onClick={() => setIsAlbumPickerOpen((open) => !open)} aria-expanded={isAlbumPickerOpen} aria-controls="post-composer-album-picker">Thêm vào album</button>
           {selectedAlbumId && <span className="post-composer-dialog__album-selected">{albums.find((album) => album.id === selectedAlbumId)?.name}</span>}
           {isAlbumPickerOpen && <section id="post-composer-album-picker" className="post-composer-dialog__album-picker" aria-label="Chọn album">

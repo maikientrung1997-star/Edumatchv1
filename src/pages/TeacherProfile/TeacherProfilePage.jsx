@@ -82,6 +82,9 @@ const createPersistentProfileImage = async (file, maxDimension = 360) => {
 const hydratePublicProfileVisuals = (source, requestedId) => {
   const rawProfile = source?.user || source?.provider || source?.data?.user || source?.data?.provider || source?.data || source || {};
   const profile = normalizeAuthUser(rawProfile);
+  if (!profile || (!profile.id && !profile.name && !rawProfile?.id && !rawProfile?.name)) {
+    return { requestedId, notFound: true };
+  }
   const profileId = profile?.id ?? requestedId;
   const localVisuals = storage.get(STORAGE_KEYS.PROFILE_VISUALS, {})?.[String(profileId)] || {};
   const savedAvatar = /^blob:/i.test(String(localVisuals.avatar || '')) ? '' : (localVisuals.avatar || '');
@@ -236,14 +239,51 @@ export function TeacherProfilePage() {
     verificationStatus: sampleTutor.verificationStatus || sampleTutor.licenseVerificationStatus || '',
     licenseVerificationStatus: sampleTutor.licenseVerificationStatus || '',
   } : null;
-  const postProfile = getPosts().find((post) => String(post.authorId ?? '') === String(teacherId) || String(post.teacherId ?? '') === String(teacherId));
-  const profile = ownsProfile ? user : (String(serverProfile?.requestedId) === String(teacherId) ? serverProfile : null) || courses[0]?.teacher || sampleProfile || (postProfile ? {
-    id: postProfile.authorId || postProfile.teacherId,
+  const allPosts = getPosts();
+  const postProfile = allPosts.find((post) => String(post.authorId ?? '') === String(teacherId) || String(post.teacherId ?? '') === String(teacherId));
+  const postFallbackProfile = postProfile ? {
+    id: postProfile.authorId || postProfile.teacherId || teacherId,
     name: postProfile.authorName || postProfile.author || 'Thành viên EduMatch',
-    role: postProfile.authorRole || 'student',
+    role: postProfile.authorRole || (/^trung\s*tâm/i.test(String(postProfile.authorName || postProfile.author || '').trim()) ? 'center' : 'student'),
     avatar: postProfile.authorAvatar || '',
     bio: 'Thành viên cộng đồng EduMatch',
-  } : null);
+  } : null;
+  const courseTeacherProfile = courses[0]?.teacher ? {
+    ...postFallbackProfile,
+    ...courses[0].teacher,
+    id: courses[0].teacher.id ?? postFallbackProfile?.id ?? teacherId,
+    name: courses[0].teacher.name || postFallbackProfile?.name || 'Giáo viên EduMatch',
+    role: courses[0].teacher.role || postFallbackProfile?.role || 'teacher',
+    avatar: courses[0].teacher.avatar || postFallbackProfile?.avatar || '',
+  } : null;
+  const localFallbackProfile = courseTeacherProfile || sampleProfile || postFallbackProfile;
+  const resolvedServerProfile = String(serverProfile?.requestedId) === String(teacherId)
+    && !serverProfile?.notFound
+    && Boolean(serverProfile?.name || serverProfile?.id != null)
+    ? serverProfile
+    : null;
+  const rawResolvedProfile = ownsProfile
+    ? user
+    : resolvedServerProfile
+      ? {
+          ...localFallbackProfile,
+          ...resolvedServerProfile,
+          id: resolvedServerProfile.id ?? localFallbackProfile?.id ?? teacherId,
+          name: resolvedServerProfile.name || localFallbackProfile?.name || 'Thành viên EduMatch',
+          role: resolvedServerProfile.role || localFallbackProfile?.role,
+          avatar: resolvedServerProfile.avatar || localFallbackProfile?.avatar || '',
+          coverImage: resolvedServerProfile.coverImage || localFallbackProfile?.coverImage || '',
+          bio: resolvedServerProfile.bio || localFallbackProfile?.bio || '',
+          teachingField: resolvedServerProfile.teachingField || localFallbackProfile?.teachingField || '',
+          qualifications: resolvedServerProfile.qualifications || localFallbackProfile?.qualifications || '',
+          experience: resolvedServerProfile.experience || localFallbackProfile?.experience || '',
+          foundedYear: resolvedServerProfile.foundedYear || localFallbackProfile?.foundedYear || '',
+        }
+      : localFallbackProfile;
+  const profile = rawResolvedProfile ? {
+    ...rawResolvedProfile,
+    id: rawResolvedProfile.id ?? teacherId,
+  } : null;
   const isCenterProfile = profile?.role === 'center';
   const isTeacherProfile = profile?.role === 'teacher' || (!isCenterProfile && courses.length > 0);
   const isEducationProviderProfile = isTeacherProfile || isCenterProfile;
@@ -252,9 +292,10 @@ export function TeacherProfilePage() {
   const profilePhone = profile?.phone || profile?.center?.phone || profile?.teacher_profile?.phone || '';
   const isPublicPhone = Boolean(profile?.isPhonePublic ?? profile?.show_phone ?? profile?.center?.show_phone ?? profile?.teacher_profile?.show_phone);
   const publicPhone = isEducationProviderProfile && isPublicPhone && profilePhone;
-  const trustCount = getProviderTrustCount(profile?.id, profile?.heartCount);
-  const trustUserIds = getProviderTrustUserIds(profile?.id);
-  const trustedByCurrentUser = hasProviderTrust(user?.id, profile?.id);
+  const targetProfileId = profile?.id ?? teacherId;
+  const trustCount = getProviderTrustCount(targetProfileId, profile?.heartCount);
+  const trustUserIds = getProviderTrustUserIds(targetProfileId);
+  const trustedByCurrentUser = hasProviderTrust(user?.id, targetProfileId);
   const hasDetailedProfile = Boolean(profile?.detailedProfile?.trim() || profile?.profilePortfolioImages?.length);
   const profileCapability = cleanUnlimitedProfileText(profile?.detailedProfile || profile?.bio);
   const profileIntro = profileCapability || (isCenterProfile ? 'Trung tâm đang hoàn thiện hồ sơ năng lực.' : isTeacherProfile ? 'Giáo viên đang hoàn thiện hồ sơ năng lực.' : 'Học viên đang hoàn thiện phần giới thiệu.');
@@ -435,7 +476,7 @@ export function TeacherProfilePage() {
       // An unavailable local video should not stop the rest of the album loading.
     });
     return () => { isCancelled = true; };
-  }, [ownsProfile, profile?.id, profile?.photoAlbums, teacherId, updateUser]);
+  }, [ownsProfile, targetProfileId, teacherId, updateUser]);
 
   useEffect(() => {
     if (user?.id && profile?.id && user.id !== profile.id) trackProviderAffinity(user.id, profile.id, 'viewed-profile', 1);
@@ -476,7 +517,7 @@ export function TeacherProfilePage() {
     let active = true;
     masterDataService.provider(teacherId).then((result) => {
       if (active) setServerProfile(hydratePublicProfileVisuals(result, teacherId));
-    }).catch(() => { if (active) setServerProfile({ requestedId: teacherId }); });
+    }).catch(() => { if (active) setServerProfile({ requestedId: teacherId, notFound: true }); });
     return () => { active = false; };
   }, [teacherId, ownsProfile]);
 
@@ -1724,11 +1765,11 @@ export function TeacherProfilePage() {
     finally { chatOpening.current = false; }
   };
   const trustProfile = () => {
-    if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng hồ sơ này.'); navigate(ROUTES.LOGIN); return; }
-    const added = toggleProviderTrust(user.id, profile.id);
+    if (!isAuthenticated || !user?.id) { toast.error('Vui lòng đăng nhập để tin tưởng hồ sơ này.'); navigate(ROUTES.LOGIN); return; }
+    const added = toggleProviderTrust(user.id, targetProfileId);
     if (added) {
-      trackProviderAffinity(user.id, profile.id, 'saved-profile', 4);
-      createNotification({ recipientId: profile.id, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một thành viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(profile.id) });
+      trackProviderAffinity(user.id, targetProfileId, 'saved-profile', 4);
+      createNotification({ recipientId: targetProfileId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một thành viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(targetProfileId) });
     }
     setTrustRefresh((value) => value + 1);
     toast.success(added ? 'Đã thêm vào danh sách tin tưởng.' : 'Đã bỏ tin tưởng hồ sơ này.');
@@ -1746,7 +1787,7 @@ export function TeacherProfilePage() {
   return <div onClickCapture={openCommentImage} className={hasSubmittedVerification ? 'has-submitted-verification' : ''}><section className="learning-page teacher-public-page"><div className="learning-container">
     <header className={`teacher-cover ${profile.coverImage ? 'has-custom-cover' : ''}`} style={coverStyle}>
       <div className="teacher-cover__avatar"><ProfileAvatar src={profile.avatar} userId={profile.id} name={profile.name} alt={`Ảnh đại diện của ${profile.name}`} role={profile.role} size={35} />{ownsProfile && <button type="button" className={`profile-avatar-upload ${profileImageUploadField === 'avatar' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'avatar' ? 'Đang tải ảnh đại diện' : 'Cập nhật ảnh đại diện'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('avatar')}>{profileImageUploadField === 'avatar' ? <LoaderCircle className="profile-upload-spinner" size={15} /> : <Camera size={15} />}</button>}<input ref={avatarImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'avatar')} /></div>
-      <div><span>HỒ SƠ {profileType}</span><h1>{profile.name}</h1>{subtitle && <p>{subtitle}</p>}<div className="teacher-cover__status-list">{isEducationProviderProfile && (trustCount < 3 ? <small className="teacher-cover__trust-count is-new">Mới trên EduMatch</small> : <button type="button" className="teacher-cover__trust-count" onClick={() => setLikesTarget({ ids: trustUserIds, title: 'Lượt tin tưởng', label: 'Những thành viên đã tin tưởng hồ sơ này', emptyText: 'Danh sách thành viên tin tưởng đang được cập nhật.' })}><Heart size={13} fill="currentColor" /> {trustCount} lượt tin tưởng</button>)}<VerifiedBadge userId={profile.id} provider={profile} /></div></div>
+      <div><span>HỒ SƠ {profileType}</span><h1>{profile.name}</h1>{subtitle && <p>{subtitle}</p>}<div className="teacher-cover__status-list">{isEducationProviderProfile && (trustCount < 3 && !trustedByCurrentUser ? <small className="teacher-cover__trust-count is-new">Mới trên EduMatch</small> : <button type="button" className="teacher-cover__trust-count" onClick={() => setLikesTarget({ ids: trustUserIds, title: 'Lượt tin tưởng', label: 'Những thành viên đã tin tưởng hồ sơ này', emptyText: 'Danh sách thành viên tin tưởng đang được cập nhật.' })}><Heart size={13} fill="currentColor" /> {trustCount} lượt tin tưởng</button>)}<VerifiedBadge userId={profile.id} provider={profile} /></div></div>
       {ownsProfile && <><button type="button" className={`profile-cover-upload teacher-cover__cover-upload ${profileImageUploadField === 'coverImage' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} aria-label={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('coverImage')}>{profileImageUploadField === 'coverImage' ? <LoaderCircle className="profile-upload-spinner" size={17} /> : <ImagePlus size={17} />}</button><input ref={coverImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'coverImage')} /></>}
     </header>
     <div className="teacher-public-grid"><aside className="teacher-bio"><h2>{isEducationProviderProfile ? 'Thông tin' : 'Thông Tin Cá Nhân'}</h2>{isEducationProviderProfile && <div className="teacher-bio__overview"><h3>Hồ sơ năng lực</h3>{ownsProfile && <button type="button" className="teacher-bio__edit-link" onClick={openProfileEditor}>Chỉnh sửa</button>}</div>}<p className="teacher-bio__summary">{shortProfileIntro}</p>{isEducationProviderProfile && <><h3>Lĩnh vực giảng dạy</h3><p className="teacher-bio__summary">{profile.teachingField || 'Đang cập nhật'}</p></>}{isCenterProfile && <><h3>Năm thành lập</h3><p className="teacher-bio__summary">{profile.foundedYear || 'Đang cập nhật'}</p></>}{isTeacherProfile && <><h3>Kinh nghiệm</h3><p className="teacher-bio__summary">{profileExperience || 'Đang cập nhật'}</p><h3>Bằng cấp, chứng chỉ</h3><p className="teacher-bio__summary">{profileQualifications || 'Đang cập nhật'}</p></>}<button type="button" className="teacher-bio__view-all" onClick={() => setIsViewingProfileSummary(true)}>Xem tất cả</button>{publicPhone && <><h3>Điện thoại liên hệ</h3><a className="teacher-bio__phone" href={`tel:${profilePhone.replace(/\s/g, '')}`}><Phone size={14} /> {profilePhone}</a></>}{ownsProfile && canCreateCourse && <div className="teacher-bio__actions">{isCenterProfile && <Link className="teacher-bio__verify" to={ROUTES.VERIFICATION}><FileCheck2 size={15} /> Hồ sơ xác minh</Link>}<Link className="teacher-bio__add-course" to={ROUTES.CREATE_COURSE}><Plus size={16} /> Thêm khóa học</Link></div>}{isEducationProviderProfile && courses.length > 0 && <section className="teacher-bio__courses" aria-labelledby="profile-open-courses"><div className="teacher-bio__courses-heading"><div><BookOpen size={16} aria-hidden="true" /><h3 id="profile-open-courses">Khóa học đang mở</h3></div><span>{courses.length}</span></div><div className="teacher-bio__course-list">{displayedProfileCourses.map((course) => { const isExpanded = Boolean(expandedProfileCourseIds[course.id]); return <div className={`teacher-bio__course-item ${isExpanded ? 'is-expanded' : ''}`} key={course.id}><Link className="teacher-bio__course-link" to={ROUTES.COURSE_DETAIL(course.id)}><span>{course.title}</span></Link><button type="button" className="teacher-bio__course-expand" aria-expanded={isExpanded} aria-label={`${isExpanded ? 'Thu gọn' : 'Xem đầy đủ'} tên khóa học`} onClick={() => setExpandedProfileCourseIds((current) => ({ ...current, [course.id]: !current[course.id] }))}><ChevronDown size={16} aria-hidden="true" /></button></div>; })}</div>{courses.length > 2 && <button type="button" className="teacher-bio__courses-toggle" onClick={() => setShowAllProfileCourses((current) => !current)}>{showAllProfileCourses ? 'Thu gọn' : `Xem tất cả ${courses.length} khóa học`}</button>}</section>}</aside>
@@ -1768,16 +1809,16 @@ export function TeacherProfilePage() {
           };
         };
         const author = postAuthor(post);
-        const originalSharedPost = post.sharedPost ? getOriginalSharedPost(post, getPosts(), postAuthor) : null;
+        const originalSharedPost = post.sharedPost ? getOriginalSharedPost(post, allPosts, postAuthor) : null;
         const sourceMediaItems = getMediaItems(originalSharedPost);
         const sharedMediaItems = originalSharedPost?.mediaId ? sourceMediaItems.filter((item) => item.id === originalSharedPost.mediaId) : sourceMediaItems;
-        const shareIds = [...new Set(getPosts().filter((candidate) => candidate.sharedPost?.id === post.id && !candidate.sharedPost?.mediaId).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))];
+        const shareIds = [...new Set(allPosts.filter((candidate) => candidate.sharedPost?.id === post.id && !candidate.sharedPost?.mediaId).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))];
         const shareCount = shareIds.length;
         return <article className="social-post" key={post.id}>
           <div className="social-post__head"><ProfileAvatar src={author.avatar} userId={author.id} name={author.name} alt={`Ảnh đại diện của ${author.name}`} role={author.role} size={17} /><div><Link className="social-post__author" to={ROUTES.TEACHER_PROFILE(post.authorId || post.teacherId || profile.id)} onClick={(event) => reloadCurrentProfile(event, post.authorId || post.teacherId || profile.id)}>{author.name}</Link><Link className="social-post__time" to={ROUTES.POST_DETAIL(post.id)} state={{ fromPostList: true }}><small>{formatPublishedAt(post.createdAt)}</small></Link></div></div>
           {ownsContent(post.authorId || post.teacherId) && <ContentMenu id={`post-${post.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editProfilePost(post)} onDelete={() => removeProfilePost(post)} label="bài viết" />}
           {editingPostId === post.id ? <InlinePostEditor draft={editingPostText} onDraftChange={setEditingPostText} media={editingPostMedia} onMediaChange={setEditingPostMedia} onCancel={cancelProfilePostEdit} onSave={(event) => saveProfilePostEdit(event, post)} attachmentId={`profile-edit-post-media-${post.id}`} /> : post.text && <p>{post.text}</p>}
-          {originalSharedPost && <div className="shared-post"><div className="shared-post__header">{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}{originalSharedPost.id ? <Link className="shared-post__time" to={ROUTES.POST_DETAIL(originalSharedPost.id)} state={{ fromPostList: true }}><small>{formatPublishedAt(originalSharedPost.createdAt)}</small></Link> : <small>{formatPublishedAt(originalSharedPost.createdAt)}</small>}</div><p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`social-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = getPosts().find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ảnh chia sẻ ${index + 1}`}><img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} /></button>)}</div>}</div>}
+          {originalSharedPost && <div className="shared-post"><div className="shared-post__header">{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}{originalSharedPost.id ? <Link className="shared-post__time" to={ROUTES.POST_DETAIL(originalSharedPost.id)} state={{ fromPostList: true }}><small>{formatPublishedAt(originalSharedPost.createdAt)}</small></Link> : <small>{formatPublishedAt(originalSharedPost.createdAt)}</small>}</div><p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`social-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = allPosts.find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ảnh chia sẻ ${index + 1}`}><img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} /></button>)}</div>}</div>}
           {editingPostId !== post.id && postMediaItems.length > 0 && <div className={`social-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, postAuthor(post), postMediaItems, index)} aria-label={`Mở ảnh ${index + 1}`}><img src={item.src} alt={`Ảnh ${index + 1} do ${profile.name} chia sẻ`} /></button>)}</div>}
           <PostActions
             isLiked={isLiked}

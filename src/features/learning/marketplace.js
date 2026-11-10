@@ -853,27 +853,42 @@ const notifyNotificationChange = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:notifications-updated'));
 };
 
+const MAX_STORED_NOTIFICATIONS = 50;
+const sanitizeNotificationRecord = (notification) => {
+  if (!notification || typeof notification !== 'object') return null;
+  const avatar = String(notification.actorAvatar || '');
+  const safeAvatar = avatar.startsWith('data:image/') && avatar.length > 4096 ? '' : avatar;
+  return safeAvatar === notification.actorAvatar
+    ? notification
+    : { ...notification, actorAvatar: safeAvatar };
+};
+
+const readNotificationsList = () => {
+  const saved = read(STORAGE_KEYS.NOTIFICATIONS, []);
+  return Array.isArray(saved) ? saved.map(sanitizeNotificationRecord).filter(Boolean) : [];
+};
+
 export const getNotifications = (recipientId) =>
-  read(STORAGE_KEYS.NOTIFICATIONS, [])
-    .filter((notification) => notification.recipientId === recipientId)
+  readNotificationsList()
+    .filter((notification) => isSameEntityId(notification.recipientId, recipientId))
     .sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt));
 
 export const createNotification = (notification) => {
-  if (!notification.recipientId) return null;
-  const nextNotification = {
+  if (!notification?.recipientId) return null;
+  const nextNotification = sanitizeNotificationRecord({
     id: `notification-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     isRead: false,
     createdAt: new Date().toISOString(),
     ...notification,
-  };
-  const saved = read(STORAGE_KEYS.NOTIFICATIONS, []);
-  write(STORAGE_KEYS.NOTIFICATIONS, [nextNotification, ...saved]);
+  });
+  const saved = readNotificationsList();
+  write(STORAGE_KEYS.NOTIFICATIONS, [nextNotification, ...saved].slice(0, MAX_STORED_NOTIFICATIONS));
   notifyNotificationChange();
   return nextNotification;
 };
 
 export const markNotificationRead = (notificationId) => {
-  const next = read(STORAGE_KEYS.NOTIFICATIONS, []).map((notification) =>
+  const next = readNotificationsList().map((notification) =>
     notification.id === notificationId ? { ...notification, isRead: true } : notification
   );
   write(STORAGE_KEYS.NOTIFICATIONS, next);
@@ -882,46 +897,57 @@ export const markNotificationRead = (notificationId) => {
 };
 
 export const markAllNotificationsRead = (recipientId) => {
-  const next = read(STORAGE_KEYS.NOTIFICATIONS, []).map((notification) =>
-    notification.recipientId === recipientId ? { ...notification, isRead: true } : notification
+  const next = readNotificationsList().map((notification) =>
+    isSameEntityId(notification.recipientId, recipientId) ? { ...notification, isRead: true } : notification
   );
   write(STORAGE_KEYS.NOTIFICATIONS, next);
   notifyNotificationChange();
   return next;
 };
 
+const isSameEntityId = (first, second) =>
+  first != null && second != null && String(first) === String(second);
+
+const affinityRecords = () => {
+  const saved = read(STORAGE_KEYS.FEED_AFFINITY, []);
+  return Array.isArray(saved) ? saved : [];
+};
+
 export const getProviderAffinity = (userId) => {
   if (!userId) return {};
-  return read(STORAGE_KEYS.FEED_AFFINITY, [])
-    .filter((record) => record.userId === userId)
+  return affinityRecords()
+    .filter((record) => isSameEntityId(record.userId, userId))
     .reduce((scores, record) => ({ ...scores, [record.providerId]: (scores[record.providerId] || 0) + Number(record.score || 0) }), {});
 };
 
 export const trackProviderAffinity = (userId, providerId, action, score = 1) => {
-  if (!userId || !providerId || userId === providerId) return;
-  const saved = read(STORAGE_KEYS.FEED_AFFINITY, []);
-  const existingIndex = saved.findIndex((record) => record.userId === userId && record.providerId === providerId && record.action === action);
+  if (!userId || !providerId || isSameEntityId(userId, providerId)) return;
+  const saved = affinityRecords();
+  const existingIndex = saved.findIndex((record) => isSameEntityId(record.userId, userId) && isSameEntityId(record.providerId, providerId) && record.action === action);
   const entry = { userId, providerId, action, score, updatedAt: new Date().toISOString() };
   const next = existingIndex === -1 ? [entry, ...saved] : saved.map((record, index) => index === existingIndex ? entry : record);
   write(STORAGE_KEYS.FEED_AFFINITY, next);
 };
 
-const trustRecords = () => read(STORAGE_KEYS.PROVIDER_TRUSTS, []);
+const trustRecords = () => {
+  const saved = read(STORAGE_KEYS.PROVIDER_TRUSTS, []);
+  return Array.isArray(saved) ? saved : [];
+};
 
 export const getProviderTrustCount = (providerId, baseCount = 0) =>
-  Number(baseCount || 0) + trustRecords().filter((record) => record.providerId === providerId).length;
+  Number(baseCount || 0) + trustRecords().filter((record) => isSameEntityId(record.providerId, providerId)).length;
 
 export const getProviderTrustUserIds = (providerId) => [...new Set(
-  trustRecords().filter((record) => record.providerId === providerId).map((record) => record.userId)
+  trustRecords().filter((record) => isSameEntityId(record.providerId, providerId)).map((record) => record.userId)
 )];
 
 export const hasProviderTrust = (userId, providerId) =>
-  Boolean(userId && trustRecords().some((record) => record.userId === userId && record.providerId === providerId && record.source === 'profile'));
+  Boolean(userId && providerId && trustRecords().some((record) => isSameEntityId(record.userId, userId) && isSameEntityId(record.providerId, providerId) && record.source === 'profile'));
 
 export const toggleProviderTrust = (userId, providerId) => {
-  if (!userId || !providerId || userId === providerId) return false;
+  if (!userId || !providerId || isSameEntityId(userId, providerId)) return false;
   const saved = trustRecords();
-  const index = saved.findIndex((record) => record.userId === userId && record.providerId === providerId && record.source === 'profile');
+  const index = saved.findIndex((record) => isSameEntityId(record.userId, userId) && isSameEntityId(record.providerId, providerId) && record.source === 'profile');
   const next = index === -1
     ? [{ id: `trust-${Date.now()}`, userId, providerId, source: 'profile', createdAt: new Date().toISOString() }, ...saved]
     : saved.filter((_, recordIndex) => recordIndex !== index);
@@ -930,10 +956,10 @@ export const toggleProviderTrust = (userId, providerId) => {
 };
 
 export const addCourseRatingTrust = (userId, providerId, courseId) => {
-  if (!userId || !providerId || !courseId || userId === providerId) return false;
+  if (!userId || !providerId || !courseId || isSameEntityId(userId, providerId)) return false;
   const source = `rating:${courseId}`;
   const saved = trustRecords();
-  if (saved.some((record) => record.userId === userId && record.providerId === providerId && record.source === source)) return false;
+  if (saved.some((record) => isSameEntityId(record.userId, userId) && isSameEntityId(record.providerId, providerId) && record.source === source)) return false;
   write(STORAGE_KEYS.PROVIDER_TRUSTS, [{ id: `trust-${Date.now()}`, userId, providerId, source, createdAt: new Date().toISOString() }, ...saved]);
   return true;
 };

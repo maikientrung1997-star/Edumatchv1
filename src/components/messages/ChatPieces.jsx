@@ -475,6 +475,18 @@ export function ChatComposer({ thread, replyingTo = null, onCancelReply }) {
   const sendingRef = useRef(false);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const emojiAnchorRef = useRef(null);
+  const stickerAnchorRef = useRef(null);
+
+  useEffect(() => {
+    if (!emojiOpen && !stickerOpen) return;
+    const closePickerOutside = (event) => {
+      if (emojiOpen && !emojiAnchorRef.current?.contains(event.target)) setEmojiOpen(false);
+      if (stickerOpen && !stickerAnchorRef.current?.contains(event.target)) setStickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closePickerOutside, true);
+    return () => document.removeEventListener('pointerdown', closePickerOutside, true);
+  }, [emojiOpen, stickerOpen]);
   const chooseFiles = (event) => {
     const selected = [...event.target.files]; event.target.value = '';
     if (files.length + selected.length > 3) { toast.error('Mỗi tin nhắn tối đa 3 tệp.'); return; }
@@ -568,11 +580,11 @@ export function ChatComposer({ thread, replyingTo = null, onCancelReply }) {
     )}
     {files.map((file, index) => <PendingFile key={`${file.name}:${file.lastModified}:${index}`} file={file} remove={() => setFiles((current) => current.filter((_, position) => position !== index))}/>)}
     <div className="em-composer__row"><div className="em-composer__field">
-      <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
+      <div className="em-emoji-anchor" ref={emojiAnchorRef}><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
         {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme="light" searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
       </div>
       <textarea ref={inputRef} aria-label="Soạn tin nhắn" placeholder="Soạn tin nhắn" rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
-      <div className="em-sticker-anchor">
+      <div className="em-sticker-anchor" ref={stickerAnchorRef}>
         <ChatIcon label="Gửi nhãn dán" aria-expanded={stickerOpen} onClick={() => { setStickerOpen((value) => !value); setEmojiOpen(false); }}>
           <ZaloStickerIcon size={20}/>
         </ChatIcon>

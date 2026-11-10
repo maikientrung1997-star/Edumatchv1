@@ -548,7 +548,17 @@ export function MessengerWorkspace() {
   const [unread, setUnread] = useState(false);
   const [filter, setFilter] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef(null);
   const [groupOpen, setGroupOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const closeFilterOutside = (event) => {
+      if (!filterRef.current?.contains(event.target)) setFilterOpen(false);
+    };
+    document.addEventListener('pointerdown', closeFilterOutside, true);
+    return () => document.removeEventListener('pointerdown', closeFilterOutside, true);
+  }, [filterOpen]);
   const [people, setPeople] = useState({ query: '', items: [] });
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
@@ -674,7 +684,7 @@ export function MessengerWorkspace() {
         {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
         <h1>Tin nhắn</h1></div><span className="em-count">{chat.loaded ? chat.counts.total : <span className="em-count-loading" aria-label="Đang tải số hội thoại"/>}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
       <div className="em-search-row"><label className="em-search"><Search size={17}/><input aria-label="Tìm kiếm người dùng" placeholder="Tên, email hoặc số điện thoại..." value={query} onChange={(event) => setQuery(event.target.value)} maxLength={150}/></label>
-        <div className="em-filter">
+        <div className="em-filter" ref={filterRef}>
           <button type="button" aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}>
             <ListFilter size={17}/>
             <span>{selectedTagId ? `Thẻ: ${tagLibrary.find((t) => t.id === selectedTagId)?.name || 'Đã chọn'}` : 'Lọc theo'}</span>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Tag, X } from 'lucide-react';
 import {
   TAG_COLORS,
@@ -30,6 +30,19 @@ export function ConversationTagBar({ conversationId, user }) {
   const [tagName, setTagName] = useState('');
   const [tagColor, setTagColor] = useState(TAG_COLORS[0].value);
   const [notice, setNotice] = useState('');
+  const tagBarRef = useRef(null);
+
+  useEffect(() => {
+    if (!showCreator) return;
+    const closeCreatorOutside = (event) => {
+      if (!tagBarRef.current?.contains(event.target)) {
+        setShowCreator(false);
+        setNotice('');
+      }
+    };
+    document.addEventListener('pointerdown', closeCreatorOutside, true);
+    return () => document.removeEventListener('pointerdown', closeCreatorOutside, true);
+  }, [showCreator]);
 
   if (currentKey !== prevKey) {
     setPrevKey(currentKey);
@@ -91,7 +104,7 @@ export function ConversationTagBar({ conversationId, user }) {
   };
 
   return (
-    <div className="chat-tag-bar-wrap">
+    <div className="chat-tag-bar-wrap" ref={tagBarRef}>
       <nav className="chat-tag-bar" aria-label="Gắn thẻ cuộc trò chuyện">
         <span>
           <Tag size={14} /> Thẻ:

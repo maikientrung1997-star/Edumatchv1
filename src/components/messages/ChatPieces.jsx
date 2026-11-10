@@ -7,7 +7,9 @@ import { chatService, chatError, chatAvatarUrl, CHAT_FILE_ACCEPT, CHAT_REACTIONS
 import { chatDay, chatTime } from '@/utils/chatState';
 import { STICKER_PACKS } from '@/constants/stickers';
 import { ChatLoading } from './ChatLoading';
+import { EmojiPickerBoundary } from './EmojiPickerBoundary';
 import { Modal } from '@/components/feedback/Modal';
+import { DefaultRoleAvatar, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
@@ -25,10 +27,10 @@ export function ZaloStickerIcon({ size = 20, className = '' }) {
 
 export function ChatAvatar({ person, group = false, large = false }) {
   const { online, presenceReady } = useChat();
-  const source = chatAvatarUrl(person?.avatar_url || person?.avatar);
+  const source = resolveAvatarSource(chatAvatarUrl(person?.avatar_url || person?.avatar), person?.id);
   const [failedSource, setFailedSource] = useState(null);
   return <span className={`em-avatar ${large ? 'em-avatar--large' : ''} ${group ? 'em-avatar--group' : ''}`}>
-    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person.name}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <span className="em-avatar__initial">{person?.name?.slice(0, 1)?.toUpperCase() || '?'}</span>}
+    {group ? <Users size={25}/> : source && failedSource !== source ? <img key={source} src={source} alt={`Ảnh ${person?.name || ''}`} loading="lazy" decoding="async" onError={() => setFailedSource(source)}/> : <DefaultRoleAvatar role={person?.role} name={person?.name} userId={person?.id} size={large ? 22 : 18} />}
     {!group && presenceReady && online.has(String(person?.id)) && <i aria-label="Đang hoạt động"/>}
   </span>;
 }
@@ -222,7 +224,7 @@ export function ChatComposer({ thread, theme = 'light' }) {
     {files.map((file, index) => <PendingFile key={`${file.name}:${file.lastModified}:${index}`} file={file} remove={() => setFiles((current) => current.filter((_, position) => position !== index))}/>)}
     <div className="em-composer__row"><div className="em-composer__field">
       <div className="em-emoji-anchor"><ChatIcon label="Chọn biểu tượng cảm xúc" aria-expanded={emojiOpen} onClick={() => { setEmojiOpen((value) => !value); setStickerOpen(false); }}><Smile size={21}/></ChatIcon>
-        {emojiOpen && <div className="em-emoji-panel"><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme={theme} searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></div>}
+        {emojiOpen && <div className="em-emoji-panel"><EmojiPickerBoundary onClose={() => setEmojiOpen(false)}><Suspense fallback={<p>Đang tải biểu tượng...</p>}><EmojiPicker width="100%" height={350} theme={theme} searchPlaceHolder="Tìm biểu tượng..." previewConfig={{showPreview:false}} onEmojiClick={(emoji) => { setBody((value) => value + emoji.emoji); inputRef.current?.focus(); }}/></Suspense></EmojiPickerBoundary></div>}
       </div>
       <textarea ref={inputRef} aria-label="Nhập tin nhắn" placeholder="Nhập tin nhắn của bạn..." rows={1} maxLength={4000} value={body} onChange={(event) => { setBody(event.target.value); thread.sendTyping(); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event); }}/>
       <div className="em-sticker-anchor">

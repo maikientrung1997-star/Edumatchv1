@@ -18,7 +18,7 @@ before(async () => {
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
   };
-  server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  server = await createServer({ cacheDir: `node_modules/.vite-tests/auth-${process.pid}`, server: { middlewareMode: true }, appType: 'custom' });
   ({ api } = await server.ssrLoadModule('/src/services/api.js'));
   ({ authService, normalizeAuthUser } = await server.ssrLoadModule('/src/services/authService.js'));
   ({ profileService } = await server.ssrLoadModule('/src/services/profileService.js'));
@@ -199,6 +199,23 @@ test('center capability profiles are not limited by the generic 5,000-character 
   assert.equal(payload.centerProfile.description, centerDescription.trim());
 });
 
+test('a center can complete every required field rendered by its registration form', () => {
+  const visibleFields = new Set([
+    ...registration.centerAccountFields,
+    ...registration.centerFields,
+  ].map(({ name }) => name));
+  const form = { ...registration.initialForm, centerName: 'Trung tâm kiểm tra',
+    email: 'center@example.com', phone: '0981234567', password: 'Password@123',
+    confirmPassword: 'Password@123', teachingField: 'Tiếng Anh',
+    foundedYear: '2018', centerDescription: 'Trung tâm đào tạo ngoại ngữ' };
+  assert.ok(visibleFields.has('email'), 'OTP email must be editable on the center form');
+  assert.equal(visibleFields.has('dateOfBirth'), false, 'A center does not require a birth date');
+  assert.deepEqual(registration.validateRegistration(form, 'center'), {});
+  for (const field of Object.keys(registration.validateRegistration(registration.initialForm, 'center'))) {
+    assert.ok(visibleFields.has(field), `Required field ${field} must be visible`);
+  }
+});
+
 test('all registration roles require a valid email, including centers', () => {
   for (const role of ['student', 'teacher', 'center']) {
     assert.ok(registration.validateRegistration({ ...registration.initialForm, email: '' }, role).email);
@@ -242,7 +259,15 @@ test('professional registration maps field errors and validates years', () => {
     qualification: 'Quá dài', experience: 'Năm sai', biography: 'Mô tả sai',
   });
   assert.ok(registration.validateRegistration({ ...registration.initialForm, foundedYear: '2999' }, 'center').foundedYear);
-  assert.ok(registration.validateRegistration({ ...registration.initialForm, experience: '61 năm' }, 'teacher').experience);
+  const longText = 'Thạc sĩ Sư phạm Tiếng Anh, chứng chỉ TESOL & IELTS 8.5. '.repeat(10);
+  const validTeacherErrors = registration.validateRegistration({
+    ...registration.initialForm,
+    qualification: longText,
+    experience: 'Giảng dạy chuyên sâu tại các trường quốc tế và luyện thi học sinh giỏi cấp quốc gia',
+  }, 'teacher');
+  assert.equal(validTeacherErrors.qualification, undefined);
+  assert.equal(validTeacherErrors.experience, undefined);
+  assert.ok(registration.validateRegistration({ ...registration.initialForm, experience: '   ' }, 'teacher').experience);
 });
 
 test('profiles are restored from server data for all roles', () => {

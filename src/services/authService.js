@@ -16,11 +16,37 @@ const apiOrigin = (() => {
 const resolveAssetUrl = (value) => {
   if (!value) return '';
   const stringValue = String(value).trim();
-  if (/^(?:https?:|data:|blob:)/i.test(stringValue)) return stringValue;
+  if (!stringValue || stringValue === 'null' || stringValue === 'undefined') return '';
+  if (/^(?:data:|blob:)/i.test(stringValue)) return stringValue;
+  if (/^https?:/i.test(stringValue)) {
+    try {
+      const parsed = new URL(stringValue);
+      if (
+        apiOrigin &&
+        (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
+        parsed.pathname.startsWith('/storage/')
+      ) {
+        const publicMedia = parsed.pathname.match(/^\/storage\/(avatars|covers)\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i);
+        const rewrittenPath = publicMedia
+          ? `/api/media/${publicMedia[1].toLowerCase()}/${encodeURIComponent(publicMedia[2])}`
+          : parsed.pathname;
+        return new URL(`${rewrittenPath}${parsed.search}`, apiOrigin).toString();
+      }
+    } catch {
+      // Fall through and return stringValue as-is.
+    }
+    return stringValue;
+  }
 
   const normalized = stringValue.replace(/\\/g, '/');
+  const publicMedia = normalized.replace(/^\//, '').match(/^(?:storage\/)?(avatars|covers)\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif))$/i);
+  if (publicMedia) {
+    const mediaPath = `/api/media/${publicMedia[1].toLowerCase()}/${encodeURIComponent(publicMedia[2])}`;
+    return apiOrigin ? new URL(mediaPath, apiOrigin).toString() : mediaPath;
+  }
+
   let pathWithStorage = normalized;
-  if (!/^\/?storage\//i.test(normalized) && /^(?:avatars|uploads|profiles|images)\//i.test(normalized.replace(/^\//, ''))) {
+  if (!/^\/?storage\//i.test(normalized) && /^(?:avatars|covers|uploads|profiles|images)\//i.test(normalized.replace(/^\//, ''))) {
     pathWithStorage = `/storage/${normalized.replace(/^\//, '')}`;
   } else if (!pathWithStorage.startsWith('/')) {
     pathWithStorage = `/${pathWithStorage}`;
@@ -31,9 +57,21 @@ const resolveAssetUrl = (value) => {
 
 export function normalizeAuthUser(user) {
   if (!user) return null;
-  const profile = user.student_profile || user.teacher_profile || user.center || {};
-  const phoneVisibilityProvided = [user, profile].some((item) =>
-    Object.prototype.hasOwnProperty.call(item || {}, 'show_phone') || Object.prototype.hasOwnProperty.call(item || {}, 'isPhonePublic'),
+  const profile =
+    user.student_profile ||
+    user.teacher_profile ||
+    user.teacherProfile ||
+    user.center_profile ||
+    user.centerProfile ||
+    user.center ||
+    {};
+  const phoneVisibilityProvided = [user, profile, user.center, user.center_profile, user.centerProfile].some((item) =>
+    Boolean(item) && (
+      Object.prototype.hasOwnProperty.call(item, 'show_phone') ||
+      Object.prototype.hasOwnProperty.call(item, 'showPhone') ||
+      Object.prototype.hasOwnProperty.call(item, 'is_phone_public') ||
+      Object.prototype.hasOwnProperty.call(item, 'isPhonePublic')
+    ),
   );
   const rawAvatar =
     user.avatar ||
@@ -54,20 +92,60 @@ export function normalizeAuthUser(user) {
     user.student_profile?.avatar ||
     user.student_profile?.avatar_url ||
     '';
+  const rawCoverImage =
+  user.cover_image_url ||
+  user.coverImage ||
+    user.cover_image ||
+    user.cover_url ||
+    user.banner ||
+    user.banner_url ||
+  profile.cover_image_url ||
+    profile.coverImage ||
+    profile.cover_image ||
+    profile.cover_url ||
+  user.center?.cover_image_url ||
+    user.center?.cover_image ||
+    user.center?.cover_url ||
+  user.teacher_profile?.cover_image_url ||
+    user.teacher_profile?.cover_image ||
+    user.teacher_profile?.cover_url ||
+    '';
+
+  const rawPhonePublic =
+    profile.show_phone ??
+    profile.showPhone ??
+    profile.is_phone_public ??
+    profile.isPhonePublic ??
+    user.center?.show_phone ??
+    user.center?.showPhone ??
+    user.center?.is_phone_public ??
+    user.center?.isPhonePublic ??
+    user.center_profile?.show_phone ??
+    user.centerProfile?.show_phone ??
+    user.show_phone ??
+    user.showPhone ??
+    user.is_phone_public ??
+    user.isPhonePublic;
 
   return {
     ...user,
     name: user.center?.name || user.name,
+    phone: user.center?.phone || profile.phone || user.phone || '',
     dob: profile.date_of_birth?.slice(0, 10) || user.dob || '',
     bio: profile.bio ?? profile.description ?? user.bio ?? '',
     avatar: resolveAssetUrl(rawAvatar),
+    coverImage: resolveAssetUrl(rawCoverImage),
     avatarVersion: user.avatarVersion || user.avatar_version || undefined,
     qualifications: user.teacher_profile?.headline || user.qualifications || '',
-    experience: user.teacher_profile ? `${user.teacher_profile.experience_years ?? 0} năm kinh nghiệm` : user.experience || '',
-    isPhonePublic: profile.show_phone ?? user.show_phone ?? user.isPhonePublic ?? false,
+    experience:
+      user.teacher_profile?.experience ||
+      user.experience ||
+      (user.teacher_profile ? `${user.teacher_profile.experience_years ?? 0} năm kinh nghiệm` : ''),
+    isPhonePublic: rawPhonePublic != null ? Boolean(rawPhonePublic) : false,
     phoneVisibilityProvided,
     foundedYear: user.center?.founded_year ? String(user.center.founded_year) : user.foundedYear || '',
     teachingField: profile.teaching_field || profile.teachingField || user.teaching_field || user.teachingField || '',
+    photoAlbums: profile.photo_albums || profile.photoAlbums || user.photo_albums || user.photoAlbums || [],
     verificationStatus: profile.verification_status || 'unverified',
     verifiedAt: profile.verified_at || null,
     licenseVerificationStatus: user.center?.verification_status || '',

@@ -211,3 +211,8 @@
 .em-image-placeholder > svg, .em-image-placeholder > span { position:relative; }
 .em-image-placeholder.is-error { font-size:11px; }
 @media (prefers-reduced-motion:no-preference) { .em-image-placeholder.em-skeleton::after { animation:em-skeleton-shimmer 1.8s ease-in-out infinite; } }
+
+.em-emoji-error { display:grid; gap:10px; padding:20px; color:var(--color-muted); font-size:13px; line-height:1.6; }
+.em-emoji-error strong { color:var(--color-ink); }
+.em-emoji-error p { padding:0; }
+.em-emoji-error button { justify-self:start; padding:7px 12px; border:1px solid var(--color-line); border-radius:8px; background:var(--color-soft); color:var(--color-primary); font-weight:600; }

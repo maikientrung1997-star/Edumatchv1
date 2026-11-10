@@ -14,7 +14,7 @@ let server,
 before(async () => {
   globalThis.window = new EventTarget();
   window.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-  server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  server = await createServer({ cacheDir: `node_modules/.vite-tests/phase2-${process.pid}`, server: { middlewareMode: true }, appType: 'custom' });
   ({ api } = await server.ssrLoadModule('/src/services/api.js'));
   ({ masterDataService } = await server.ssrLoadModule('/src/services/masterDataService.js'));
   ({ verificationService, buildVerificationFormData } = await server.ssrLoadModule(

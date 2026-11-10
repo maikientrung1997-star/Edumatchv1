@@ -10,6 +10,8 @@ const __dirname = path.dirname(__filename);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Include the lazy picker in the initial dev optimization so its first click does not discover a new dependency.
+  optimizeDeps: { include: ['emoji-picker-react'] },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -20,7 +20,7 @@ before(async () => {
     },
     head: { appendChild: (script) => scripts.push(script) },
   };
-  server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  server = await createServer({ cacheDir: `node_modules/.vite-tests/googleIdentity-${process.pid}`, server: { middlewareMode: true }, appType: 'custom' });
   identity = await server.ssrLoadModule('/src/services/googleIdentity.js');
   ({ api } = await server.ssrLoadModule('/src/services/api.js'));
 });

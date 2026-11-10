@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { storage } from '@/utils/storage';
 import { authService } from '@/services/authService';
 import { disconnectPusher } from '@/services/pusherService';
+import { syncPostAuthorProfile } from '@/features/learning/marketplace';
 
 export const AuthContext = createContext(null);
 
@@ -11,33 +12,62 @@ const withImageVersion = (source, version) => {
   return `${source}${String(source).includes('?') ? '&' : '?'}edumatch_image=${encodeURIComponent(version)}`;
 };
 
-// Ảnh bìa hiện được lưu ở phía giao diện, trong khi API hồ sơ có thể chưa trả
-// về trường này. Giữ lại ảnh cục bộ của đúng tài khoản khi làm mới phiên, thay
-// vì để phản hồi /auth/me vô tình xóa ảnh bìa người dùng vừa chọn.
+const getPersistedProfileVisuals = (userId) => {
+  if (userId == null) return {};
+  return storage.get(STORAGE_KEYS.PROFILE_VISUALS, {})?.[String(userId)] || {};
+};
+
+const persistProfileVisuals = (user) => {
+  if (user?.id == null) return;
+  const visualsByUser = storage.get(STORAGE_KEYS.PROFILE_VISUALS, {});
+  storage.set(STORAGE_KEYS.PROFILE_VISUALS, {
+    ...visualsByUser,
+    [String(user.id)]: {
+      avatar: user.avatar || '',
+      coverImage: user.coverImage || '',
+      avatarVersion: user.avatarVersion || undefined,
+      ...(typeof user.isPhonePublic === 'boolean' ? { isPhonePublic: user.isPhonePublic } : {}),
+      ...(user.verificationStatus ? { verificationStatus: user.verificationStatus } : {}),
+      ...(user.licenseVerificationStatus ? { licenseVerificationStatus: user.licenseVerificationStatus } : {}),
+    },
+  });
+};
+
+// API hồ sơ có thể chưa trả về ảnh bìa. Giữ một bản ảnh theo từng tài khoản để
+// việc đăng xuất không làm mất các ảnh người dùng đã chọn trên thiết bị này.
 const mergePersistedProfileVisuals = (remoteUser) => {
   const cachedUser = storage.get(STORAGE_KEYS.USER_INFO);
-  if (!cachedUser || String(cachedUser.id) !== String(remoteUser?.id)) return remoteUser;
+  if (!remoteUser?.id) return remoteUser;
 
-  const preferredAvatar =
-    (cachedUser.avatar && (!remoteUser?.avatar || cachedUser.avatar.startsWith('data:image/') || cachedUser.avatarVersion))
-      ? (cachedUser.avatarVersion && !cachedUser.avatar.startsWith('data:image/') && !cachedUser.avatar.startsWith('blob:')
-          ? withImageVersion(cachedUser.avatar, cachedUser.avatarVersion)
-          : cachedUser.avatar)
-      : (remoteUser?.avatar
-          ? (cachedUser.avatarVersion && !remoteUser.avatar.startsWith('data:image/') && !remoteUser.avatar.startsWith('blob:')
-              ? withImageVersion(remoteUser.avatar, cachedUser.avatarVersion)
-              : remoteUser.avatar)
-          : (cachedUser.avatar || ''));
+  const cachedVisuals = cachedUser && String(cachedUser.id) === String(remoteUser.id)
+    ? cachedUser
+    : {};
+  const persistedVisuals = getPersistedProfileVisuals(remoteUser.id);
+  const rawSavedAvatar = persistedVisuals.avatar || cachedVisuals.avatar || '';
+  const savedAvatar = /^blob:/i.test(String(rawSavedAvatar)) ? '' : rawSavedAvatar;
+  const savedAvatarVersion = persistedVisuals.avatarVersion || cachedVisuals.avatarVersion;
+  const hasLocalAvatar = Boolean(savedAvatar) && (
+    savedAvatar.startsWith('data:image/') || savedAvatarVersion
+  );
 
-  const preferredCoverImage = cachedUser.coverImage || remoteUser?.coverImage || '';
+  const preferredAvatar = hasLocalAvatar
+    ? (savedAvatarVersion && !savedAvatar.startsWith('data:image/')
+        ? withImageVersion(savedAvatar, savedAvatarVersion)
+        : savedAvatar)
+    : (remoteUser.avatar || savedAvatar);
+
+    const preferredCoverImage = remoteUser.coverImage || persistedVisuals.coverImage || cachedVisuals.coverImage || '';
+  const preferredPhonePublic = typeof persistedVisuals.isPhonePublic === 'boolean'
+    ? persistedVisuals.isPhonePublic
+    : (typeof cachedVisuals.isPhonePublic === 'boolean' ? cachedVisuals.isPhonePublic : undefined);
 
   return {
     ...remoteUser,
     avatar: preferredAvatar,
     coverImage: preferredCoverImage,
-    avatarVersion: cachedUser.avatarVersion || remoteUser?.avatarVersion || undefined,
-    ...(!remoteUser?.phoneVisibilityProvided && typeof cachedUser.isPhonePublic === 'boolean'
-      ? { isPhonePublic: cachedUser.isPhonePublic }
+    avatarVersion: savedAvatarVersion || remoteUser.avatarVersion || undefined,
+    ...(!remoteUser.phoneVisibilityProvided && typeof preferredPhonePublic === 'boolean'
+      ? { isPhonePublic: preferredPhonePublic }
       : {}),
   };
 };
@@ -85,6 +115,7 @@ export const AuthProvider = ({ children }) => {
           const hydratedUser = mergePersistedProfileVisuals(response.user);
           setUser(hydratedUser);
           storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);
+          persistProfileVisuals(hydratedUser);
         }
       } catch {
         if (active && storage.get(STORAGE_KEYS.ACCESS_TOKEN) === savedToken) clearSession();
@@ -95,17 +126,6 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('auth:expired', clearSession);
     initAuth();
 
-    const handleUserUpdate = (event) => {
-      const updatedUser = event.detail;
-      if (updatedUser?.id) {
-        setUser((current) => {
-          if (!current || String(current.id) === String(updatedUser.id)) {
-            return { ...current, ...updatedUser };
-          }
-          return current;
-        });
-      }
-    };
     const handleStorage = (event) => {
       if (event.key === STORAGE_KEYS.USER_INFO && event.newValue) {
         try {
@@ -123,13 +143,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
     };
-    window.addEventListener('edumatch:user-updated', handleUserUpdate);
     window.addEventListener('storage', handleStorage);
 
     return () => {
       active = false;
       window.removeEventListener('auth:expired', clearSession);
-      window.removeEventListener('edumatch:user-updated', handleUserUpdate);
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
@@ -138,9 +156,18 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService[method](data);
+      let hydratedUser = mergePersistedProfileVisuals(response.user);
+      const payloadPhonePublic = typeof data?.isPhonePublic === 'boolean'
+        ? data.isPhonePublic
+        : (typeof data?.show_phone === 'boolean' ? data.show_phone : undefined);
+      if (typeof payloadPhonePublic === 'boolean' && (!hydratedUser?.phoneVisibilityProvided || typeof hydratedUser?.isPhonePublic !== 'boolean')) {
+        hydratedUser = { ...hydratedUser, isPhonePublic: payloadPhonePublic, phoneVisibilityProvided: true };
+      }
       setToken(response.token);
-      setUser(response.user);
-      return { success: true, user: response.user, data: response };
+      setUser(hydratedUser);
+      storage.set(STORAGE_KEYS.USER_INFO, hydratedUser);
+      persistProfileVisuals(hydratedUser);
+      return { success: true, user: hydratedUser, data: response };
     } catch (error) {
       return authFailure(error, method === 'login' ? 'Đăng nhập không thành công.' : 'Không thể đăng ký tài khoản.');
     } finally {
@@ -195,7 +222,13 @@ export const AuthProvider = ({ children }) => {
         ...(nextAvatarVersion ? { avatarVersion: nextAvatarVersion } : {}),
       };
       storage.set(STORAGE_KEYS.USER_INFO, nextUser);
-      window.dispatchEvent(new CustomEvent('edumatch:user-updated', { detail: nextUser }));
+      persistProfileVisuals(nextUser);
+      if (Object.prototype.hasOwnProperty.call(updates, 'avatar') || Object.prototype.hasOwnProperty.call(updates, 'name')) {
+        syncPostAuthorProfile(nextUser.id, {
+          ...(Object.prototype.hasOwnProperty.call(updates, 'avatar') ? { avatar: nextUser.avatar } : {}),
+          ...(Object.prototype.hasOwnProperty.call(updates, 'name') ? { name: nextUser.name } : {}),
+        });
+      }
       return nextUser;
     });
   }, []);

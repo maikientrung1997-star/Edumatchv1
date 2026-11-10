@@ -22,7 +22,7 @@
   --color-badge-gold-bg: #fdf7e9;
   --color-on-primary: #ffffff;
   --color-on-accent: #ffffff;
-  --color-trust: #b74c60;
+  --color-trust: #e53935;
   --color-trust-light: #fff1f3;
   --color-danger: #a75656;
   --color-danger-light: #f6eeee;
@@ -160,6 +160,41 @@
 }
 
 /* Small, reusable image control used by discussions and course reviews. */
+.default-role-avatar {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 1px solid #d9e0e3;
+  border-radius: inherit;
+  background: #fff;
+  color: #69777d;
+}
+
+.default-role-avatar__teacher {
+  display: grid;
+  position: relative;
+  width: var(--default-role-avatar-size);
+  height: var(--default-role-avatar-size);
+  place-items: center;
+}
+
+.default-role-avatar__teacher-board {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.default-role-avatar__teacher-person {
+  position: absolute;
+  width: 68%;
+  height: 68%;
+  bottom: -9%;
+  left: -8%;
+  padding: 1px;
+  border-radius: 50%;
+  background: #fff;
+}
 .image-attachment {
   display: inline-flex;
   align-items: center;
@@ -189,6 +224,16 @@
 .image-attachment > label:hover {
   border-color: var(--edu-green, var(--color-primary));
   background: var(--edu-tag, var(--color-tag));
+}
+.image-attachment > label.is-preparing {
+  cursor: wait;
+  opacity: 0.8;
+}
+.image-attachment__spinner {
+  animation: image-attachment-spin 0.8s linear infinite;
+}
+@keyframes image-attachment-spin {
+  to { transform: rotate(360deg); }
 }
 .image-attachment__preview {
   position: relative;

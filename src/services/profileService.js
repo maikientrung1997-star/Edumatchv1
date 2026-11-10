@@ -33,6 +33,22 @@ export const profileService = {
       })
     );
   },
+  async uploadCover(file) {
+    const data = new FormData();
+    data.append('cover_image', file);
+    return withUser(
+      await api.post('/profile/cover', data, {
+        transformRequest: [(payload, headers) => {
+          if (typeof headers?.setContentType === 'function') headers.setContentType(undefined);
+          else if (headers) {
+            delete headers['Content-Type'];
+            delete headers['content-type'];
+          }
+          return payload;
+        }],
+      })
+    );
+  },
   async areas(params) {
     const response = await sharedGet('/administrative-areas', params);
     return response.data;

@@ -8,7 +8,7 @@ const values = new Map();
 before(async () => {
   globalThis.window = new EventTarget();
   window.localStorage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
-  server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  server = await createServer({ cacheDir: `node_modules/.vite-tests/chat-${process.pid}`, server: { middlewareMode: true }, appType: 'custom' });
   ({ api } = await server.ssrLoadModule('/src/services/api.js'));
   ({ chatService } = await server.ssrLoadModule('/src/services/chatService.js'));
   state = await server.ssrLoadModule('/src/utils/chatState.js');

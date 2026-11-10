@@ -4,6 +4,8 @@
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
   USER_INFO: 'user_info',
+  PROFILE_VISUALS: 'edumatch:profile-visuals',
+  PROFILE_ALBUMS: 'edumatch:profile-albums',
   THEME: 'theme',
   SIDEBAR_COLLAPSED: 'sidebar_collapsed',
   COURSES: 'edumatch:courses',
@@ -18,4 +20,5 @@ export const STORAGE_KEYS = {
   CHAT_WIDGET: 'edumatch:chat-widget',
   ONLINE_PRESENCE: 'edumatch:online-presence',
   REGISTERED_ACCOUNTS: 'edumatch:registered-accounts',
+  ALBUM_MEDIA_INTERACTIONS: 'edumatch:album-media-interactions',
 };

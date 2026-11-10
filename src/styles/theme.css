@@ -186,34 +186,25 @@
   align-items: center;
   gap: 6px;
 }
-.image-attachment > input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-}
-.image-attachment > label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--edu-line, var(--color-line));
-  border-radius: 8px;
+.media-picker-button {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--edu-green, var(--color-primary));
-  font-size: var(--text-caption-xs);
-  font-weight: 700;
-  cursor: pointer;
 }
-.image-attachment > label:hover {
-  border-color: var(--edu-green, var(--color-primary));
+.media-picker-button:hover,
+.media-picker-button:focus-visible {
   background: var(--edu-tag, var(--color-tag));
 }
-.image-attachment > label.is-preparing {
+.media-picker-button:disabled {
   cursor: wait;
-  opacity: 0.8;
+  opacity: .8;
 }
 .image-attachment__spinner {
   animation: image-attachment-spin 0.8s linear infinite;

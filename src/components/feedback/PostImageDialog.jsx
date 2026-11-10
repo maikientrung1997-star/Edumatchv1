@@ -1,9 +1,10 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ChevronLeft, ChevronRight, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@/components/feedback/Modal';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
+import { PostActions } from '@/components/feedback/PostActions';
 import { ROUTES } from '@/constants/routes';
 import './postImageDialog.css';
 
@@ -73,7 +74,7 @@ function OpenPostImageDialog({
   onActiveIndexChange,
   onShowLikes,
   onShowShares,
-  ownerActions = null,
+  renderOwnerActions,
   onEditMedia,
   onDeleteMedia,
 }) {
@@ -119,6 +120,8 @@ function OpenPostImageDialog({
     if (useCommentsSheet) {
       setOpenDiscussionIndex(index);
       if (index !== activeIndex) onActiveIndexChange(index);
+    } else if (!isMobile) {
+      discussionRef.current?.focus({ preventScroll: true });
     } else if (index === activeIndex) {
       focusDiscussion(discussionRef.current);
     } else {
@@ -136,14 +139,18 @@ function OpenPostImageDialog({
     const itemKey = item.id || item.storageKey || item.src;
     const showInlineDiscussion = index === activeIndex && !useCommentsSheet && Boolean(discussion);
     const discussionIsOpen = showInlineDiscussion || (index === activeIndex && showCommentsSheet);
+    const effectiveDescription = (!viewer.fromAlbum && mediaItems.length === 1)
+      ? (post?.text || item.description || '')
+      : (item.description || (mediaItems.length === 1 ? post?.text || '' : ''));
     const editor = mediaEditor?.key === itemKey ? mediaEditor : null;
+    const ownerActions = renderOwnerActions?.(index);
     const mediaMenu = canManageMedia && <ContentMenu
       id={`viewer-media-${index}`}
       openId={openMediaMenu}
       onToggle={setOpenMediaMenu}
       onEdit={() => {
         onActiveIndexChange(index);
-        setMediaEditor({ key: itemKey, caption: item.description || '' });
+        setMediaEditor({ key: itemKey, caption: effectiveDescription });
       }}
       onDelete={() => {
         onActiveIndexChange(index);
@@ -165,35 +172,32 @@ function OpenPostImageDialog({
     const details = <>
       <header className="post-image-dialog__author">
         {authorLink ? <Link to={authorLink} onClick={onAuthorClick || onClose} aria-label={authorName}>{avatar}</Link> : <span>{avatar}</span>}
-        <div>{authorLink ? <Link to={authorLink} onClick={onAuthorClick || onClose}>{authorName}</Link> : <strong>{authorName}</strong>}<small>{publishedAt}</small></div>
+        <div>{authorLink ? <Link to={authorLink} onClick={onAuthorClick || onClose}>{authorName}</Link> : <strong>{authorName}</strong>}{post?.id && !String(post.id).startsWith('album-') ? <Link className="post-image-dialog__time" to={ROUTES.POST_DETAIL(post.id)} state={{ fromPostList: true }} onClick={onClose}><small>{publishedAt}</small></Link> : <small>{publishedAt}</small>}</div>
         {mediaMenu}
         {ownerActions && <div className="post-image-dialog__owner-actions">{ownerActions}</div>}
       </header>
       {editor && !editor.confirmingDelete ? <section className="post-image-dialog__media-editor" aria-label="Chỉnh sửa chú thích">
-        <textarea autoFocus value={editor.caption} onChange={(event) => setMediaEditor({ ...editor, caption: event.target.value })} placeholder="Viết chú thích cho ảnh hoặc video này..." rows="3" />
+        <textarea autoFocus value={editor.caption} onChange={(event) => setMediaEditor({ ...editor, caption: event.target.value })} aria-label="Chỉnh sửa chú thích" rows="3" />
         <div><button type="button" onClick={() => setMediaEditor(null)}>Hủy</button><button type="button" onClick={() => { onEditMedia?.(item, editor.caption); setMediaEditor(null); }}>Lưu</button></div>
-      </section> : item.description && <p className="post-image-dialog__media-description">{item.description}</p>}
+      </section> : effectiveDescription && <p className="post-image-dialog__media-description">{effectiveDescription}</p>}
       {editor?.confirmingDelete && <section className="post-image-dialog__delete-confirm" role="alert">
         <p>Bạn có chắc muốn xóa {mediaType} này?</p>
         <div><button type="button" onClick={() => setMediaEditor(null)}>Hủy</button><button type="button" onClick={() => { onDeleteMedia?.(item); setMediaEditor(null); }}>Xóa</button></div>
       </section>}
     </>;
-    const interactions = <>
-      <div className="post-image-dialog__stats">
-        {likes.length
-          ? <button type="button" onClick={() => onShowLikes(likes, kind)}>{likes.length} lượt thích</button>
-          : <span>Chưa có lượt thích</span>}
-        {isMobile
-          ? <button type="button" aria-expanded={discussionIsOpen} aria-haspopup={useCommentsSheet ? 'dialog' : undefined} onClick={() => goToComments(index)}>{commentCount} bình luận</button>
-          : <span>{commentCount} bình luận</span>}
-        {shareIds.length > 0 && <button type="button" onClick={() => onShowShares(shareIds, kind)}>{shareIds.length} lượt chia sẻ</button>}
-      </div>
-      <div className="post-image-dialog__actions">
-        <button type="button" className={isLiked ? 'is-liked' : ''} aria-pressed={isLiked} onClick={like}><Heart size={16} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Đã thích' : 'Thích'}</button>
-        {isMobile && <button type="button" aria-expanded={discussionIsOpen} aria-haspopup={useCommentsSheet ? 'dialog' : undefined} onClick={() => goToComments(index)}><MessageCircle size={16} /> Bình luận</button>}
-        <button type="button" onClick={share}><Share2 size={16} /> Chia sẻ</button>
-      </div>
-    </>;
+    const interactions = <PostActions
+      isLiked={isLiked}
+      likeCount={likes.length}
+      commentCount={commentCount}
+      shareCount={shareIds.length}
+      onLike={like}
+      onShowLikes={() => onShowLikes(likes, kind)}
+      onComment={() => goToComments(index)}
+      commentsOpen={isMobile ? discussionIsOpen : undefined}
+      commentsInDialog={useCommentsSheet}
+      onShare={share}
+      onShowShares={() => onShowShares(shareIds, kind)}
+    />;
 
     return isMobile
       ? <article key={`${itemKey}-${index}`} className="post-image-dialog__mobile-entry">
@@ -206,7 +210,7 @@ function OpenPostImageDialog({
         </article>
       : <div className="post-image-dialog__layout">{media}<aside className="post-image-dialog__panel">
           {details}{interactions}
-          <div className="post-image-dialog__discussion">{discussion}</div>
+          <section ref={discussionRef} className="post-image-dialog__discussion" aria-label="Bình luận" tabIndex={-1}>{discussion}</section>
         </aside></div>;
   };
 

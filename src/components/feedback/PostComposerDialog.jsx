@@ -1,9 +1,168 @@
-import { ArrowDown, ArrowUp, GripVertical, ImagePlus, Send, Trash2, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, Send, Trash2, Video, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import './post-composer-dialog.css';
+
+function useMediaReorder(media, onMediaChange, itemSelector) {
+  const [draggedMediaIndex, setDraggedMediaIndex] = useState(null);
+  const draggedMediaKey = useRef('');
+  const pointerDragRef = useRef(null);
+  const fallbackKeysRef = useRef(new WeakMap());
+  const nextKeyIdRef = useRef(1);
+  const mediaRef = useRef(media);
+  mediaRef.current = media;
+
+  const getMediaKey = (item, index) => {
+    if (!item || typeof item !== 'object') return `media-${index}`;
+    if (item.id) return String(item.id);
+    if (item.storageKey) return String(item.storageKey);
+    let assigned = fallbackKeysRef.current.get(item);
+    if (!assigned) {
+      assigned = `media-obj-${nextKeyIdRef.current++}-${item.name || ''}`;
+      fallbackKeysRef.current.set(item, assigned);
+    }
+    return assigned;
+  };
+
+  const moveMedia = (fromIndex, toIndex) => {
+    const currentMedia = mediaRef.current;
+    if (
+      fromIndex === toIndex
+      || fromIndex < 0
+      || toIndex < 0
+      || fromIndex >= currentMedia.length
+      || toIndex >= currentMedia.length
+    ) {
+      return;
+    }
+    const reorderedMedia = [...currentMedia];
+    const [movedItem] = reorderedMedia.splice(fromIndex, 1);
+    reorderedMedia.splice(toIndex, 0, movedItem);
+    onMediaChange(reorderedMedia);
+  };
+
+  const reorderToPoint = (clientX, clientY) => {
+    if (!draggedMediaKey.current) return;
+    const targetElement = document.elementFromPoint(clientX, clientY)?.closest(itemSelector);
+    if (!targetElement) return;
+    const targetIndex = Number(targetElement.getAttribute('data-media-index'));
+    if (!Number.isInteger(targetIndex)) return;
+    const currentMedia = mediaRef.current;
+    const fromIndex = currentMedia.findIndex(
+      (candidate, candidateIndex) => getMediaKey(candidate, candidateIndex) === draggedMediaKey.current
+    );
+    if (fromIndex < 0 || fromIndex === targetIndex) return;
+    moveMedia(fromIndex, targetIndex);
+    setDraggedMediaIndex(targetIndex);
+  };
+
+  const startMediaDrag = (event, item, index) => {
+    if (mediaRef.current.length <= 1) return;
+    if (pointerDragRef.current) {
+      event.preventDefault();
+      return;
+    }
+    const key = getMediaKey(item, index);
+    draggedMediaKey.current = key;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', key);
+    }
+    setDraggedMediaIndex(index);
+  };
+
+  const reorderDuringDrag = (event, item, index) => {
+    event.preventDefault();
+    if (!draggedMediaKey.current) return;
+    const currentMedia = mediaRef.current;
+    const fromIndex = currentMedia.findIndex(
+      (candidate, candidateIndex) => getMediaKey(candidate, candidateIndex) === draggedMediaKey.current
+    );
+    if (fromIndex < 0 || fromIndex === index) return;
+    moveMedia(fromIndex, index);
+    setDraggedMediaIndex(index);
+  };
+
+  const endMediaDrag = () => {
+    draggedMediaKey.current = '';
+    pointerDragRef.current = null;
+    setDraggedMediaIndex(null);
+  };
+
+  const startPointerDrag = (event, item, index) => {
+    if (mediaRef.current.length <= 1) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const key = getMediaKey(item, index);
+    draggedMediaKey.current = key;
+    pointerDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: event.pointerType !== 'mouse',
+    };
+    setDraggedMediaIndex(index);
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Ignore if pointer capture is unsupported on synthetic events.
+    }
+  };
+
+  const movePointerDrag = (event) => {
+    const state = pointerDragRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    if (!state.active) {
+      if (Math.hypot(event.clientX - state.startX, event.clientY - state.startY) < 4) return;
+      state.active = true;
+    }
+    if (event.cancelable) event.preventDefault();
+    reorderToPoint(event.clientX, event.clientY);
+  };
+
+  const endPointerDrag = (event) => {
+    const state = pointerDragRef.current;
+    if (!state || (event.pointerId != null && state.pointerId !== event.pointerId)) return;
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Ignore release errors.
+    }
+    endMediaDrag();
+  };
+
+  const startTouchDrag = (event, item, index) => {
+    if (mediaRef.current.length <= 1 || pointerDragRef.current) return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    const key = getMediaKey(item, index);
+    draggedMediaKey.current = key;
+    setDraggedMediaIndex(index);
+  };
+
+  const moveTouchDrag = (event) => {
+    if (!draggedMediaKey.current || pointerDragRef.current) return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    if (event.cancelable) event.preventDefault();
+    reorderToPoint(touch.clientX, touch.clientY);
+  };
+
+  return {
+    draggedMediaIndex,
+    getMediaKey,
+    moveMedia,
+    startMediaDrag,
+    reorderDuringDrag,
+    endMediaDrag,
+    startPointerDrag,
+    movePointerDrag,
+    endPointerDrag,
+    startTouchDrag,
+    moveTouchDrag,
+  };
+}
 
 export function PostComposerDialog({
   open,
@@ -24,17 +183,21 @@ export function PostComposerDialog({
   const [isAlbumCreationOpen, setIsAlbumCreationOpen] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState('');
   const [newAlbumDescription, setNewAlbumDescription] = useState('');
-  const [draggedMediaIndex, setDraggedMediaIndex] = useState(null);
-  const draggedMediaKey = useRef('');
+  const {
+    draggedMediaIndex,
+    getMediaKey,
+    startMediaDrag,
+    reorderDuringDrag,
+    endMediaDrag,
+    startPointerDrag,
+    movePointerDrag,
+    endPointerDrag,
+    startTouchDrag,
+    moveTouchDrag,
+  } = useMediaReorder(media, onMediaChange, '[data-composer-media-item]');
+
   const updateMediaDescription = (index, description) => {
     onMediaChange(media.map((item, itemIndex) => itemIndex === index ? { ...item, description } : item));
-  };
-  const moveMedia = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= media.length || toIndex >= media.length) return;
-    const reorderedMedia = [...media];
-    const [movedItem] = reorderedMedia.splice(fromIndex, 1);
-    reorderedMedia.splice(toIndex, 0, movedItem);
-    onMediaChange(reorderedMedia);
   };
   const createAlbum = async () => {
     const name = newAlbumName.trim();
@@ -47,26 +210,7 @@ export function PostComposerDialog({
     setIsAlbumCreationOpen(false);
     setIsAlbumPickerOpen(false);
   };
-  const mediaKey = (item, index) => item.id || item.storageKey || `${item.name || item.src}-${index}`;
-  const startMediaDrag = (event, item, index) => {
-    const key = mediaKey(item, index);
-    draggedMediaKey.current = key;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', key);
-    setDraggedMediaIndex(index);
-  };
-  const reorderDuringDrag = (event, item, index) => {
-    event.preventDefault();
-    if (!draggedMediaKey.current) return;
-    const fromIndex = media.findIndex((candidate, candidateIndex) => mediaKey(candidate, candidateIndex) === draggedMediaKey.current);
-    if (fromIndex < 0 || fromIndex === index) return;
-    moveMedia(fromIndex, index);
-    setDraggedMediaIndex(index);
-  };
-  const endMediaDrag = () => {
-    draggedMediaKey.current = '';
-    setDraggedMediaIndex(null);
-  };
+  const isMultiMedia = media.length > 1;
 
   return (
     <Modal open={open} onClose={onClose} title="Tạo bài viết" size="xl" className="post-composer-dialog">
@@ -75,26 +219,55 @@ export function PostComposerDialog({
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
           placeholder={placeholder}
-          rows="12"
+          rows="5"
           autoFocus
           aria-label="Nội dung bài viết"
         />
-        <div className="post-composer-dialog__media">
-          <ImageAttachment
-            id={attachmentId}
-            value={media}
-            onChange={onMediaChange}
-            label="Thêm ảnh / video"
-            multiple
-          />
-        </div>
-        {media.length > 0 && <section className="post-composer-dialog__media-descriptions" aria-label="Chú thích từng ảnh và video">
+        {media.length > 0 && <section className={`post-composer-dialog__media-descriptions ${!isMultiMedia ? 'is-single' : ''}`.trim()} aria-label={isMultiMedia ? 'Chú thích từng ảnh và video' : 'Tệp đính kèm'}>
           <div className="post-composer-dialog__media-description-list">
-            {media.map((item, index) => <label className={draggedMediaIndex === index ? 'is-dragging' : ''} key={mediaKey(item, index)} onDragOver={(event) => reorderDuringDrag(event, item, index)} onDrop={endMediaDrag}>
-              <span className="post-composer-dialog__media-thumbnail">{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt="" />}</span>
-              {media.length > 1 && <span className="post-composer-dialog__drag-handle" draggable onDragStart={(event) => startMediaDrag(event, item, index)} onDragEnd={endMediaDrag} title="Kéo để đổi thứ tự"><GripVertical size={17} /></span>}
-              <textarea value={item.description || ''} onChange={(event) => updateMediaDescription(index, event.target.value)} placeholder="Chú thích" rows="2" />
-            </label>)}
+            {media.map((item, index) => <div
+              className={`${draggedMediaIndex === index ? 'is-dragging' : ''} ${!isMultiMedia ? 'is-single' : ''}`.trim()}
+              key={getMediaKey(item, index)}
+              data-composer-media-item
+              data-media-index={index}
+              onDragOver={isMultiMedia ? (event) => reorderDuringDrag(event, item, index) : undefined}
+              onDrop={isMultiMedia ? endMediaDrag : undefined}
+            >
+              <span
+                className={`post-composer-dialog__media-thumbnail ${isMultiMedia ? 'is-draggable' : ''}`.trim()}
+                draggable={isMultiMedia}
+                onDragStart={isMultiMedia ? (event) => startMediaDrag(event, item, index) : undefined}
+                onDragEnd={isMultiMedia ? endMediaDrag : undefined}
+                onPointerDown={isMultiMedia ? (event) => startPointerDrag(event, item, index) : undefined}
+                onPointerMove={isMultiMedia ? movePointerDrag : undefined}
+                onPointerUp={isMultiMedia ? endPointerDrag : undefined}
+                onPointerCancel={isMultiMedia ? endPointerDrag : undefined}
+                onTouchStart={isMultiMedia ? (event) => startTouchDrag(event, item, index) : undefined}
+                onTouchMove={isMultiMedia ? moveTouchDrag : undefined}
+                onTouchEnd={isMultiMedia ? endMediaDrag : undefined}
+                title={isMultiMedia ? 'Kéo để đổi thứ tự' : undefined}
+              >
+                {item.type === 'video' ? <video src={item.src} muted playsInline /> : <img src={item.src} alt="" draggable={false} />}
+              </span>
+              {isMultiMedia && <span
+                className="post-composer-dialog__drag-handle"
+                draggable
+                onDragStart={(event) => startMediaDrag(event, item, index)}
+                onDragEnd={endMediaDrag}
+                onPointerDown={(event) => startPointerDrag(event, item, index)}
+                onPointerMove={movePointerDrag}
+                onPointerUp={endPointerDrag}
+                onPointerCancel={endPointerDrag}
+                onTouchStart={(event) => startTouchDrag(event, item, index)}
+                onTouchMove={moveTouchDrag}
+                onTouchEnd={endMediaDrag}
+                title="Kéo để đổi thứ tự"
+              >
+                <GripVertical size={17} />
+              </span>}
+              {isMultiMedia && <textarea value={item.description || ''} onChange={(event) => updateMediaDescription(index, event.target.value)} aria-label={`Chú thích ${item.type === "video" ? "video" : "ảnh"} ${index + 1}`} rows="2" />}
+              <button className="post-composer-dialog__remove-media" type="button" onClick={() => onMediaChange(media.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Xóa tệp ${index + 1}`}><X size={16} /></button>
+            </div>)}
           </div>
         </section>}
         {media.length > 0 && <section className="post-composer-dialog__album">
@@ -111,6 +284,7 @@ export function PostComposerDialog({
           </section>}
         </section>}
         <div className="post-composer-dialog__actions">
+          <ImageAttachment id={attachmentId} value={media} onChange={onMediaChange} multiple hidePreviews />
           <button type="submit" className="post-composer-dialog__publish" disabled={!draft.trim() && !media.length}>
             <Send size={17} /> Đăng bài
           </button>
@@ -120,7 +294,7 @@ export function PostComposerDialog({
   );
 }
 
-export function PostComposerTrigger({ avatar, role, userId, name, placeholder, onOpen }) {
+export function PostComposerTrigger({ avatar, role, userId, name, placeholder, onOpen, media, onMediaChange }) {
 
   return (
     <section className="post-composer-trigger" aria-label="Tạo bài viết">
@@ -131,35 +305,102 @@ export function PostComposerTrigger({ avatar, role, userId, name, placeholder, o
         <button type="button" className="post-composer-trigger__prompt" onClick={onOpen}>
           {placeholder}
         </button>
-      </div>
-      <div className="post-composer-trigger__footer">
-        <button type="button" className="post-composer-trigger__media" onClick={onOpen}>
-          <ImagePlus size={18} aria-hidden="true" />
-          <span>Ảnh / video</span>
-        </button>
+        <ImageAttachment
+          value={media}
+          onChange={(items) => {
+            onMediaChange(items);
+            onOpen();
+          }}
+          multiple
+          hidePreviews
+        />
       </div>
     </section>
   );
 }
 
 export function InlinePostEditor({ draft, onDraftChange, media, onMediaChange, onCancel, onSave, attachmentId }) {
-  const moveMedia = (index, direction) => {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= media.length) return;
-    const nextMedia = [...media];
-    [nextMedia[index], nextMedia[nextIndex]] = [nextMedia[nextIndex], nextMedia[index]];
-    onMediaChange(nextMedia);
+  const {
+    draggedMediaIndex,
+    getMediaKey,
+    moveMedia,
+    startMediaDrag,
+    reorderDuringDrag,
+    endMediaDrag,
+    startPointerDrag,
+    movePointerDrag,
+    endPointerDrag,
+    startTouchDrag,
+    moveTouchDrag,
+  } = useMediaReorder(media, onMediaChange, '[data-inline-media-item]');
+
+  const moveMediaStep = (index, direction) => {
+    moveMedia(index, index + direction);
   };
   const removeMedia = (index) => onMediaChange(media.filter((_, itemIndex) => itemIndex !== index));
   const updateMediaDescription = (index, description) => onMediaChange(media.map((item, itemIndex) => itemIndex === index ? { ...item, description } : item));
+  const isMultiMedia = media.length > 1;
 
   return <form className="inline-post-editor" onSubmit={onSave}>
-    <textarea autoFocus value={draft} onChange={(event) => onDraftChange(event.target.value)} rows="3" placeholder="Viết nội dung bài đăng..." />
-    <section className="inline-post-editor__media" aria-label="Chỉnh sửa ảnh và video của bài viết">
-      <div className="inline-post-editor__media-header"><div><strong>Ảnh và video</strong><small>Thay đổi thứ tự để chọn tệp hiển thị trước.</small></div><ImageAttachment id={attachmentId} value={media} onChange={onMediaChange} label="Thêm ảnh / video" multiple hidePreviews /></div>
-      {media.length ? <div className="inline-post-editor__media-list">{media.map((item, index) => <article key={`${item.id || item.name || item.src}-${index}`}><div className="inline-post-editor__media-preview">{item.type === 'video' ? <><video src={item.src} muted /><span><Video size={14} /></span></> : <img src={item.src} alt="" />}</div><div className="inline-post-editor__media-controls"><div><strong>{item.type === 'video' ? 'Video' : 'Ảnh'} {index + 1}</strong><div><button type="button" onClick={() => moveMedia(index, -1)} disabled={index === 0} aria-label={`Đưa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} lên trước`}><ArrowUp size={15} /></button><button type="button" onClick={() => moveMedia(index, 1)} disabled={index === media.length - 1} aria-label={`Đưa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} xuống sau`}><ArrowDown size={15} /></button><button type="button" className="inline-post-editor__remove-media" onClick={() => removeMedia(index)} aria-label={`Xóa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1}`}><Trash2 size={15} /></button></div></div><textarea value={item.description || ''} onChange={(event) => updateMediaDescription(index, event.target.value)} placeholder="Chú thích" rows="2" /></div></article>)}</div> : <p className="inline-post-editor__media-empty">Bài viết chưa có ảnh hoặc video.</p>}
-    </section>
-    <div><button type="button" onClick={onCancel}>Hủy</button><button type="submit">Lưu thay đổi</button></div>
+    <textarea autoFocus value={draft} onChange={(event) => onDraftChange(event.target.value)} rows="3" aria-label="Nội dung bài viết" />
+    {media.length > 0 && <section className={`inline-post-editor__media ${!isMultiMedia ? 'is-single' : ''}`.trim()} aria-label="Chỉnh sửa ảnh và video của bài viết">
+      <div className="inline-post-editor__media-list">{media.map((item, index) => <article
+        key={getMediaKey(item, index)}
+        data-inline-media-item
+        data-media-index={index}
+        className={`${draggedMediaIndex === index ? 'is-dragging' : ''} ${!isMultiMedia ? 'is-single' : ''}`.trim()}
+        onDragOver={isMultiMedia ? (event) => reorderDuringDrag(event, item, index) : undefined}
+        onDrop={isMultiMedia ? endMediaDrag : undefined}
+      >
+        <div
+          className={`inline-post-editor__media-preview ${isMultiMedia ? 'is-draggable' : ''}`.trim()}
+          draggable={isMultiMedia}
+          onDragStart={isMultiMedia ? (event) => startMediaDrag(event, item, index) : undefined}
+          onDragEnd={isMultiMedia ? endMediaDrag : undefined}
+          onPointerDown={isMultiMedia ? (event) => startPointerDrag(event, item, index) : undefined}
+          onPointerMove={isMultiMedia ? movePointerDrag : undefined}
+          onPointerUp={isMultiMedia ? endPointerDrag : undefined}
+          onPointerCancel={isMultiMedia ? endPointerDrag : undefined}
+          onTouchStart={isMultiMedia ? (event) => startTouchDrag(event, item, index) : undefined}
+          onTouchMove={isMultiMedia ? moveTouchDrag : undefined}
+          onTouchEnd={isMultiMedia ? endMediaDrag : undefined}
+          title={isMultiMedia ? 'Kéo để đổi thứ tự' : undefined}
+        >
+          {item.type === 'video' ? <><video src={item.src} muted playsInline /><span><Video size={14} /></span></> : <img src={item.src} alt="" draggable={false} />}
+        </div>
+        <div className="inline-post-editor__media-controls">
+          <div>
+            {isMultiMedia && <>
+              <span
+                className="inline-post-editor__drag-handle"
+                draggable
+                onDragStart={(event) => startMediaDrag(event, item, index)}
+                onDragEnd={endMediaDrag}
+                onPointerDown={(event) => startPointerDrag(event, item, index)}
+                onPointerMove={movePointerDrag}
+                onPointerUp={endPointerDrag}
+                onPointerCancel={endPointerDrag}
+                onTouchStart={(event) => startTouchDrag(event, item, index)}
+                onTouchMove={moveTouchDrag}
+                onTouchEnd={endMediaDrag}
+                title="Kéo để đổi thứ tự"
+              >
+                <GripVertical size={15} />
+              </span>
+              <button type="button" onClick={() => moveMediaStep(index, -1)} disabled={index === 0} aria-label={`Đưa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} lên trước`}><ArrowUp size={15} /></button>
+              <button type="button" onClick={() => moveMediaStep(index, 1)} disabled={index === media.length - 1} aria-label={`Đưa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1} xuống sau`}><ArrowDown size={15} /></button>
+            </>}
+            <button type="button" className="inline-post-editor__remove-media" onClick={() => removeMedia(index)} aria-label={`Xóa ${item.type === 'video' ? 'video' : 'ảnh'} ${index + 1}`}><Trash2 size={15} /></button>
+          </div>
+          {isMultiMedia && <textarea value={item.description || ''} onChange={(event) => updateMediaDescription(index, event.target.value)} aria-label={`Chú thích ${item.type === "video" ? "video" : "ảnh"} ${index + 1}`} rows="2" />}
+        </div>
+      </article>)}</div>
+    </section>}
+    <div className="inline-post-editor__actions">
+      <ImageAttachment id={attachmentId} value={media} onChange={onMediaChange} multiple hidePreviews />
+      <button type="button" onClick={onCancel}>Hủy</button>
+      <button type="submit">Lưu</button>
+    </div>
   </form>;
 }
 

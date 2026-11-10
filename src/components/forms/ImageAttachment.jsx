@@ -1,9 +1,18 @@
-import { ImagePlus, LoaderCircle, Video, X } from 'lucide-react';
+import { ImagePlus, LoaderCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRef, useState } from 'react';
 import { saveImageMedia, saveVideoMedia } from '@/utils/mediaLibrary';
 
-export function MediaAttachment({ value, onChange, id, label = 'Ảnh / video', multiple = false, hidePreviews = false }) {
+export function MediaPickerButton({ onClick, isPreparing = false }) {
+  const label = isPreparing ? 'Đang chuẩn bị tệp đính kèm' : 'Thêm ảnh hoặc video';
+  return (
+    <button type="button" className="media-picker-button" onClick={onClick} disabled={isPreparing} title={label} aria-label={label}>
+      {isPreparing ? <LoaderCircle className="image-attachment__spinner" size={18} /> : <ImagePlus size={18} />}
+    </button>
+  );
+}
+
+export function MediaAttachment({ value, onChange, id, multiple = false, hidePreviews = false }) {
   const inputRef = useRef(null);
   const [isPreparing, setIsPreparing] = useState(false);
 
@@ -49,13 +58,14 @@ export function MediaAttachment({ value, onChange, id, label = 'Ảnh / video', 
       input.value = '';
       return;
     }
-    const readFile = async (file) => {
+    const readFile = async (file, fileIndex) => {
+      const itemId = `media-${Date.now()}-${fileIndex}-${Math.random().toString(36).slice(2, 7)}`;
       const isImage = file.type.startsWith('image/');
       if (!isImage) {
         // Video must stay a Blob in IndexedDB. Converting it to Base64 would
         // exhaust localStorage and make publishing fail for otherwise valid videos.
         const storedVideo = await saveVideoMedia(file);
-        return { src: storedVideo.src, storageKey: storedVideo.storageKey, name: file.name, type: 'video' };
+        return { id: itemId, src: storedVideo.src, storageKey: storedVideo.storageKey, name: file.name, type: 'video' };
       }
 
       let imageFile;
@@ -68,10 +78,10 @@ export function MediaAttachment({ value, onChange, id, label = 'Ảnh / video', 
       // caused normal multi-image posts to exceed the browser storage quota.
       try {
         const storedImage = await saveImageMedia(imageFile);
-        return { src: storedImage.src, storageKey: storedImage.storageKey, name: file.name, type: 'image' };
+        return { id: itemId, src: storedImage.src, storageKey: storedImage.storageKey, name: file.name, type: 'image' };
       } catch {
         const fallbackSrc = await readAsDataUrl(imageFile);
-        return { src: fallbackSrc, name: file.name, type: 'image' };
+        return { id: itemId, src: fallbackSrc, name: file.name, type: 'image' };
       }
     };
 
@@ -106,8 +116,8 @@ export function MediaAttachment({ value, onChange, id, label = 'Ảnh / video', 
   const previewItems = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
 
   return <span className="image-attachment" aria-busy={isPreparing}>
-    <input ref={inputRef} id={id} type="file" accept="image/*,video/*" multiple={multiple} onChange={chooseMedia} disabled={isPreparing} />
-    <label className={isPreparing ? 'is-preparing' : ''} htmlFor={id} title={isPreparing ? 'Đang chuẩn bị tệp đính kèm' : 'Đính kèm ảnh hoặc video'}>{isPreparing ? <LoaderCircle className="image-attachment__spinner" size={16} /> : previewItems.some((item) => item.type === 'video') ? <Video size={16} /> : <ImagePlus size={16} />}<span>{isPreparing ? 'Đang chuẩn bị…' : label}</span></label>
+    <input ref={inputRef} id={id} type="file" accept="image/*,video/*" multiple={multiple} onChange={chooseMedia} disabled={isPreparing} hidden />
+    <MediaPickerButton onClick={() => inputRef.current?.click()} isPreparing={isPreparing} />
     {!hidePreviews && previewItems.map((item, index) => <span className="image-attachment__preview" key={`${item.name || item.src}-${index}`}>{item.type === 'video' ? <video src={item.src} muted /> : <img src={item.src} alt="Ảnh đính kèm xem trước" />}<button type="button" onClick={() => clearImage(index)} aria-label="Xóa tệp đính kèm"><X size={12} /></button></span>)}
   </span>;
 }

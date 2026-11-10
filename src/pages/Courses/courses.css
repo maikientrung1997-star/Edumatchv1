@@ -558,6 +558,7 @@
 .review-form__actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 9px;
 }
@@ -714,7 +715,7 @@
   min-height: 42px;
   max-height: 112px;
 }
-.review-reply-form button {
+.review-reply-form > button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -726,6 +727,28 @@
   color: var(--edu-on-primary);
   font-size: var(--text-caption);
   font-weight: 700;
+}
+.review-content-editor > textarea {
+  flex-basis: 100%;
+}
+.review-content-editor__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.review-content-editor__actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--edu-line);
+  border-radius: var(--radius-control);
+  color: var(--edu-muted);
+  font-size: var(--text-control);
+  font-weight: 700;
+}
+.review-content-editor__actions button[type="submit"] {
+  border-color: var(--edu-green);
+  background: var(--edu-green);
+  color: var(--edu-on-primary);
 }
 .course-enroll-card {
   position: sticky;
@@ -1414,6 +1437,14 @@
   font-size: var(--text-caption-xs);
   line-height: var(--text-caption-xs--line-height);
 }
+.social-post__time {
+  width: fit-content;
+  color: var(--edu-muted);
+  text-decoration: none;
+}
+.social-post__time small {
+  display: block;
+}
 .social-post > .content-menu {
   position: absolute;
   top: 16px;
@@ -1442,12 +1473,12 @@
   line-height: var(--text-body--line-height);
   resize: vertical;
 }
-.social-post .inline-post-editor > div {
+.social-post .inline-post-editor__actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
-.social-post .inline-post-editor button {
+.social-post .inline-post-editor__actions > button {
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--edu-line);
@@ -1459,45 +1490,11 @@
   font-weight: 700;
   cursor: pointer;
 }
-.social-post .inline-post-editor button[type="submit"] {
+.social-post .inline-post-editor__actions > button[type="submit"] {
   border-color: var(--edu-green);
   background: var(--edu-green);
   color: var(--edu-on-primary);
 }
-.social-post__actions {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding-top: 10px;
-  border-top: 1px solid var(--edu-line);
-  color: var(--edu-muted);
-  font-size: var(--text-caption);
-  line-height: var(--text-caption--line-height);
-}
-.social-post__actions button,
-.social-post__actions a,
-.social-post__actions span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.social-post__actions a { color: inherit; text-decoration: none; }
-.social-post__actions { align-items: center; }
-.social-post__actions .social-likes-count { align-self: center; line-height: var(--text-caption--line-height); }
-.social-post__summary { padding: 11px 0 8px; border-top: 1px solid var(--edu-line); color: var(--edu-muted); font-size: var(--text-caption); line-height: var(--text-caption--line-height); font-weight: 400; }
-.social-post__summary > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
-.social-post__summary span { font-weight: 400; }
-.social-post__actions button.is-liked {
-  color: var(--color-reaction-active);
-}
-.social-likes-count {
-  padding: 0 !important;
-  color: var(--edu-muted);
-  font: inherit;
-  font-weight: 400;
-  text-decoration: none;
-}
-.social-likes-count:hover { color: var(--edu-green); text-decoration: underline; }
 .shared-post {
   display: grid;
   gap: 5px;
@@ -1507,10 +1504,32 @@
   border-radius: var(--radius-control);
   background: var(--edu-soft);
 }
+.shared-post__header {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+}
 .shared-post > span { color: var(--edu-muted); font-size: var(--text-caption-xs); font-weight: 700; }
-.shared-post > strong { color: var(--edu-ink); font-size: var(--text-control); }
+.shared-post > strong,
+.shared-post__header > strong { color: var(--edu-ink); font-size: var(--text-control); }
 .shared-post a { color: var(--edu-green); font-weight: 800; text-decoration: none; }
 .shared-post a:hover { text-decoration: underline; }
+.shared-post a.shared-post__time,
+.shared-post__header small {
+  width: fit-content;
+  color: var(--edu-muted);
+  font-size: var(--text-caption-xs);
+  font-weight: 400;
+  line-height: var(--text-caption-xs--line-height);
+  text-decoration: none;
+}
+.shared-post a.shared-post__time:hover {
+  color: var(--edu-muted);
+  text-decoration: none;
+}
+.shared-post a.shared-post__time small {
+  display: block;
+}
 .shared-post > p { margin: 0; white-space: pre-wrap; color: var(--edu-ink); }
 .share-post-form { display: grid; gap: 14px; }
 .share-post-form textarea { width: 100%; min-height: 112px; padding: 12px; border: 1px solid var(--edu-line); border-radius: var(--radius-control); background: var(--edu-bg); color: var(--edu-ink); font: inherit; resize: vertical; }
@@ -1558,8 +1577,7 @@
 }
 .post-comment__reaction { display: flex; align-items: center; gap: 9px; min-height: 22px; }
 .post-comment__time { color: var(--edu-muted); font-size: var(--text-micro); line-height: var(--text-micro--line-height); white-space: nowrap; }
-.post-comment__reaction .post-comment__like,
-.post-comment__reaction .social-likes-count { margin-top: 0; line-height: var(--text-caption-xs--line-height); }
+.post-comment__reaction .post-comment__like { margin-top: 0; line-height: var(--text-caption-xs--line-height); }
 .post-comment__reply-button {
   padding: 0;
   color: var(--edu-muted);
@@ -1590,7 +1608,7 @@
   min-height: 39px;
   max-height: 112px;
 }
-.post-comment-form button {
+.post-comment-form > button {
   padding: 0 11px;
   border-radius: var(--radius-control);
   background: var(--edu-tag);
@@ -3396,6 +3414,7 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   font: inherit;
   font-weight: 500;
 }
+.profile-album-create > textarea,
 .profile-album-create > label textarea,
 .profile-album-description textarea {
   width: 100%;
@@ -3413,32 +3432,6 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
 .profile-album-create__photos {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px;
-  border: 1px solid var(--edu-line);
-  border-radius: var(--radius-control);
-  background: var(--edu-soft);
-}
-.profile-album-create__photos > div { display: grid; gap: 2px; }
-.profile-album-create__photos strong { color: var(--edu-ink); font-size: var(--text-control); }
-.profile-album-create__photos small { color: var(--edu-muted); font-size: var(--text-caption); }
-.profile-album-create__photos input { display: none; }
-.profile-album-create__photos button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 11px;
-  border: 1px solid var(--edu-line);
-  border-radius: var(--radius-control);
-  background: var(--edu-surface);
-  color: var(--edu-green);
-  font: inherit;
-  font-size: var(--text-caption);
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
 }
 .profile-album-create__preview {
   display: grid;
@@ -3453,11 +3446,14 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border: 1px solid var(--edu-line);
   border-radius: 8px;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   transition: opacity 140ms ease, transform 140ms ease;
 }
 .profile-album-create__preview figure:active { cursor: grabbing; opacity: .58; transform: scale(.97); }
-.profile-album-create__preview img { width: 100%; height: 100%; object-fit: cover; }
-.profile-album-create__preview video { width: 100%; height: 100%; object-fit: cover; }
+.profile-album-create__preview img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+.profile-album-create__preview video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .profile-album-create__preview button {
   position: absolute;
   top: 5px;
@@ -3507,20 +3503,24 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border: 1px solid var(--edu-line);
   border-radius: 8px;
   background: var(--edu-surface);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.profile-album-create__caption-thumb:active {
+  cursor: grabbing;
 }
 .profile-album-create__caption-thumb :is(img, video) {
   width: 100%;
+  pointer-events: none;
+  -webkit-user-drag: none;
   height: 100%;
   object-fit: cover;
 }
 .profile-album-create__caption-field {
   display: grid;
   gap: 5px;
-}
-.profile-album-create__caption-field strong {
-  color: var(--edu-muted);
-  font-size: var(--text-caption);
-  font-weight: 800;
 }
 .profile-album-create__captions textarea {
   width: 100%;
@@ -3746,19 +3746,12 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
     padding-left: 0;
     border-left: 0;
   }
-  .profile-album-create__photos {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .profile-album-description {
     align-items: stretch;
     flex-direction: column;
   }
   .profile-album-description > div:last-child { width: 100%; }
   .profile-album-description > div:last-child > button { flex: 1; }
-  .profile-album-create__photos button {
-    width: 100%;
-  }
   .profile-albums__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

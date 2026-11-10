@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, BadgeCheck, BookOpen, CornerDownRight, GraduationCap, Heart, Image as ImageIcon, MessageCircle, Newspaper, School, Send, Share2, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BadgeCheck, BookOpen, GraduationCap, Image as ImageIcon, Newspaper, School, Send, Share2, Sparkles, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { createNotification, deletePost, getCourses, getPostMediaItems, getPosts, getProviderAffinity, savePost, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
@@ -13,6 +13,7 @@ import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { Modal } from '@/components/feedback/Modal';
 import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
+import { PostActions } from '@/components/feedback/PostActions';
 import { PostCommentList } from '@/components/feedback/PostCommentList';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
 import { ReactionCount } from '@/components/feedback/ReactionCount';
@@ -49,6 +50,7 @@ const getOriginalSharedPost = (post, posts, getPostAuthor) => {
         id: sourcePost.id,
         mediaId: snapshot.mediaId || null,
         author: getPostAuthor(sourcePost),
+        createdAt: sourcePost.createdAt || snapshot.createdAt || '',
         text: sourcePost.text || '',
         media: sourcePost.media || null,
         mediaItems: sourcePost.mediaItems || [],
@@ -218,7 +220,10 @@ export function FeedPage({ postId = null }) {
       toast.error('Bài viết cần có nội dung hoặc ảnh/video.');
       return;
     }
-    saveInteraction(post.id, (current) => ({ ...current, text, mediaItems: editingPostMedia, media: editingPostMedia[0] || null }));
+    const normalizedEditMedia = editingPostMedia.length === 1
+      ? editingPostMedia.map((item) => ({ ...item, description: text }))
+      : editingPostMedia;
+    saveInteraction(post.id, (current) => ({ ...current, text, mediaItems: normalizedEditMedia, media: normalizedEditMedia[0] || null }));
     cancelPostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
@@ -289,6 +294,9 @@ export function FeedPage({ postId = null }) {
     }
 
     const selectedAlbum = (postAlbumId && postMedia.length && ownProfileAlbums.find((album) => album.id === postAlbumId)) || null;
+    const normalizedPostMedia = postMedia.length === 1
+      ? postMedia.map((item) => ({ ...item, description: text }))
+      : postMedia;
     const post = {
       id: `post-${Date.now()}`,
       teacherId: user.id,
@@ -298,7 +306,7 @@ export function FeedPage({ postId = null }) {
       authorAvatar: user.avatar || '',
       authorLicenseVerificationStatus: user.licenseVerificationStatus || '',
       text,
-      ...(postMedia.length ? { mediaItems: postMedia } : {}),
+      ...(normalizedPostMedia.length ? { mediaItems: normalizedPostMedia } : {}),
       ...(selectedAlbum ? { albumId: selectedAlbum.id, albumName: selectedAlbum.name } : {}),
       createdAt: new Date().toISOString(),
       likes: [],
@@ -308,8 +316,8 @@ export function FeedPage({ postId = null }) {
       toast.error('Không thể lưu ảnh vào bộ nhớ trình duyệt. Vui lòng thử đăng ít ảnh hơn hoặc tải lại trang.');
       return;
     }
-    if (postAlbumId && postMedia.length && ownProfileAlbums.some((album) => album.id === postAlbumId)) {
-      const nextAlbums = addMediaToProfileAlbum(ownProfileAlbums, postAlbumId, postMedia);
+    if (postAlbumId && normalizedPostMedia.length && ownProfileAlbums.some((album) => album.id === postAlbumId)) {
+      const nextAlbums = addMediaToProfileAlbum(ownProfileAlbums, postAlbumId, normalizedPostMedia);
       saveProfileAlbumsToStorage(user.id, nextAlbums);
       updateUser({ photoAlbums: nextAlbums });
     }
@@ -341,6 +349,7 @@ export function FeedPage({ postId = null }) {
         id: originalPost?.id || post.id,
         ...(mediaId ? { mediaId } : {}),
         author: source,
+        createdAt: originalPost?.createdAt || post.createdAt || new Date().toISOString(),
         text: originalPost?.text || '',
         media: selectedMedia || originalPost?.media || null,
         mediaItems: selectedMedia ? [selectedMedia] : originalMediaItems,
@@ -387,7 +396,7 @@ export function FeedPage({ postId = null }) {
     const draftKey = discussionKey(postId, mediaId);
     setEditingDiscussion({ postId, commentId, replyId, mediaId });
     setCommentDrafts((current) => ({ ...current, [draftKey]: target.text || '' }));
-    setCommentMedia((current) => ({ ...current, [draftKey]: null }));
+    setCommentMedia((current) => ({ ...current, [draftKey]: target.media || null }));
     requestAnimationFrame(() => {
       const dialogInput = document.querySelector('.post-image-comments-sheet .feed-comment-form textarea, .post-image-dialog .feed-comment-form textarea');
       (dialogInput || document.getElementById(`comment-${postId}`))?.focus();
@@ -429,7 +438,7 @@ export function FeedPage({ postId = null }) {
     const text = commentDrafts[draftKey]?.trim();
     const media = commentMedia[draftKey] || null;
     if (isEditingDiscussion(postId, mediaId)) {
-      if (!text) {
+      if (!text && !media) {
         toast.error('Bình luận không được để trống.');
         return;
       }
@@ -437,7 +446,7 @@ export function FeedPage({ postId = null }) {
         { ...current, commentsUpdated: true },
         editingDiscussion.commentId,
         editingDiscussion.replyId,
-        (item) => ({ ...item, text }),
+        (item) => ({ ...item, text, media }),
       ));
       setEditingDiscussion(null);
       setCommentDrafts((current) => ({ ...current, [draftKey]: '' }));
@@ -556,9 +565,9 @@ export function FeedPage({ postId = null }) {
               {owns(reply.authorId) && <ContentMenu id={`viewer-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} onDelete={() => removeDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} label="phản hồi" />}
             </div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /><div className="post-image-dialog__comment-actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, reply.id, viewerMedia?.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>;
         }} />
-        {isReplying && <form className="feed-reply-form post-image-dialog__reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="2" /><ImageAttachment id={`viewer-reply-image-${comment.id}`} value={replyMedia} onChange={setReplyMedia} label="Tệp" /><button type="submit">Gửi</button></form>}
+        {isReplying && <form className="feed-reply-form post-image-dialog__reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="2" /><ImageAttachment id={`viewer-reply-image-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
       </div>;
-    }} /> : <p>Chưa có bình luận.</p>}</div><form className="feed-comment-form" onSubmit={(event) => submitComment(event, viewerPost.id, viewerMedia?.id)}><textarea autoFocus={isEditingViewerDiscussion} value={commentDrafts[viewerDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [viewerDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder={isEditingViewerDiscussion ? 'Chỉnh sửa bình luận...' : 'Viết bình luận...'} rows="1" />{!isEditingViewerDiscussion && <ImageAttachment id={`viewer-comment-image-${viewerDiscussionKey}`} value={commentMedia[viewerDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [viewerDiscussionKey]: media }))} label="Tệp" />}{isEditingViewerDiscussion && <button type="button" onClick={() => cancelDiscussionEdit(viewerPost.id, viewerMedia?.id)}>Hủy</button>}<button type="submit" aria-label={isEditingViewerDiscussion ? 'Lưu bình luận' : 'Gửi bình luận'}>{isEditingViewerDiscussion ? 'Lưu' : <Send size={17} />}</button></form></> : null;
+    }} /> : null}</div><form className="feed-comment-form" onSubmit={(event) => submitComment(event, viewerPost.id, viewerMedia?.id)}><textarea autoFocus={isEditingViewerDiscussion} value={commentDrafts[viewerDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [viewerDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} aria-label={isEditingViewerDiscussion ? 'Chỉnh sửa bình luận' : 'Viết bình luận'} placeholder={isEditingViewerDiscussion ? undefined : 'Viết bình luận...'} rows="1" /><ImageAttachment id={`viewer-comment-image-${viewerDiscussionKey}`} value={commentMedia[viewerDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [viewerDiscussionKey]: media }))} />{isEditingViewerDiscussion && <button type="button" onClick={() => cancelDiscussionEdit(viewerPost.id, viewerMedia?.id)}>Hủy</button>}<button type="submit" aria-label={isEditingViewerDiscussion ? 'Lưu bình luận' : 'Gửi bình luận'}>{isEditingViewerDiscussion ? 'Lưu' : <Send size={17} />}</button></form></> : null;
 
   const detailPost = postId ? renderedPosts[0] : null;
   const detailAuthor = detailPost ? getAuthor(detailPost, providers) : null;
@@ -586,26 +595,24 @@ export function FeedPage({ postId = null }) {
         return <article className="community-post" id={post.id} key={post.id}>
           <header className="community-post__header">
             <RoleAvatar src={author.avatar} userId={author.id} name={author.name} role={author.role} size={18} alt={`Ảnh đại diện của ${author.name}`} />
-            <div>{author.id ? <Link className="community-post__author" to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author.name}</strong>}<small>{formatRelativeTime(post.createdAt)}</small></div>
+            <div>{author.id ? <Link className="community-post__author" to={ROUTES.TEACHER_PROFILE(author.id)}>{author.name}</Link> : <strong>{author.name}</strong>}<Link className="community-post__time" to={ROUTES.POST_DETAIL(post.id)} state={{ fromPostList: true }}><small>{formatRelativeTime(post.createdAt)}</small></Link></div>
             {owns(post.authorId || post.teacherId) && <ContentMenu id={`post-${post.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editPost(post)} onDelete={() => removePost(post)} label="bài viết" />}
           </header>
           {editingPostId === post.id ? <InlinePostEditor draft={editingPostText} onDraftChange={setEditingPostText} media={editingPostMedia} onMediaChange={setEditingPostMedia} onCancel={cancelPostEdit} onSave={(event) => savePostEdit(event, post)} attachmentId={`feed-edit-post-media-${post.id}`} /> : post.text && <p className="community-post__text">{post.text}</p>}
-          {originalSharedPost && <div className="shared-post"><span>Đã chia sẻ <Link to={ROUTES.POST_DETAIL(originalSharedPost.id)}>bài viết gốc</Link> của</span>{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}<p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`community-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = posts.find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ảnh chia sẻ ${index + 1}`}><img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} /></button>)}</div>}</div>}
-          {postMediaItems.length > 0 && <div className={`community-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, author, postMediaItems, index)} aria-label={`Mở ảnh ${index + 1}`}><img src={item.src} alt={`Ảnh ${index + 1} do ${author.name} chia sẻ`} /></button>)}</div>}
-          <div className="community-post__summary"><div className="community-post__metrics">
-            {likes.length ? <button type="button" onClick={() => setLikesTarget({ ids: likes, label: 'Những người đã thích bài viết này' })}>{likes.length} lượt thích</button> : <span>0 lượt thích</span>}
-            {postId
-              ? <button type="button" onClick={() => document.getElementById(POST_COMMENTS_ANCHOR)?.scrollIntoView({ block: 'start' })}>{comments.length} bình luận</button>
-              : <Link to={postCommentsUrl} state={{ fromPostList: true }}>{comments.length} bình luận</Link>}
-            {shareCount ? <button type="button" onClick={() => setLikesTarget({ ids: shareIds, kind: 'share', title: 'Lượt chia sẻ', label: 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })}>{shareCount} lượt chia sẻ</button> : <span>0 lượt chia sẻ</span>}
-          </div></div>
-          <div className="community-post__actions">
-            <button type="button" className={isLiked ? 'is-liked' : ''} aria-pressed={isLiked} onClick={() => toggleLike(post.id)}><Heart size={17} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Đã thích' : 'Thích'}</button>
-            {postId
-              ? <button type="button" onClick={() => document.getElementById(`comment-${post.id}`)?.focus()}><MessageCircle size={17} /> Bình luận</button>
-              : <Link to={postCommentsUrl} state={{ fromPostList: true }}><MessageCircle size={17} /> Bình luận</Link>}
-            <button type="button" onClick={() => openShareDialog(post)}><Share2 size={17} /> Chia sẻ</button>
-          </div>
+          {originalSharedPost && <div className="shared-post"><div className="shared-post__header">{originalSharedPost.author?.id ? <Link className="shared-post__author" to={ROUTES.TEACHER_PROFILE(originalSharedPost.author.id)}>{originalSharedPost.author.name}</Link> : <strong>{originalSharedPost.author?.name || 'Thành viên EduMatch'}</strong>}{originalSharedPost.id ? <Link className="shared-post__time" to={ROUTES.POST_DETAIL(originalSharedPost.id)} state={{ fromPostList: true }}><small>{formatRelativeTime(originalSharedPost.createdAt)}</small></Link> : <small>{formatRelativeTime(originalSharedPost.createdAt)}</small>}</div><p>{originalSharedPost.text || 'Bài viết gốc không có nội dung văn bản.'}</p>{sharedMediaItems.length > 0 && <div className={`community-post__media ${sharedMediaItems.length > 1 ? 'is-album' : ''}`}>{sharedMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => { const sourcePost = posts.find((entry) => entry.id === originalSharedPost.id) || { ...originalSharedPost, likes: [], comments: [] }; const sourceItems = getMediaItems(sourcePost); openImageViewer(sourcePost, originalSharedPost.author, sourceItems, Math.max(0, sourceItems.findIndex((sourceItem) => sourceItem.id === item.id))); }} aria-label={`Mở ảnh chia sẻ ${index + 1}`}><img src={item.src} alt={`Ảnh chia sẻ ${index + 1}`} /></button>)}</div>}</div>}
+          {editingPostId !== post.id && postMediaItems.length > 0 && <div className={`community-post__media ${postMediaItems.length > 1 ? 'is-album' : ''}`}>{postMediaItems.map((item, index) => item.type === 'video' ? <div className="post-media-trigger post-media-trigger--video" key={item.id || `${item.src}-${index}`}><video src={item.src} controls playsInline preload="metadata" /></div> : <button type="button" className="post-media-trigger" key={item.id || `${item.src}-${index}`} onClick={() => openImageViewer(post, author, postMediaItems, index)} aria-label={`Mở ảnh ${index + 1}`}><img src={item.src} alt={`Ảnh ${index + 1} do ${author.name} chia sẻ`} /></button>)}</div>}
+          <PostActions
+            isLiked={isLiked}
+            likeCount={likes.length}
+            commentCount={comments.length}
+            shareCount={shareCount}
+            onLike={() => toggleLike(post.id)}
+            onShowLikes={() => setLikesTarget({ ids: likes, label: 'Những người đã thích bài viết này' })}
+            commentsTo={postId ? undefined : postCommentsUrl}
+            onComment={() => document.getElementById(POST_COMMENTS_ANCHOR)?.scrollIntoView({ block: 'start' })}
+            onShare={() => openShareDialog(post)}
+            onShowShares={() => setLikesTarget({ ids: shareIds, kind: 'share', title: 'Lượt chia sẻ', label: 'Những người đã chia sẻ bài viết này', emptyText: 'Chưa có lượt chia sẻ.' })}
+          />
           {postId && <section id={POST_COMMENTS_ANCHOR} className="community-post__discussion" aria-label="Bình luận">
             {comments.length ? <div className="community-post__comments">
               <PostCommentList items={comments} renderItem={(comment) => {
@@ -631,11 +638,11 @@ export function FeedPage({ postId = null }) {
                           </div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /></div><div className="feed-comment__meta feed-comment__meta--reply"><span>{formatRelativeTime(reply.createdAt)}</span><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>
                       </div>;
                     }} />
-                    {isReplying && <form className="feed-reply-form" onSubmit={submitReply}><CornerDownRight size={15} /><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="1" /><ImageAttachment id={`reply-image-${post.id}-${comment.id}`} value={replyMedia} onChange={setReplyMedia} label="Tệp" /><button type="submit">Gửi</button></form>}
+                    {isReplying && <form className="feed-reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="1" /><ImageAttachment id={`reply-image-${post.id}-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
                   </div>
                 </div>;
               }} />
-            </div> : <p>Chưa có bình luận.</p>}
+            </div> : null}
           </section>}
         </article>;
       }) : postId ? <p className="post-detail-panel__empty">Bài viết không còn khả dụng.</p> : <div className="feed-page__empty"><ImageIcon size={28} /><h2>Chưa có bài đăng nào</h2><p>Các chia sẻ từ cộng đồng EduMatch sẽ xuất hiện tại đây.</p></div>}
@@ -660,8 +667,8 @@ export function FeedPage({ postId = null }) {
           </div>
           {detailPost && <footer className="post-detail-panel__composer">
             <form className="feed-comment-form" onSubmit={(event) => submitComment(event, postId)}>
-              <textarea id={`comment-${postId}`} aria-label={isEditingPostComment ? 'Chỉnh sửa bình luận' : 'Viết bình luận'} value={commentDrafts[postDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [postDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder={isEditingPostComment ? 'Chỉnh sửa bình luận...' : 'Viết bình luận...'} rows="1" />
-              {!isEditingPostComment && <ImageAttachment id={`comment-image-${postId}`} value={commentMedia[postDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [postDiscussionKey]: media }))} label="Tệp" />}
+              <textarea id={`comment-${postId}`} aria-label={isEditingPostComment ? 'Chỉnh sửa bình luận' : 'Viết bình luận'} value={commentDrafts[postDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [postDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder={isEditingPostComment ? undefined : 'Viết bình luận...'} rows="1" />
+              <ImageAttachment id={`comment-image-${postId}`} value={commentMedia[postDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [postDiscussionKey]: media }))} />
               {isEditingPostComment && <button type="button" onClick={() => cancelDiscussionEdit(postId)}>Hủy</button>}
               <button type="submit" aria-label={isEditingPostComment ? 'Lưu bình luận' : 'Gửi bình luận'}>{isEditingPostComment ? 'Lưu' : <Send size={17} />}</button>
             </form>
@@ -714,7 +721,7 @@ export function FeedPage({ postId = null }) {
                 </button>
               </div>
             </div>
-            {canPublishInCurrentFeed && <PostComposerTrigger avatar={user?.avatar} role={user?.role} placeholder={composerPlaceholder} onOpen={() => setIsPostComposerOpen(true)} />}
+            {canPublishInCurrentFeed && <PostComposerTrigger media={postMedia} onMediaChange={setPostMedia} avatar={user?.avatar} role={user?.role} placeholder={composerPlaceholder} onOpen={() => setIsPostComposerOpen(true)} />}
             {postList}
           </main>
           <aside className="feed-sidebar feed-sidebar--right" aria-label="Thông tin đối tác được tài trợ">
@@ -765,11 +772,11 @@ export function FeedPage({ postId = null }) {
       }}
       getInteractions={getViewerInteractions}
       onActiveIndexChange={(activeIndex) => setImageViewer((current) => current ? { ...current, activeIndex } : current)}
-      onClose={() => setImageViewer(null)}
+      onClose={() => { setOpenContentMenu(null); setImageViewer(null); }}
       discussion={imageViewerDiscussion}
       onShowLikes={(ids, kind) => setLikesTarget({ ids, label: `Những người đã thích ${kind} này` })}
       onShowShares={(ids, kind) => setLikesTarget({ ids, kind: 'share', title: 'Lượt chia sẻ', label: `Những người đã chia sẻ ${kind} này` })}
-      ownerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? <ContentMenu id={`viewer-post-${viewerPost.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null}
+      renderOwnerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? (index) => <ContentMenu id={`viewer-post-${viewerPost.id}-${index}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null}
     />
     <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm"><form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form></Modal>
     </>

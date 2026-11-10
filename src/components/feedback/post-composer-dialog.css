@@ -3,7 +3,7 @@
 }
 .post-composer-trigger {
   margin: 0 0 18px;
-  padding: 14px 16px 11px;
+  padding: 12px 14px;
   border: 1px solid var(--edu-line);
   border-radius: 15px;
   background: var(--edu-surface);
@@ -35,8 +35,8 @@
 .post-composer-trigger__prompt {
   flex: 1;
   min-width: 0;
-  min-height: 64px;
-  padding: 14px 15px;
+  min-height: 44px;
+  padding: 8px 12px;
   border: 1px solid transparent;
   border-radius: 14px;
   background: var(--edu-soft);
@@ -54,39 +54,13 @@
   color: var(--edu-ink);
   outline: none;
 }
-.post-composer-trigger__footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 11px;
-  padding-top: 10px;
-  border-top: 1px solid var(--edu-line);
-}
-.post-composer-trigger__media {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--edu-green);
-  font: inherit;
-  font-size: var(--text-caption);
-  font-weight: 700;
-}
-.post-composer-trigger__media:hover,
-.post-composer-trigger__media:focus-visible {
-  background: var(--edu-tag);
-  outline: none;
-}
 .post-composer-dialog__form {
   display: grid;
   gap: 16px;
 }
-.post-composer-dialog__form textarea {
+.post-composer-dialog__form > textarea {
   width: 100%;
-  min-height: 280px;
+  min-height: 145px;
   padding: 17px 18px;
   border: 1px solid var(--edu-line);
   border-radius: var(--radius-control);
@@ -102,22 +76,6 @@
   border-color: var(--edu-green);
   box-shadow: 0 0 0 3px rgb(8 127 105 / 12%);
 }
-.post-composer-dialog__media {
-  min-height: 48px;
-  padding: 9px 10px;
-  border: 1px solid var(--edu-line);
-  border-radius: var(--radius-control);
-  background: var(--edu-soft);
-}
-.post-composer-dialog__media .image-attachment {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-}
-.post-composer-dialog__media .image-attachment > label {
-  min-height: 32px;
-  padding-inline: 10px;
-}
 .post-composer-dialog__media-descriptions {
   display: grid;
   gap: 8px;
@@ -130,16 +88,21 @@
   display: grid;
   gap: 8px;
 }
-.post-composer-dialog__media-description-list > label {
+.post-composer-dialog__media-description-list > div {
   position: relative;
   display: grid;
-  grid-template-columns: 66px 22px minmax(0, 1fr);
+  grid-template-columns: 66px 22px minmax(0, 1fr) 32px;
   gap: 10px;
   align-items: stretch;
   transition: transform 180ms cubic-bezier(.2, .8, .2, 1), opacity 160ms ease, box-shadow 160ms ease;
   will-change: transform;
 }
-.post-composer-dialog__media-description-list > label.is-dragging {
+.post-composer-dialog__media-description-list > div.is-single {
+  grid-template-columns: 96px 32px;
+  justify-content: space-between;
+  align-items: start;
+}
+.post-composer-dialog__media-description-list > div.is-dragging {
   opacity: .32;
   transform: scale(.985);
 }
@@ -149,12 +112,28 @@
   border-radius: 8px;
   background: var(--edu-surface);
 }
+.post-composer-dialog__media-thumbnail.is-draggable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.post-composer-dialog__media-thumbnail.is-draggable:active {
+  cursor: grabbing;
+}
+.post-composer-dialog__media-thumbnail.is-draggable :is(img, video) {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
 .post-composer-dialog__media-thumbnail :is(img, video) {
   display: block;
   width: 100%;
   height: 100%;
   min-height: 60px;
   object-fit: cover;
+}
+.post-composer-dialog__media-description-list > div.is-single .post-composer-dialog__media-thumbnail :is(img, video) {
+  height: 76px;
 }
 .post-composer-dialog__drag-handle {
   display: grid;
@@ -165,9 +144,14 @@
   color: var(--edu-faint);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .post-composer-dialog__drag-handle:active { cursor: grabbing; }
 .post-composer-dialog__media-description-list textarea {
+  grid-column: 3;
+  min-width: 0;
+  width: 100%;
   min-height: 60px;
   padding: 8px 10px;
   resize: vertical;
@@ -178,6 +162,24 @@
   font: inherit;
   font-size: var(--text-control);
   line-height: var(--text-control--line-height);
+}
+.post-composer-dialog__remove-media {
+  grid-column: 4;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--edu-line);
+  border-radius: 8px;
+  background: var(--edu-surface);
+  color: var(--edu-muted);
+}
+.post-composer-dialog__media-description-list > div.is-single .post-composer-dialog__remove-media {
+  grid-column: 2;
+}
+.post-composer-dialog__remove-media:hover {
+  color: var(--color-trust);
 }
 .post-composer-dialog__album {
   display: flex;
@@ -357,16 +359,6 @@
   border-radius: var(--radius-control);
   background: var(--edu-soft);
 }
-.inline-post-editor__media-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.inline-post-editor__media-header > div { display: grid; gap: 2px; }
-.inline-post-editor__media-header strong { color: var(--edu-ink); font-size: var(--text-control); }
-.inline-post-editor__media-header small { color: var(--edu-muted); font-size: var(--text-caption); }
-.inline-post-editor__media-header .image-attachment > label { min-height: 34px; padding-inline: 10px; }
 .inline-post-editor__media-list { display: grid; gap: 9px; }
 .inline-post-editor__media-list > article {
   display: grid;
@@ -376,14 +368,51 @@
   border: 1px solid var(--edu-line);
   border-radius: 10px;
   background: var(--edu-surface);
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1), opacity 160ms ease;
+}
+.inline-post-editor__media-list > article.is-single {
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+}
+.inline-post-editor__media-list > article.is-dragging {
+  opacity: .35;
+  transform: scale(.985);
 }
 .inline-post-editor__media-preview { position: relative; overflow: hidden; min-height: 76px; border-radius: 7px; background: var(--edu-tag); }
+.inline-post-editor__media-preview.is-draggable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.inline-post-editor__media-preview.is-draggable:active {
+  cursor: grabbing;
+}
+.inline-post-editor__media-preview.is-draggable :is(img, video) {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
 .inline-post-editor__media-preview :is(img, video) { display: block; width: 100%; height: 100%; object-fit: cover; }
 .inline-post-editor__media-preview span { position: absolute; right: 5px; bottom: 5px; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: rgb(17 36 33 / 76%); color: var(--edu-on-primary); }
 .inline-post-editor__media-controls { display: grid; gap: 7px; min-width: 0; }
-.inline-post-editor__media-controls > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.inline-post-editor__media-controls strong { color: var(--edu-ink); font-size: var(--text-caption); }
-.inline-post-editor__media-controls > div > div { display: inline-flex; gap: 4px; }
+.inline-post-editor__media-controls > div { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.inline-post-editor__drag-handle {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--edu-line);
+  border-radius: 7px;
+  background: var(--edu-surface);
+  color: var(--edu-muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.inline-post-editor__drag-handle:active {
+  cursor: grabbing;
+}
 .inline-post-editor.inline-post-editor .inline-post-editor__media-controls button {
   display: grid;
   width: 30px;
@@ -399,8 +428,19 @@
 .inline-post-editor.inline-post-editor .inline-post-editor__media-controls button:disabled { cursor: not-allowed; opacity: .35; }
 .inline-post-editor.inline-post-editor .inline-post-editor__media-controls .inline-post-editor__remove-media { color: var(--color-trust); }
 .inline-post-editor.inline-post-editor .inline-post-editor__media-controls textarea { width: 100%; min-height: 54px; padding: 7px 9px; resize: vertical; border: 1px solid var(--edu-line); border-radius: 7px; background: var(--edu-soft); color: var(--edu-ink); font: inherit; font-size: var(--text-caption); line-height: var(--text-caption--line-height); }
-.inline-post-editor__media-empty { margin: 0; color: var(--edu-muted); font-size: var(--text-caption); }
+.inline-post-editor__actions { align-items: center; }
+.inline-post-editor__actions > .image-attachment { margin-right: auto; }
+
 @media (max-width: 640px) {
+  .post-composer-dialog {
+    width: 100% !important;
+    max-width: calc(100vw - 24px) !important;
+    overflow-x: hidden;
+  }
+  .post-composer-dialog__form {
+    min-width: 0;
+    width: 100%;
+  }
   .post-composer-trigger {
     padding: 12px;
   }
@@ -410,21 +450,28 @@
     height: 38px;
   }
   .post-composer-trigger__prompt {
-    min-height: 60px;
     font-size: var(--text-control);
   }
-  .post-composer-dialog__form textarea {
-    min-height: 220px;
+  .post-composer-dialog__form > textarea {
+    min-height: 130px;
     font-size: var(--text-body);
   }
-  .post-composer-dialog__album { align-items: stretch; flex-direction: column; gap: 7px; }
-  .post-composer-dialog__album-trigger { width: 100%; }
-  .post-composer-dialog__album-picker { width: 100%; }
-  .post-composer-dialog__media-description-list > label { grid-template-columns: 54px 22px minmax(0, 1fr); }
-  .post-composer-dialog__album-create { flex-direction: column; }
-  .inline-post-editor__media-header { align-items: stretch; flex-direction: column; }
-  .inline-post-editor__media-header .image-attachment > label { width: 100%; justify-content: center; }
-  .post-composer-dialog__actions > button {
-    flex: 1;
+  .post-composer-dialog__album {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
   }
+  .post-composer-dialog__album-trigger {
+    width: 100%;
+  }
+  .post-composer-dialog__album-picker {
+    flex-basis: auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .post-composer-dialog__media-description-list > div { grid-template-columns: 48px 22px minmax(0, 1fr) 32px; }
+  .post-composer-dialog__media-description-list > div.is-single { grid-template-columns: 88px 32px; }
+  .post-composer-dialog__album-create { flex-direction: column; }
 }

@@ -345,7 +345,7 @@ const sampleCourses = [
     sessionsPerWeek: 2,
     duration: 90,
     schedule: 'Thứ 3 và Thứ 6, 19:00 - 20:30',
-    learningMode: 'both',
+    learningMode: 'in-person',
     enrollmentStatus: 'open',
     createdAt: '2026-10-15T09:00:00.000Z',
     rating: 4.9,

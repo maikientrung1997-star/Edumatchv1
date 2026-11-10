@@ -116,8 +116,11 @@
     --edu-auth-card-width: 100%;
     --edu-auth-card-padding: 20px;
     --edu-auth-page-padding: 24px;
-    --edu-font-auth-heading: 26px;
-    --edu-font-auth-hero: 28px;
+    --text-h1: 20px;
+    --text-h2: 18px;
+    --text-h3: 16px;
+    --edu-font-auth-heading: 22px;
+    --edu-font-auth-hero: 24px;
   }
 }
 @media (max-width: 359px) {

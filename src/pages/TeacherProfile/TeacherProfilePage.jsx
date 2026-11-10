@@ -22,6 +22,7 @@ import { ProfileImageCropDialog } from '@/components/profile/ProfileImageCropDia
 import { ProfileImageSourceDialog } from '@/components/profile/ProfileImageSourceDialog';
 import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { PostActions } from '@/components/feedback/PostActions';
@@ -891,14 +892,20 @@ export function TeacherProfilePage() {
   };
   const deleteProfileAlbum = () => {
     if (!isCustomProfileAlbum || !ownsProfile) return;
-    if (!window.confirm(`Xóa album “${activeProfileAlbum.name}”? Các bài đăng đã công khai vẫn được giữ.`)) return;
-
-    saveProfileAlbums(visibleProfileAlbums.filter((album) => album.id !== activeProfileAlbum.id));
-    setActiveProfileAlbumFilterId('all-media');
-    if (hasLinkedAlbum) navigate(ROUTES.TEACHER_PROFILE(teacherId), { replace: true });
-    setIsEditingAlbumDescription(false);
-    refreshProfilePosts();
-    toast.success(`Đã xóa album “${activeProfileAlbum.name}”.`);
+    const albumToDelete = activeProfileAlbum;
+    setConfirmAction({
+      title: 'Xóa album',
+      message: `Xóa album “${albumToDelete.name}”? Các bài đăng đã công khai vẫn được giữ.`,
+      confirmText: 'Xóa album',
+      onConfirm: () => {
+        saveProfileAlbums(visibleProfileAlbums.filter((album) => album.id !== albumToDelete.id));
+        setActiveProfileAlbumFilterId('all-media');
+        if (hasLinkedAlbum) navigate(ROUTES.TEACHER_PROFILE(teacherId), { replace: true });
+        setIsEditingAlbumDescription(false);
+        refreshProfilePosts();
+        toast.success(`Đã xóa album “${albumToDelete.name}”.`);
+      },
+    });
   };
   const refreshProfilePosts = () => {
     setPosts(getPosts(teacherId).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
@@ -1503,17 +1510,24 @@ export function TeacherProfilePage() {
   const removeViewerComment = (commentId, replyId = null) => {
     const comment = (viewerInteractionTarget?.comments || []).find((c) => c.id === commentId);
     const target = replyId ? comment?.replies?.find((r) => r.id === replyId) : comment;
-    if (!target || !ownsContent(target.authorId) || !window.confirm('Xóa bình luận này?')) return;
-    saveViewerInteraction((currentTarget) => ({
-      ...currentTarget,
-      comments: replyId
-        ? (currentTarget.comments || []).map((item) =>
-            item.id === commentId
-              ? { ...item, replies: (item.replies || []).filter((r) => r.id !== replyId) }
-              : item
-          )
-        : (currentTarget.comments || []).filter((item) => item.id !== commentId),
-    }));
+    if (!target || !ownsContent(target.authorId)) return;
+    setConfirmAction({
+      title: replyId ? 'Xóa phản hồi' : 'Xóa bình luận',
+      message: replyId ? 'Bạn có chắc chắn muốn xóa phản hồi này?' : 'Bạn có chắc chắn muốn xóa bình luận này?',
+      confirmText: 'Xóa',
+      onConfirm: () => {
+        saveViewerInteraction((currentTarget) => ({
+          ...currentTarget,
+          comments: replyId
+            ? (currentTarget.comments || []).map((item) =>
+                item.id === commentId
+                  ? { ...item, replies: (item.replies || []).filter((r) => r.id !== replyId) }
+                  : item
+              )
+            : (currentTarget.comments || []).filter((item) => item.id !== commentId),
+        }));
+      },
+    });
   };
 
   const cancelViewerDiscussionEdit = () => {
@@ -1686,10 +1700,18 @@ export function TeacherProfilePage() {
     cancelProfilePostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
+  const [confirmAction, setConfirmAction] = useState(null);
   const removeProfilePost = (post) => {
-    if (!ownsContent(post.authorId || post.teacherId) || !window.confirm('Xóa bài viết này?')) return;
-    deletePost(post.id);
-    refreshProfilePosts();
+    if (!ownsContent(post.authorId || post.teacherId)) return;
+    setConfirmAction({
+      title: 'Xóa bài viết',
+      message: 'Bạn có chắc chắn muốn xóa bài viết này?',
+      confirmText: 'Xóa bài viết',
+      onConfirm: () => {
+        deletePost(post.id);
+        refreshProfilePosts();
+      },
+    });
   };
   const messageProfile = async () => {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để nhắn tin.'); navigate(ROUTES.LOGIN); return; }
@@ -1725,9 +1747,9 @@ export function TeacherProfilePage() {
     <header className={`teacher-cover ${profile.coverImage ? 'has-custom-cover' : ''}`} style={coverStyle}>
       <div className="teacher-cover__avatar"><ProfileAvatar src={profile.avatar} userId={profile.id} name={profile.name} alt={`Ảnh đại diện của ${profile.name}`} role={profile.role} size={35} />{ownsProfile && <button type="button" className={`profile-avatar-upload ${profileImageUploadField === 'avatar' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'avatar' ? 'Đang tải ảnh đại diện' : 'Cập nhật ảnh đại diện'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('avatar')}>{profileImageUploadField === 'avatar' ? <LoaderCircle className="profile-upload-spinner" size={15} /> : <Camera size={15} />}</button>}<input ref={avatarImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'avatar')} /></div>
       <div><span>HỒ SƠ {profileType}</span><h1>{profile.name}</h1>{subtitle && <p>{subtitle}</p>}<div className="teacher-cover__status-list">{isEducationProviderProfile && (trustCount < 3 ? <small className="teacher-cover__trust-count is-new">Mới trên EduMatch</small> : <button type="button" className="teacher-cover__trust-count" onClick={() => setLikesTarget({ ids: trustUserIds, title: 'Lượt tin tưởng', label: 'Những thành viên đã tin tưởng hồ sơ này', emptyText: 'Danh sách thành viên tin tưởng đang được cập nhật.' })}><Heart size={13} fill="currentColor" /> {trustCount} lượt tin tưởng</button>)}<VerifiedBadge userId={profile.id} provider={profile} /></div></div>
-      {ownsProfile && <><button type="button" className={`profile-cover-upload teacher-cover__cover-upload ${profileImageUploadField === 'coverImage' ? 'is-uploading' : ''}`} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('coverImage')}>{profileImageUploadField === 'coverImage' ? <LoaderCircle className="profile-upload-spinner" size={16} /> : <ImagePlus size={16} />} {profileImageUploadField === 'coverImage' ? 'Đang tải ảnh…' : 'Ảnh bìa'}</button><input ref={coverImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'coverImage')} /></>}
+      {ownsProfile && <><button type="button" className={`profile-cover-upload teacher-cover__cover-upload ${profileImageUploadField === 'coverImage' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} aria-label={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('coverImage')}>{profileImageUploadField === 'coverImage' ? <LoaderCircle className="profile-upload-spinner" size={17} /> : <ImagePlus size={17} />}</button><input ref={coverImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'coverImage')} /></>}
     </header>
-    <div className="teacher-public-grid"><aside className="teacher-bio"><h2>{isEducationProviderProfile ? 'Thông tin' : 'Thông Tin Cá Nhân'}</h2>{isEducationProviderProfile && <div className="teacher-bio__overview"><h3>Hồ sơ năng lực</h3>{ownsProfile && <button type="button" className="teacher-bio__edit-link" onClick={openProfileEditor}>Chỉnh sửa</button>}</div>}<p className="teacher-bio__summary">{shortProfileIntro}</p>{isEducationProviderProfile && <><h3>Lĩnh vực giảng dạy</h3><p className="teacher-bio__summary">{profile.teachingField || 'Đang cập nhật'}</p></>}{isCenterProfile && <><h3>Năm thành lập</h3><p className="teacher-bio__summary">{profile.foundedYear || 'Đang cập nhật'}</p></>}{isTeacherProfile && <><h3>Kinh nghiệm</h3><p className="teacher-bio__summary">{profileExperience || 'Đang cập nhật'}</p><h3>Bằng cấp, chứng chỉ</h3><p className="teacher-bio__summary">{profileQualifications || 'Đang cập nhật'}</p></>}<button type="button" className="teacher-bio__view-all" onClick={() => setIsViewingProfileSummary(true)}>Xem tất cả</button>{publicPhone && <><h3>Điện thoại liên hệ</h3><a className="teacher-bio__phone" href={`tel:${profilePhone.replace(/\s/g, '')}`}><Phone size={14} /> {profilePhone}</a></>}{ownsProfile && canCreateCourse && <div className="teacher-bio__actions">{isCenterProfile && <Link className="teacher-bio__verify" to={ROUTES.VERIFICATION}><FileCheck2 size={15} /> Hồ sơ xác minh</Link>}<Link className="teacher-bio__add-course" to={ROUTES.CREATE_COURSE}><Plus size={16} /> Thêm khóa học</Link></div>}{isEducationProviderProfile && <section className="teacher-bio__courses" aria-labelledby="profile-open-courses"><div className="teacher-bio__courses-heading"><div><BookOpen size={16} aria-hidden="true" /><h3 id="profile-open-courses">Khóa học đang mở</h3></div>{courses.length > 0 && <span>{courses.length}</span>}</div>{courses.length > 0 ? <><div className="teacher-bio__course-list">{displayedProfileCourses.map((course) => { const isExpanded = Boolean(expandedProfileCourseIds[course.id]); return <div className={`teacher-bio__course-item ${isExpanded ? 'is-expanded' : ''}`} key={course.id}><Link className="teacher-bio__course-link" to={ROUTES.COURSE_DETAIL(course.id)}><span>{course.title}</span></Link><button type="button" className="teacher-bio__course-expand" aria-expanded={isExpanded} aria-label={`${isExpanded ? 'Thu gọn' : 'Xem đầy đủ'} tên khóa học`} onClick={() => setExpandedProfileCourseIds((current) => ({ ...current, [course.id]: !current[course.id] }))}><ChevronDown size={16} aria-hidden="true" /></button></div>; })}</div>{courses.length > 2 && <button type="button" className="teacher-bio__courses-toggle" onClick={() => setShowAllProfileCourses((current) => !current)}>{showAllProfileCourses ? 'Thu gọn' : `Xem tất cả ${courses.length} khóa học`}</button>}</> : <p className="teacher-bio__courses-empty">Chưa có khóa học đang mở.</p>}</section>}</aside>
+    <div className="teacher-public-grid"><aside className="teacher-bio"><h2>{isEducationProviderProfile ? 'Thông tin' : 'Thông Tin Cá Nhân'}</h2>{isEducationProviderProfile && <div className="teacher-bio__overview"><h3>Hồ sơ năng lực</h3>{ownsProfile && <button type="button" className="teacher-bio__edit-link" onClick={openProfileEditor}>Chỉnh sửa</button>}</div>}<p className="teacher-bio__summary">{shortProfileIntro}</p>{isEducationProviderProfile && <><h3>Lĩnh vực giảng dạy</h3><p className="teacher-bio__summary">{profile.teachingField || 'Đang cập nhật'}</p></>}{isCenterProfile && <><h3>Năm thành lập</h3><p className="teacher-bio__summary">{profile.foundedYear || 'Đang cập nhật'}</p></>}{isTeacherProfile && <><h3>Kinh nghiệm</h3><p className="teacher-bio__summary">{profileExperience || 'Đang cập nhật'}</p><h3>Bằng cấp, chứng chỉ</h3><p className="teacher-bio__summary">{profileQualifications || 'Đang cập nhật'}</p></>}<button type="button" className="teacher-bio__view-all" onClick={() => setIsViewingProfileSummary(true)}>Xem tất cả</button>{publicPhone && <><h3>Điện thoại liên hệ</h3><a className="teacher-bio__phone" href={`tel:${profilePhone.replace(/\s/g, '')}`}><Phone size={14} /> {profilePhone}</a></>}{ownsProfile && canCreateCourse && <div className="teacher-bio__actions">{isCenterProfile && <Link className="teacher-bio__verify" to={ROUTES.VERIFICATION}><FileCheck2 size={15} /> Hồ sơ xác minh</Link>}<Link className="teacher-bio__add-course" to={ROUTES.CREATE_COURSE}><Plus size={16} /> Thêm khóa học</Link></div>}{isEducationProviderProfile && courses.length > 0 && <section className="teacher-bio__courses" aria-labelledby="profile-open-courses"><div className="teacher-bio__courses-heading"><div><BookOpen size={16} aria-hidden="true" /><h3 id="profile-open-courses">Khóa học đang mở</h3></div><span>{courses.length}</span></div><div className="teacher-bio__course-list">{displayedProfileCourses.map((course) => { const isExpanded = Boolean(expandedProfileCourseIds[course.id]); return <div className={`teacher-bio__course-item ${isExpanded ? 'is-expanded' : ''}`} key={course.id}><Link className="teacher-bio__course-link" to={ROUTES.COURSE_DETAIL(course.id)}><span>{course.title}</span></Link><button type="button" className="teacher-bio__course-expand" aria-expanded={isExpanded} aria-label={`${isExpanded ? 'Thu gọn' : 'Xem đầy đủ'} tên khóa học`} onClick={() => setExpandedProfileCourseIds((current) => ({ ...current, [course.id]: !current[course.id] }))}><ChevronDown size={16} aria-hidden="true" /></button></div>; })}</div>{courses.length > 2 && <button type="button" className="teacher-bio__courses-toggle" onClick={() => setShowAllProfileCourses((current) => !current)}>{showAllProfileCourses ? 'Thu gọn' : `Xem tất cả ${courses.length} khóa học`}</button>}</section>}</aside>
     <main className="teacher-feed"><section className="feed-heading teacher-feed__heading"><div className="teacher-feed__title"><h2>Hoạt động</h2><button type="button" className="teacher-feed__album-link" onClick={() => { selectProfileAlbum('all-media'); setIsViewingProfileAlbums(true); }}><Images size={16} /> Album ảnh <span>{profileAlbumMedia.length}</span></button></div>{!ownsProfile && <div className="teacher-cover__public-actions"><button type="button" className="teacher-cover__message" onClick={messageProfile}><MessageCircle size={16} /> Nhắn tin</button><button type="button" className={`teacher-cover__trust ${trustedByCurrentUser ? 'is-trusted' : ''}`} onClick={trustProfile}><Heart size={16} fill={trustedByCurrentUser ? 'currentColor' : 'none'} /> {trustedByCurrentUser ? 'Đã tin tưởng' : 'Tin tưởng'}</button></div>}</section>
       {ownsProfile && <PostComposerTrigger media={media} onMediaChange={setMedia} avatar={profile.avatar} role={profile.role} placeholder="Hãy chia sẻ để học viên hiểu hơn về bạn" onOpen={() => setIsPostComposerOpen(true)} />}
       {posts.length ? renderedPosts.map((post) => {
@@ -1774,7 +1796,7 @@ export function TeacherProfilePage() {
     </main></div>
   </div></section>
     <LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} />
-    <Modal open={isViewingProfileAlbums || hasLinkedAlbum} onClose={closeProfileAlbums} title={isCustomProfileAlbum ? activeProfileAlbum.name : activeProfileAlbum.name === 'Tất cả' ? 'Ảnh' : activeProfileAlbum.name} size="xl" className="profile-album-dialog" footer={ownsProfile ? <><button type="button" className="profile-album-create__cancel" onClick={() => { setAlbumDraft({ name: '', description: '', media: [] }); closeProfileAlbums(); setIsCreatingProfileAlbum(true); }}><ImagePlus size={16} /> Tạo album</button>{isCustomProfileAlbum && <button type="button" className="profile-album-create__submit" onClick={() => { setAlbumAdditionDraft({ albumId: activeProfileAlbum.id, description: '', media: [] }); closeProfileAlbums(); setIsAddingAlbumMedia(true); }}><ImagePlus size={16} /> Thêm ảnh / video</button>}</> : null}>
+    <Modal open={isViewingProfileAlbums || hasLinkedAlbum} onClose={closeProfileAlbums} title={isCustomProfileAlbum ? activeProfileAlbum.name : activeProfileAlbum.name === 'Tất cả' ? 'Ảnh' : activeProfileAlbum.name} size="xl" className="profile-album-dialog" overlayClassName="profile-album-dialog-overlay" footer={ownsProfile ? <><button type="button" className="profile-album-create__cancel" onClick={() => { setAlbumDraft({ name: '', description: '', media: [] }); closeProfileAlbums(); setIsCreatingProfileAlbum(true); }}><ImagePlus size={16} /> Tạo album</button>{isCustomProfileAlbum && <button type="button" className="profile-album-create__submit" onClick={() => { setAlbumAdditionDraft({ albumId: activeProfileAlbum.id, description: '', media: [] }); closeProfileAlbums(); setIsAddingAlbumMedia(true); }}><ImagePlus size={16} /> Thêm ảnh / video</button>}</> : null}>
       <div className="profile-album-tabs" role="tablist" aria-label="Lọc ảnh và video">{profileAlbumTabs.map((album) => <button type="button" role="tab" aria-selected={activeProfileAlbum.id === album.id} className={activeProfileAlbum.id === album.id ? 'is-active' : ''} key={album.id} onClick={() => selectProfileAlbum(album.id)}>{album.name}<span>{album.count ?? album.media.length}</span></button>)}</div>
       {isAlbumDirectory ? (visibleProfileAlbums.length ? <div className="profile-albums__grid">{visibleProfileAlbums.map((album) => <button type="button" className="profile-albums__card" key={album.id} onClick={() => selectProfileAlbum(album.id)} aria-label={`Mở album ${album.name}`}><span className={`profile-albums__cover is-${Math.min(album.media.length, 4)}`}>{album.media.length ? album.media.slice(0, 4).map((item, index) => item.type === 'video' ? <video key={`${item.id || item.src}-${index}`} src={item.src} muted preload="metadata" /> : <img key={`${item.id || item.src}-${index}`} src={item.src} alt="" loading="lazy" />) : <Images size={27} />}</span><strong className="profile-albums__name">{album.name}</strong><small>{album.media.length} {album.media.length === 1 ? 'mục' : 'mục'}</small></button>)}</div> : <div className="profile-album-empty"><Images size={24} /><p>Chưa có album nào được tạo.</p></div>) : <>
         {isCustomProfileAlbum && (activeProfileAlbum.description || ownsProfile) && <section className="profile-album-description"><div>{isEditingAlbumDescription ? <textarea value={albumDraft.description} onChange={(event) => setAlbumDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Viết mô tả cho album này..." rows="3" /> : activeProfileAlbum.description && <p>{activeProfileAlbum.description}</p>}</div>{ownsProfile && <div>{isEditingAlbumDescription ? <><button type="button" onClick={() => setIsEditingAlbumDescription(false)}>Hủy</button><button type="button" onClick={saveAlbumDescription}>Lưu</button></> : <ContentMenu id={`album-${activeProfileAlbum.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setAlbumDraft((current) => ({ ...current, description: activeProfileAlbum.description || '' })); setIsEditingAlbumDescription(true); }} onDelete={deleteProfileAlbum} label="album" />}</div>}</section>}
@@ -1878,18 +1900,45 @@ export function TeacherProfilePage() {
         </label>
         <label>
           <span>Bằng cấp, chứng chỉ</span>
-          <textarea name="qualifications" value={profileDraft.qualifications || ''} onChange={updateProfileDraft} onClick={() => setActiveProfileTextField('qualifications')} rows="3" placeholder="Ví dụ: Cử nhân Sư phạm, IELTS 8.0" />
+          <textarea
+            name="qualifications"
+            value={profileDraft.qualifications || ''}
+            readOnly
+            onChange={updateProfileDraft}
+            onFocus={(event) => { event.currentTarget.blur(); setActiveProfileTextField('qualifications'); }}
+            onClick={(event) => { event.currentTarget.blur(); setActiveProfileTextField('qualifications'); }}
+            rows="3"
+            placeholder="Ví dụ: Cử nhân Sư phạm, IELTS 8.0"
+          />
           {profileErrors.qualifications && <small>{profileErrors.qualifications}</small>}
         </label>
         <label>
           <span>Kinh nghiệm giảng dạy</span>
-          <textarea name="experience" value={profileDraft.experience || ''} onChange={updateProfileDraft} onClick={() => setActiveProfileTextField('experience')} rows="3" placeholder="Ví dụ: 5 năm giảng dạy tiếng Anh" />
+          <textarea
+            name="experience"
+            value={profileDraft.experience || ''}
+            readOnly
+            onChange={updateProfileDraft}
+            onFocus={(event) => { event.currentTarget.blur(); setActiveProfileTextField('experience'); }}
+            onClick={(event) => { event.currentTarget.blur(); setActiveProfileTextField('experience'); }}
+            rows="3"
+            placeholder="Ví dụ: 5 năm giảng dạy tiếng Anh"
+          />
           {profileErrors.experience && <small>{profileErrors.experience}</small>}
         </label>
         </>}
         <label className="teacher-profile-editor__full">
           <span>{user?.role === 'student' ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}</span>
-          <textarea name="bio" value={profileDraft.bio || ''} onChange={updateProfileDraft} onClick={() => setActiveProfileTextField('bio')} rows="3" placeholder={profileTextFields.bio.placeholder} />
+          <textarea
+            name="bio"
+            value={profileDraft.bio || ''}
+            readOnly
+            onChange={updateProfileDraft}
+            onFocus={(event) => { event.currentTarget.blur(); setActiveProfileTextField('bio'); }}
+            onClick={(event) => { event.currentTarget.blur(); setActiveProfileTextField('bio'); }}
+            rows="3"
+            placeholder={profileTextFields.bio.placeholder}
+          />
           {profileErrors.bio && <small>{profileErrors.bio}</small>}
         </label>
         {user?.role !== 'student' && <label className="teacher-profile-editor__phone-visibility teacher-profile-editor__full">
@@ -1992,6 +2041,18 @@ export function TeacherProfilePage() {
       onClose={() => setProfileImageSourceField(null)}
       onChooseExisting={chooseExistingProfileImage}
       onUpload={openImageUpload}
+    />
+    <ConfirmDialog
+      open={Boolean(confirmAction)}
+      title={confirmAction?.title}
+      message={confirmAction?.message}
+      confirmText={confirmAction?.confirmText || 'Xóa'}
+      cancelText="Hủy"
+      onCancel={() => setConfirmAction(null)}
+      onConfirm={() => {
+        confirmAction?.onConfirm?.();
+        setConfirmAction(null);
+      }}
     />
 
   </div>;

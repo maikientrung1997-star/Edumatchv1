@@ -488,7 +488,7 @@ export const Header = () => {
           }}
         >
           <form className="header-search" role="search" onSubmit={search}>
-            <Search size={18} aria-hidden="true" />
+            <Search size={15} aria-hidden="true" />
             <input
               type="search"
               name="need-description"
@@ -499,13 +499,9 @@ export const Header = () => {
               autoFocus
             />
             <button type="submit" aria-label="Tìm kiếm">
-              <ArrowRight size={19} aria-hidden="true" />
+              <ArrowRight size={15} aria-hidden="true" />
             </button>
           </form>
-          <Link to={`${ROUTES.HOME}#khoa-hoc`} onClick={closeMobilePanels}>
-            <GraduationCap size={17} aria-hidden="true" />
-            Tìm kiếm lớp học
-          </Link>
         </div>
       )}
       {activeMobilePanel === 'menu' && (

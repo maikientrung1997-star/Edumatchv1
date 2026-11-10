@@ -9,6 +9,7 @@ import { POST_COMMENTS_ANCHOR, ROUTES } from '@/constants/routes';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar, normalizeRole, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { Modal } from '@/components/feedback/Modal';
@@ -227,9 +228,17 @@ export function FeedPage({ postId = null }) {
     cancelPostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
+  const [confirmAction, setConfirmAction] = useState(null);
   const removePost = (post) => {
-    if (!owns(post.authorId || post.teacherId) || !window.confirm('Xóa bài viết này?')) return;
-    setPosts(deletePost(post.id).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
+    if (!owns(post.authorId || post.teacherId)) return;
+    setConfirmAction({
+      title: 'Xóa bài viết',
+      message: 'Bạn có chắc chắn muốn xóa bài viết này?',
+      confirmText: 'Xóa bài viết',
+      onConfirm: () => {
+        setPosts(deletePost(post.id).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
+      },
+    });
   };
   const openShareDialog = (post, mediaItem = null) => {
     if (!requireAuth()) return;
@@ -407,14 +416,21 @@ export function FeedPage({ postId = null }) {
     const interactionTarget = getInteractionTarget(post, mediaId);
     const comment = interactionTarget?.comments?.find((item) => item.id === commentId);
     const target = replyId ? comment?.replies?.find((item) => item.id === replyId) : comment;
-    if (!target || !owns(target.authorId) || !window.confirm('Xóa bình luận này?')) return;
-    saveTargetInteraction(postId, mediaId, (current) => ({
-      ...current,
-      commentsUpdated: true,
-      comments: replyId
-        ? (current.comments || []).map((item) => item.id === commentId ? { ...item, replies: (item.replies || []).filter((reply) => reply.id !== replyId) } : item)
-        : (current.comments || []).filter((item) => item.id !== commentId),
-    }));
+    if (!target || !owns(target.authorId)) return;
+    setConfirmAction({
+      title: replyId ? 'Xóa phản hồi' : 'Xóa bình luận',
+      message: replyId ? 'Bạn có chắc chắn muốn xóa phản hồi này?' : 'Bạn có chắc chắn muốn xóa bình luận này?',
+      confirmText: 'Xóa',
+      onConfirm: () => {
+        saveTargetInteraction(postId, mediaId, (current) => ({
+          ...current,
+          commentsUpdated: true,
+          comments: replyId
+            ? (current.comments || []).map((item) => item.id === commentId ? { ...item, replies: (item.replies || []).filter((reply) => reply.id !== replyId) } : item)
+            : (current.comments || []).filter((item) => item.id !== commentId),
+        }));
+      },
+    });
   };
 
   const toggleLike = (postId, mediaId = null) => {
@@ -779,6 +795,18 @@ export function FeedPage({ postId = null }) {
       renderOwnerActions={viewerPost && owns(viewerPost.authorId || viewerPost.teacherId) ? (index) => <ContentMenu id={`viewer-post-${viewerPost.id}-${index}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => { setImageViewer(null); editPost(viewerPost); }} onDelete={() => { setImageViewer(null); removePost(viewerPost); }} label="bài viết" /> : null}
     />
     <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm"><form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form></Modal>
+    <ConfirmDialog
+      open={Boolean(confirmAction)}
+      title={confirmAction?.title}
+      message={confirmAction?.message}
+      confirmText={confirmAction?.confirmText || 'Xóa'}
+      cancelText="Hủy"
+      onCancel={() => setConfirmAction(null)}
+      onConfirm={() => {
+        confirmAction?.onConfirm?.();
+        setConfirmAction(null);
+      }}
+    />
     </>
   );
 }

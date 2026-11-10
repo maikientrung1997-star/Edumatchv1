@@ -26,6 +26,8 @@ export const ConfirmDialog = ({
       onClose={handleClose}
       title={title}
       size="sm"
+      className="em-confirm-dialog"
+      overlayClassName="em-confirm-dialog-overlay"
       footer={
         <>
           <Button variant="outline" size="sm" onClick={handleClose} disabled={loading}>

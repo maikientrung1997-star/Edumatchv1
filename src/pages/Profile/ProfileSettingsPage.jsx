@@ -485,7 +485,8 @@ export function ProfileSettingsPage() {
                     name="bio"
                     value={form.bio}
                     readOnly
-                    onClick={() => setIsBioEditorOpen(true)}
+                    onFocus={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
+                    onClick={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
                     rows={5}
                     className="profile-bio-preview"
                   />

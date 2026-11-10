@@ -84,7 +84,9 @@ export const Modal = ({
     modalStack.push({ dialog, zIndex });
     overlay.style.zIndex = zIndex;
     window.addEventListener('keydown', handleKeyDown);
-    (focusableElements()[0] || dialogRef.current)?.focus({ preventScroll: true });
+    if (!dialog.contains(document.activeElement)) {
+      (focusableElements()[0] || dialogRef.current)?.focus({ preventScroll: true });
+    }
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -104,7 +106,7 @@ export const Modal = ({
   if (!isModalOpen) return null;
 
   return (
-    <div ref={overlayRef} className={cn('fixed inset-0 z-50 flex items-center justify-center p-4', overlayClassName)}>
+    <div ref={overlayRef} className={cn('em-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4', overlayClassName)}>
       {/* Overlay Backdrop */}
       <div
         className="fixed inset-0 bg-ink/40 backdrop-blur-sm transition-opacity"
@@ -121,14 +123,14 @@ export const Modal = ({
         aria-describedby={description ? descriptionId : undefined}
         onKeyDown={onKeyDown}
         className={cn(
-          'relative w-full rounded-surface bg-surface text-ink shadow-2xl border border-line flex flex-col max-h-[90vh] z-10 animate-in fade-in zoom-in-95 duration-150',
+          'em-modal-dialog relative w-full rounded-surface bg-surface text-ink shadow-2xl border border-line flex flex-col max-h-[90vh] z-10 animate-in fade-in zoom-in-95 duration-150',
           modalSizes[size] || modalSizes.md,
           className
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
-          <div>
+        <div className="em-modal-header flex items-center justify-between px-6 py-4 border-b border-line">
+          <div className="em-modal-header__titles min-w-0">
             {title && (
               <h3 id={titleId} className="text-h3 font-semibold text-ink">
                 {title}
@@ -144,18 +146,19 @@ export const Modal = ({
             type="button"
             onClick={onClose}
             aria-label={backButton ? 'Quay lại' : 'Đóng hộp thoại'}
-            className="p-1.5 text-faint hover:text-ink rounded-control hover:bg-soft transition-colors"
+            className="em-modal-close p-1.5 text-faint hover:text-ink rounded-control hover:bg-soft transition-colors"
           >
-            {backButton ? <ArrowLeft size={21} aria-hidden="true" /> : <X className="w-5 h-5" />}
+            <ArrowLeft size={21} aria-hidden="true" className={cn('em-modal-close__back', !backButton && 'md:hidden')} />
+            {!backButton && <X className="em-modal-close__x hidden md:block w-5 h-5" aria-hidden="true" />}
           </button>
         </div>
 
         {/* Body Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className="em-modal-body px-6 py-5 overflow-y-auto flex-1">{children}</div>
 
         {/* Footer Actions */}
         {footer && (
-          <div className="px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface">
+          <div className="em-modal-footer px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface">
             {footer}
           </div>
         )}

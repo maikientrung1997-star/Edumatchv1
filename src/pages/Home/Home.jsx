@@ -317,7 +317,7 @@ export const Home = () => {
   const hasDescriptionQuery = hasNeedQuery || hasCourseQuery;
   const isSearchResults = location.pathname === ROUTES.SEARCH_RESULTS;
   const currentView = params.get('view');
-  const isDiscoveryHome = !isSearchResults && !(isMobile && ['courses', 'tutors'].includes(currentView));
+  const isDiscoveryHome = !(isMobile && ['courses', 'tutors'].includes(currentView));
   const openMobileView = (viewType) => {
     setParams((current) => {
       const next = new URLSearchParams(current);
@@ -396,11 +396,11 @@ const profileCourses = profile
   const rankedCourses = getCourses()
     .map((course) => ({ ...course, ranking: getCourseRating(course.id) }))
     .filter((course) => {
-      const courseMode = course.learningMode === 'in-person'
-        ? 'in-person'
+      const courseMode = course.learningMode === 'online'
+        ? 'online'
         : course.learningMode === 'recorded'
           ? 'recorded'
-          : 'online';
+          : 'in-person';
       const courseSearchText = normalize([
         course.title,
         course.subject,
@@ -448,7 +448,7 @@ const profileCourses = profile
     ? sponsoredCourses.slice((sponsoredPage - 1) * sponsoredPageSize, sponsoredPage * sponsoredPageSize)
     : sponsoredCourses.slice(0, 3);
   const discoverySponsoredCourses = sponsoredCourses.filter((course) => {
-    const mode = ['in-person', 'recorded'].includes(course.learningMode) ? course.learningMode : 'online';
+    const mode = course.learningMode === 'online' ? 'online' : course.learningMode === 'recorded' ? 'recorded' : 'in-person';
     const description = [
       course.title, course.description, course.subject, course.teacher?.name,
       course.location, course.province, course.ward, course.district, course.schedule, courseModeLabel[mode],
@@ -466,7 +466,7 @@ const profileCourses = profile
       const provider = course.teacher;
       const key = provider.id;
       const rating = getCourseRating(course.id);
-      const mode = course.learningMode === 'in-person' ? 'offline' : course.learningMode === 'recorded' ? 'recorded' : 'online';
+      const mode = course.learningMode === 'online' ? 'online' : course.learningMode === 'recorded' ? 'recorded' : 'offline';
       const current = providers.get(key) || {
         id: key,
         name: provider.name,
@@ -1167,10 +1167,10 @@ const profileCourses = profile
         <>
       {!isSearchResults && catalog.banners.length > 0 && <section className="cms-banners edu-container" aria-label="Thông tin từ EduMatch">{catalog.banners.map((banner) => /^https?:\/\//i.test(banner.link_url || '') ? <a key={banner.id} href={banner.link_url} target="_blank" rel="noopener noreferrer"><img src={banner.image_url} alt={banner.title || 'Thông tin EduMatch'} loading="lazy" /></a> : <img key={banner.id} src={banner.image_url} alt={banner.title || 'Thông tin EduMatch'} loading="lazy" />)}</section>}
       {isSearchResults ? (
-        <section className="search-results-hero" aria-labelledby="search-results-title">
+        <section id="gioi-thieu" className="search-results-hero" ref={discoveryHeroRef} aria-labelledby="search-results-title">
           <div className="edu-container">
             <span><Search size={16} /> KẾT QUẢ THEO NHU CẦU</span>
-            <h1 id="search-results-title">Khóa học và người đồng hành <em>phù hợp với bạn</em></h1>
+            <h1 id="search-results-title" tabIndex={-1}>Khóa học và người đồng hành <em>phù hợp với bạn</em></h1>
             <p>{descriptionQuery ? <>Kết quả cho mô tả: <strong>“{descriptionQuery}”</strong></> : 'Nhập mô tả nhu cầu vào ô tìm kiếm để nhận các gợi ý phù hợp.'}</p>
           </div>
         </section>

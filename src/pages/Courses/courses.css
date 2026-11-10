@@ -2079,15 +2079,74 @@
 .profile-text-editor-modal__done:hover {
   background: var(--edu-green-hover);
 }
-@media (max-width: 720px) {
-  .profile-text-editor-modal {
-    width: calc(100vw - 20px) !important;
-    max-width: calc(100vw - 20px) !important;
+@media (max-width: 767px) {
+  .profile-text-editor-modal,
+  .course-description-editor,
+  .profile-capability-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border: 0 !important;
+    border-radius: 0 !important;
   }
-  .profile-text-editor-modal__textarea {
-    min-height: 48dvh;
+  .profile-text-editor-modal > .em-modal-body,
+  .course-description-editor > .em-modal-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .profile-text-editor-modal__body,
+  .course-description-editor__body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .profile-text-editor-modal__textarea,
+  .course-description-editor__body textarea {
+    flex: 1 1 auto;
+    min-height: 220px;
+    height: 100%;
     padding: 13px;
     font-size: var(--text-control);
+  }
+  .message-panel {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .message-panel .message-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    flex-direction: column;
+  }
+  .message-dialog__header {
+    padding: max(14px, env(safe-area-inset-top)) 14px 14px;
+  }
+  .message-dialog__close {
+    order: -1;
+    margin-left: -4px;
+    margin-right: 2px;
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    color: var(--edu-ink);
+  }
+  .message-dialog__close-back {
+    display: block !important;
+  }
+  .message-dialog__close-x {
+    display: none !important;
+  }
+  .message-dialog__actions {
+    margin-top: auto;
+    padding: 12px 16px max(14px, env(safe-area-inset-bottom));
   }
 }
 @media (max-width: 1020px) {
@@ -2491,7 +2550,13 @@
   position: absolute;
   inset: auto 18px 18px auto !important;
   z-index: 2;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
   margin: 0;
+  padding: 0;
+  justify-content: center;
+  border-radius: 10px;
   border-color: rgb(255 255 255 / 42%);
   background: rgb(9 55 46 / 48%);
   color: #fff;
@@ -3746,6 +3811,35 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
     padding-left: 0;
     border-left: 0;
   }
+  .profile-album-dialog-overlay {
+    padding: 0 !important;
+  }
+  .profile-album-dialog {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh;
+    max-height: 100dvh !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+  .profile-album-dialog > div:first-child {
+    padding: 12px 14px;
+  }
+  .profile-album-dialog > div:nth-child(2) {
+    padding: 12px 0;
+  }
+  .profile-album-dialog > div:nth-child(3) {
+    padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+  .profile-album-tabs,
+  .profile-album-description,
+  .profile-albums__grid {
+    padding-inline: 12px;
+  }
+  .profile-album-empty {
+    margin-inline: 12px;
+  }
   .profile-album-description {
     align-items: stretch;
     flex-direction: column;
@@ -3763,6 +3857,11 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
     gap: 5px;
   }
   .profile-album-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .profile-album-grid__item {
+    border: 0;
+    border-radius: 0;
   }
 }

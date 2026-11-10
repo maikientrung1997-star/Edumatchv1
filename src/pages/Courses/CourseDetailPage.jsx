@@ -10,6 +10,7 @@ import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar, normalizeRole } from '@/components/common/DefaultRoleAvatar';
 import { ContentMenu } from '@/components/feedback/ContentMenu';
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
@@ -194,12 +195,20 @@ export function CourseDetailPage() {
     setReviews(getCourseReviews(courseId));
     setEditingContent(null);
   };
+  const [confirmAction, setConfirmAction] = useState(null);
   const removeReviewContent = (review, reply = null) => {
     const target = reply || review;
-    if (!ownsReviewContent(target.authorId) || !window.confirm(reply ? 'Xóa phản hồi này?' : 'Xóa đánh giá này?')) return;
-    if (reply) updateCourseReview(review.id, (current) => ({ ...current, replies: (current.replies || []).filter((item) => item.id !== reply.id) }));
-    else deleteCourseReview(review.id);
-    setReviews(getCourseReviews(courseId));
+    if (!ownsReviewContent(target.authorId)) return;
+    setConfirmAction({
+      title: reply ? 'Xóa phản hồi' : 'Xóa đánh giá',
+      message: reply ? 'Bạn có chắc chắn muốn xóa phản hồi này?' : 'Bạn có chắc chắn muốn xóa đánh giá này?',
+      confirmText: 'Xóa',
+      onConfirm: () => {
+        if (reply) updateCourseReview(review.id, (current) => ({ ...current, replies: (current.replies || []).filter((item) => item.id !== reply.id) }));
+        else deleteCourseReview(review.id);
+        setReviews(getCourseReviews(courseId));
+      },
+    });
   };
   const send = async (event) => {
     event.preventDefault();
@@ -239,6 +248,6 @@ export function CourseDetailPage() {
         })}</div>
       </section>
     </article><aside className="course-enroll-card"><span>HỌC PHÍ</span><strong>{formatCurrency(course.price)}</strong><small>{paymentLabel(course.paymentType)}</small><span className={`course-enroll-status ${isEnrollmentOpen ? '' : 'is-closed'}`}>{enrollmentLabel(course)}</span>{isCourseOwner ? <div className="course-owner-control"><p>{isEnrollmentOpen ? 'Lớp đang nhận học viên mới.' : 'Lớp đã tạm dừng nhận học viên mới.'}</p><Link className="course-edit-link" to={`${ROUTES.CREATE_COURSE}?edit=${course.id}`}><Pencil size={16} /> Chỉnh sửa khóa học</Link><button type="button" onClick={updateEnrollmentStatus}>{isEnrollmentOpen ? <><LockKeyhole size={17} /> Đóng lớp</> : 'Mở lớp'}</button></div> : isEnrollmentOpen ? <button onClick={() => setShowMessage(true)}><MessageCircle size={18} /> Đăng ký học</button> : <p className="course-closed-note"><LockKeyhole size={17} /> Lớp đã đóng tuyển sinh. Vui lòng xem khóa học khác.</p>}<ul><li>Trao đổi trực tiếp với giáo viên</li><li>Thống nhất lịch phù hợp trước khi học</li></ul></aside></div>
-    {showMessage && <div className="message-panel" role="dialog" aria-modal="true" aria-label={`Nhắn tin với ${providerType}`}><form className="message-dialog" onSubmit={send}><header className="message-dialog__header"><span className="message-dialog__icon"><MessageCircle size={20} /></span><div><p>NHẮN TIN TRỰC TIẾP</p><h2>Hẹn lịch học</h2></div><button className="message-dialog__close" type="button" onClick={() => setShowMessage(false)} aria-label="Đóng hộp nhắn tin"><X size={19} /></button></header><div className="message-dialog__recipient"><span><RoleAvatar src={course.teacher.avatar} userId={course.teacher.id} name={course.teacher.name} role={teacherRole} size={18} alt="" /></span><div><strong>{course.teacher.name}</strong><small>{isCenterCourse ? 'Trung tâm của khóa học này' : 'Giáo viên của khóa học này'}</small></div><i className={providerIsOnline ? 'is-online' : ''}>{providerIsOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}</i></div><label className="message-dialog__field">Lời nhắn mở đầu<textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={submitOnPlainEnter} rows="5" /></label><p className="message-dialog__hint">Hai bên sẽ tự trao đổi để thống nhất lịch học phù hợp.</p><div className="message-dialog__actions"><button className="message-dialog__cancel" type="button" onClick={() => setShowMessage(false)}>Để sau</button><button className="message-dialog__send" type="submit"><Send size={17} /> Gửi tin nhắn</button></div></form></div>}
-  </div></section><LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} /></>;
+    {showMessage && <div className="message-panel" role="dialog" aria-modal="true" aria-label={`Nhắn tin với ${providerType}`}><form className="message-dialog" onSubmit={send}><header className="message-dialog__header"><span className="message-dialog__icon"><MessageCircle size={20} /></span><div><p>NHẮN TIN TRỰC TIẾP</p><h2>Hẹn lịch học</h2></div><button className="message-dialog__close" type="button" onClick={() => setShowMessage(false)} aria-label="Đóng hộp nhắn tin"><ArrowLeft size={20} className="message-dialog__close-back hidden" aria-hidden="true" /><X size={19} className="message-dialog__close-x" aria-hidden="true" /></button></header><div className="message-dialog__recipient"><span><RoleAvatar src={course.teacher.avatar} userId={course.teacher.id} name={course.teacher.name} role={teacherRole} size={18} alt="" /></span><div><strong>{course.teacher.name}</strong><small>{isCenterCourse ? 'Trung tâm của khóa học này' : 'Giáo viên của khóa học này'}</small></div><i className={providerIsOnline ? 'is-online' : ''}>{providerIsOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}</i></div><label className="message-dialog__field">Lời nhắn mở đầu<textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={submitOnPlainEnter} rows="5" /></label><p className="message-dialog__hint">Hai bên sẽ tự trao đổi để thống nhất lịch học phù hợp.</p><div className="message-dialog__actions"><button className="message-dialog__cancel" type="button" onClick={() => setShowMessage(false)}>Để sau</button><button className="message-dialog__send" type="submit"><Send size={17} /> Gửi tin nhắn</button></div></form></div>}
+  </div></section><LikesModal target={likesTarget} onClose={() => setLikesTarget(null)} /><ConfirmDialog open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmText={confirmAction?.confirmText || 'Xóa'} cancelText="Hủy" onCancel={() => setConfirmAction(null)} onConfirm={() => { confirmAction?.onConfirm?.(); setConfirmAction(null); }} /></>;
 }

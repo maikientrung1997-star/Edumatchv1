@@ -705,6 +705,96 @@ const profileCourses = profile
     setSponsoredPage(page);
     requestAnimationFrame(() => scrollTo(sponsoredRef.current));
   };
+  const updateMobileTutorFilter = (event) => {
+    const { name, value } = event.target;
+    updateFilter(event);
+    setAppliedFilters((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'mode' && value !== 'in-person' ? { province: '', ward: '' } : {}),
+    }));
+    setTutorPage(1);
+  };
+
+  const mobileTutorFilterForm = (
+    <form
+      className="mobile-filter-row mobile-filter-row--tutors"
+      aria-label="Bộ lọc giáo viên và trung tâm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setAppliedFilters(filters);
+        if (currentView !== 'tutors') setShowAll(false);
+        setTutorPage(1);
+      }}
+    >
+      <div className="mobile-filter-row__input">
+        <Search size={15} aria-hidden="true" />
+        <input
+          name="description"
+          aria-label="Tìm kiếm qua mô tả"
+          placeholder="Tìm gia sư, môn học..."
+          value={visibleTutorFilters.description}
+          onChange={updateFilter}
+        />
+      </div>
+      <select className="mobile-filter-row__select" name="mode" aria-label="Hình thức giảng dạy" value={visibleTutorFilters.mode} onChange={updateMobileTutorFilter}>
+        <option value="">Hình thức</option>
+        <option value="online">Trực tuyến</option>
+        <option value="in-person">Trực tiếp</option>
+        <option value="recorded">Video</option>
+      </select>
+      <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm giáo viên">
+        <Search size={17} aria-hidden="true" />
+      </button>
+      <select className="mobile-filter-row__select" name="subject" aria-label="Môn học hoặc lĩnh vực" value={visibleTutorFilters.subject} onChange={updateMobileTutorFilter}>
+        <option value="">Tất cả môn</option>
+        {subjects.map((subject) => (
+          <option key={subject.id} value={subject.id}>{subject.name}</option>
+        ))}
+      </select>
+      <select className="mobile-filter-row__select" name="provider" aria-label="Loại hồ sơ" value={visibleTutorFilters.provider} onChange={updateMobileTutorFilter}>
+        <option value="">Loại hồ sơ</option>
+        <option value="teacher">Giáo viên</option>
+        <option value="center">Trung tâm</option>
+      </select>
+      <button
+        type="button"
+        className={`mobile-filter-row__trust-btn ${trustFirst ? 'is-active' : ''}`}
+        aria-label="Ưu tiên nhiều tin tưởng"
+        aria-pressed={trustFirst}
+        title="Ưu tiên nhiều tin tưởng"
+        onClick={() => {
+          setTrustFirst((current) => !current);
+          if (currentView === 'tutors') setTutorPage(1);
+        }}
+      >
+        <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} aria-hidden="true" />
+      </button>
+      {filters.mode === 'in-person' && (
+        <div className="mobile-tutor-location">
+          <AdministrativePicker
+            id="mobile-tutor-province"
+            label="Tỉnh / Thành phố"
+            value={filters.province}
+            options={administrativeProvinces}
+            placeholder="Tỉnh/thành"
+            onSelect={selectLocation('province')}
+          />
+          <AdministrativePicker
+            id="mobile-tutor-ward"
+            label="Xã / Phường"
+            value={filters.ward}
+            options={wardOptions}
+            placeholder={filters.province ? 'Xã/phường' : 'Chọn tỉnh/thành trước'}
+            disabled={!filters.province}
+            onSelect={selectLocation('ward')}
+          />
+          {areaError && <p className="account-error" role="alert">{areaError}</p>}
+        </div>
+      )}
+    </form>
+  );
+
   const closeDialog = () => {
     setConsultationComplete(false);
     setParams(
@@ -970,72 +1060,7 @@ const profileCourses = profile
             <p>{descriptionQuery ? <>Kết quả lọc theo: <strong>“{descriptionQuery}”</strong></> : 'Những người thầy và trung tâm uy tín đồng hành cùng bạn'}</p>
           </div>
 
-          <form
-            className="mobile-filter-row"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setAppliedFilters(filters);
-              setTutorPage(1);
-            }}
-          >
-            <div className="mobile-filter-row__input">
-              <Search size={14} />
-              <input
-                type="text"
-                placeholder="Tìm gia sư, môn học..."
-                value={visibleTutorFilters.description}
-                onChange={updateFilter}
-                name="description"
-              />
-            </div>
-            <select
-              name="subject"
-              value={visibleTutorFilters.subject}
-              onChange={(e) => {
-                updateFilter(e);
-                setAppliedFilters((curr) => ({ ...curr, subject: e.target.value }));
-                setTutorPage(1);
-              }}
-              className="mobile-filter-row__select"
-              aria-label="Môn học"
-            >
-              <option value="">Tất cả môn</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <select
-              name="mode"
-              value={visibleTutorFilters.mode}
-              onChange={(e) => {
-                updateFilter(e);
-                setAppliedFilters((curr) => ({ ...curr, mode: e.target.value }));
-                setTutorPage(1);
-              }}
-              className="mobile-filter-row__select"
-              aria-label="Hình thức"
-            >
-              <option value="">Hình thức</option>
-              <option value="online">Online</option>
-              <option value="in-person">Trực tiếp</option>
-              <option value="recorded">Video</option>
-            </select>
-            <button
-              type="button"
-              className={`mobile-filter-row__trust-btn ${trustFirst ? 'is-active' : ''}`}
-              onClick={() => {
-                setTrustFirst((c) => !c);
-                setTutorPage(1);
-              }}
-              title="Ưu tiên nhiều tin tưởng"
-              aria-label="Ưu tiên nhiều tin tưởng"
-            >
-              <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} />
-            </button>
-            <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm">
-              <Search size={15} />
-            </button>
-          </form>
+          {mobileTutorFilterForm}
 
           <div className="mobile-listing-meta">
             <span>Hiển thị <strong>{mobileTutorResults.length}</strong> / <strong>{filteredTutors.length}</strong> hồ sơ</span>
@@ -1450,73 +1475,7 @@ const profileCourses = profile
             )}
           </SectionHeading>
 
-          {isMobile ? (
-            <form
-              className="mobile-filter-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setAppliedFilters(filters);
-                setShowAll(false);
-                setTutorPage(1);
-              }}
-            >
-              <div className="mobile-filter-row__input">
-                <Search size={14} />
-                <input
-                  type="text"
-                  placeholder="Tìm gia sư, môn học..."
-                  value={visibleTutorFilters.description}
-                  onChange={updateFilter}
-                  name="description"
-                />
-              </div>
-              <select
-                name="subject"
-                value={visibleTutorFilters.subject}
-                onChange={(e) => {
-                  updateFilter(e);
-                  setAppliedFilters((curr) => ({ ...curr, subject: e.target.value }));
-                  setTutorPage(1);
-                }}
-                className="mobile-filter-row__select"
-                aria-label="Môn học"
-              >
-                <option value="">Tất cả môn</option>
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <select
-                name="mode"
-                value={visibleTutorFilters.mode}
-                onChange={(e) => {
-                  updateFilter(e);
-                  setAppliedFilters((curr) => ({ ...curr, mode: e.target.value }));
-                  setTutorPage(1);
-                }}
-                className="mobile-filter-row__select"
-                aria-label="Hình thức"
-              >
-                <option value="">Hình thức</option>
-                <option value="online">Online</option>
-                <option value="in-person">Trực tiếp</option>
-                <option value="recorded">Video</option>
-              </select>
-              <button
-                type="button"
-                className={`mobile-filter-row__trust-btn ${trustFirst ? 'is-active' : ''}`}
-                onClick={() => setTrustFirst((c) => !c)}
-                title="Ưu tiên nhiều tin tưởng"
-                aria-label="Ưu tiên nhiều tin tưởng"
-                aria-pressed={trustFirst}
-              >
-                <Heart size={15} fill={trustFirst ? 'currentColor' : 'none'} />
-              </button>
-              <button type="submit" className="mobile-filter-row__btn" aria-label="Tìm kiếm">
-                <Search size={15} />
-              </button>
-            </form>
-          ) : (
+          {isMobile ? mobileTutorFilterForm : (
             <div id="tim-gia-su" className="tutor-search tutor-search--inline" ref={filterRef} aria-label="Bộ lọc giáo viên và trung tâm">
               <form
                 aria-label="Bộ lọc giáo viên và trung tâm"

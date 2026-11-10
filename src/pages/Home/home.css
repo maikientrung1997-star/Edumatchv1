@@ -4150,11 +4150,6 @@
     grid-row: 1;
   }
 
-  #giao-vien > .mobile-filter-row > select[name="subject"] {
-    grid-column: 1 / 3;
-    grid-row: 2;
-  }
-
   #giao-vien > .mobile-filter-row > .mobile-filter-row__trust-btn {
     grid-column: 3;
     grid-row: 2;
@@ -4318,6 +4313,7 @@
     width: 100% !important;
     max-width: none !important;
   }
+  .edu-home .mobile-filter-row--tutors > select,
   .edu-home .mobile-filter-row--courses select[name="mode"] {
     appearance: none;
     -webkit-appearance: none;
@@ -4327,6 +4323,21 @@
     background-position: right 10px center !important;
     background-size: 14px 14px !important;
   }
+  .edu-home .mobile-filter-row--tutors > select {
+    width: 100% !important;
+    max-width: none !important;
+    background-position: right 7px center !important;
+    padding-right: 22px !important;
+  }
+  .mobile-filter-row--tutors > select[name="subject"] { grid-column: 1; grid-row: 2; }
+  .mobile-filter-row--tutors > select[name="provider"] { grid-column: 2; grid-row: 2; }
+  .mobile-tutor-location {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .mobile-tutor-location > [role="alert"] { grid-column: 1 / -1; }
   .mobile-listing-page .mobile-course-count { display: none; }
   .mobile-course-sort {
     grid-column: 1 / 3;
@@ -4366,8 +4377,7 @@
   .mobile-listing-page .mobile-filter-row__input { grid-column: 1; grid-row: 1; }
   .mobile-listing-page select[name="mode"] { grid-column: 2; grid-row: 1; }
   .mobile-listing-page .mobile-filter-row__btn { grid-column: 3; grid-row: 1; }
-  .mobile-listing-page select[aria-label="Sắp xếp"],
-  .mobile-listing-page select[name="subject"] { grid-column: 1 / 3; grid-row: 2; width: 100%; }
+  .mobile-listing-page select[aria-label="Sắp xếp"] { grid-column: 1 / 3; grid-row: 2; width: 100%; }
   .mobile-listing-page .mobile-filter-row__trust-btn { grid-column: 3; grid-row: 2; }
   .mobile-results-more, .mobile-results-end { padding: 20px 0; text-align: center; color: var(--edu-muted); font-size: 12px; }
   .mobile-results-more button { background: var(--edu-mint); color: var(--edu-green); border: 1px solid var(--edu-line); border-radius: 8px; padding: 12px 20px; font: inherit; cursor: pointer; }

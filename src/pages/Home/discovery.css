@@ -186,7 +186,7 @@
     grid-column: 3;
     grid-row: 1;
   }
-  .edu-home--discovery .discovery-section__header :is(select[name="subject"], select[aria-label="Sắp xếp"]) {
+  .edu-home--discovery .discovery-section__header select[aria-label="Sắp xếp"] {
     grid-column: 1 / 3;
     grid-row: 2;
   }

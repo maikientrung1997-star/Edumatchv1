@@ -91,6 +91,21 @@ export const Header = () => {
   const accountMenuRef = useRef(null);
   const headerRef = useRef(null);
   const mobileSearchTriggerRef = useRef(null);
+  const mobileMenuTriggerRef = useRef(null);
+  const mobileMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (activeMobilePanel !== 'menu') return;
+
+    const closeMenuOutside = (event) => {
+      if (mobileMenuTriggerRef.current?.contains(event.target) || mobileMenuRef.current?.contains(event.target)) return;
+      setMobilePanel(null);
+    };
+
+    document.addEventListener('pointerdown', closeMenuOutside, true);
+    return () => document.removeEventListener('pointerdown', closeMenuOutside, true);
+  }, [activeMobilePanel]);
+
   useEffect(() => {
     const header = headerRef.current;
     const site = header?.closest('.edu-site');
@@ -452,6 +467,7 @@ export const Header = () => {
         <button
           type="button"
           className="mobile-menu-toggle"
+          ref={mobileMenuTriggerRef}
           onClick={() => toggleMobilePanel('menu')}
           aria-label={activeMobilePanel === 'menu' ? 'Đóng menu' : 'Mở menu'}
           aria-expanded={activeMobilePanel === 'menu'}
@@ -493,7 +509,7 @@ export const Header = () => {
         </div>
       )}
       {activeMobilePanel === 'menu' && (
-        <nav id="mobile-navigation" className="mobile-navigation" aria-label="Điều hướng trên điện thoại">
+        <nav id="mobile-navigation" ref={mobileMenuRef} className="mobile-navigation" aria-label="Điều hướng trên điện thoại">
           {isAuthenticated && (
             <Link
               to={ROUTES.TEACHER_PROFILE(user.id)}

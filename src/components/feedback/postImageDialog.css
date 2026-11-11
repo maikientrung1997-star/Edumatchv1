@@ -110,6 +110,12 @@
   .post-image-dialog__mobile-entry .post-image-dialog__comments > p { color: var(--edu-muted); }
   :is(.post-image-dialog__mobile-entry, .post-image-comments-sheet) :is(.feed-comment-form, .post-comment-form, .feed-reply-form) { flex-direction: row; }
   :is(.post-image-dialog__mobile-entry, .post-image-comments-sheet) :is(.feed-comment-form, .post-comment-form, .feed-reply-form) textarea { font-size: 16px; }
+  /* Ô trả lời bình luận giữ cỡ chữ gọn như ô trả lời ở Bảng tin, không phóng to như ô bình luận chính */
+  :is(.post-image-dialog__mobile-entry, .post-image-comments-sheet) .reply-composer-box.reply-composer-box > textarea {
+    min-height: 30px;
+    font-size: var(--text-control);
+    line-height: var(--text-control--line-height);
+  }
 
   .post-image-comments-overlay {
     align-items: flex-end;

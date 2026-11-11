@@ -1086,6 +1086,16 @@
   margin: 0;
   accent-color: var(--edu-green);
 }
+/* Desktop: hai lựa chọn sắp xếp luôn nằm cùng một hàng cạnh tiêu đề */
+@media (min-width: 721px) {
+  .course-sort {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+  .course-sort label {
+    white-space: nowrap;
+  }
+}
 .course-pagination {
   display: flex;
   align-items: center;

@@ -1715,7 +1715,7 @@ export function TeacherProfilePage() {
                         submitOnPlainEnter(event);
                       }}
                       placeholder={`Trả lời ${replyTarget?.replyToName || authorName}...`}
-                      rows="2"
+                      rows="1"
                     />
                   </div>
                   <ImageAttachment id={`viewer-profile-reply-image-${item.id}`} value={replyMedia} onChange={setReplyMedia} />
@@ -1919,7 +1919,7 @@ export function TeacherProfilePage() {
       onEditMedia={updateViewedMediaDescription}
       onDeleteMedia={deleteViewedMedia}
     />
-    <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" description="Thêm suy nghĩ của bạn trước khi chia sẻ lên trang cá nhân." size="sm">
+    <Modal open={Boolean(shareTarget)} onClose={() => setShareTarget(null)} title="Chia sẻ bài viết" size="sm">
       <form className="share-post-form" onSubmit={sharePost}><textarea autoFocus value={shareText} onChange={(event) => setShareText(event.target.value)} placeholder="Viết nội dung bạn muốn chia sẻ..." rows="4" /><div><button type="button" onClick={() => setShareTarget(null)}>Hủy</button><button type="submit"><Share2 size={16} /> Chia sẻ</button></div></form>
     </Modal>
     <Modal

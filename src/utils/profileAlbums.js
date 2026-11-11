@@ -9,6 +9,7 @@ export const normalizeProfileAlbums = (value) => (Array.isArray(value) ? value :
     id: String(item?.id || `media-${mediaIndex}`),
     src: typeof item === 'string' ? item : item?.src || '',
     storageKey: typeof item === 'object' ? item?.storageKey || '' : '',
+    key: typeof item === 'object' ? item?.key || '' : '',
     type: typeof item === 'object' && item?.type === 'video' ? 'video' : 'image',
     description: typeof item === 'object' ? String(item?.description || item?.caption || '').trim() : '',
   })).filter((item) => item.src || item.storageKey),
@@ -33,5 +34,6 @@ export const saveProfileAlbumsToStorage = (profileId, albums) => {
 
 export const addMediaToProfileAlbum = (albums, albumId, media) => normalizeProfileAlbums(albums).map((album) => album.id !== albumId ? album : {
   ...album,
-  media: [...album.media, ...media.map((item) => ({ ...item, description: item.description || '' }))],
+  media: [...album.media, ...media.filter((item) => !album.media.some((existing) => existing.id === item.id))
+    .map((item) => ({ ...item, description: item.description || '' }))],
 });

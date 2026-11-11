@@ -3,19 +3,16 @@ import { CalendarDays, Clock3, Heart, Monitor, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { RoleAvatar, normalizeRole } from '@/components/common/DefaultRoleAvatar';
 import { ROUTES } from '@/constants/routes';
-import { enrollmentLabel, getCourseRating, getProviderTrustCount, modeLabel, paymentLabel } from '@/features/learning/marketplace';
+import { enrollmentLabel, modeLabel, paymentLabel } from '@/features/learning/marketplace';
 
 const formatCurrency = (value) =>
   Number(value) > 0 ? `${new Intl.NumberFormat('vi-VN').format(value)}đ` : 'Liên hệ';
 
 export function CourseCard({ course, editable = false, sponsored = false }) {
-  const storedRating = getCourseRating(course.id);
-  const rating = storedRating.total
-    ? storedRating
-    : { total: Number(course.reviewCount || 0), average: Number(course.rating || 0) };
+  const rating = { total: Number(course.reviewCount || 0), average: Number(course.rating || 0) };
   const teacherRole = normalizeRole(course.teacher.role, course.teacher.name, course.teacher.id, 'teacher');
   const isCenter = teacherRole === 'center';
-  const trustCount = getProviderTrustCount(course.teacher.id, course.teacher.heartCount);
+  const trustCount = Number(course.teacher.heartCount || 0);
   return (
     <article className="course-card">
       <div className="course-card__top">

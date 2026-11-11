@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
-import { chatService, chatError } from '@/services/chatService';
+import { courseError, courseService, providerService } from '@/services/courseService';
 import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar, normalizeRole } from '@/components/common/DefaultRoleAvatar';
@@ -13,9 +13,11 @@ import { ContentMenu } from '@/components/feedback/ContentMenu';
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
+import { RequestNotice, Skeleton } from '@/components/feedback/RequestState';
+import { CourseDetailLoading } from './LearningLoading';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
 import { formatRelativeTime } from '@/utils/formatDate';
-import { addCourseRatingTrust, addCourseReview, addCourseReviewReply, createConversationId, createNotification, deleteCourseReview, enrollmentLabel, getAge, getCourse, getCourseReviews, getProviderTrustCount, modeLabel, paymentLabel, toggleCourseReviewLike, trackProviderAffinity, updateCourse, updateCourseReview } from '@/features/learning/marketplace';
+import { enrollmentLabel, getAge, modeLabel, paymentLabel } from '@/features/learning/marketplace';
 import './courses.css';
 
 const formatCurrency = (value) =>
@@ -32,7 +34,6 @@ const anonymousCodeFromId = (id) => {
 };
 
 const getAnonymousReviewLabel = (review) => `Học viên ẩn danh ${review.anonymousCode || anonymousCodeFromId(review.id)}`;
-const createAnonymousCode = () => `HV-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
 function ReviewContentEditor({ text, media, onCancel, onSave }) {
   const [draft, setDraft] = useState(text || '');
@@ -55,12 +56,17 @@ function ReviewContentEditor({ text, media, onCancel, onSave }) {
 
 export function CourseDetailPage() {
   const { courseId } = useParams();
+  const { user } = useAuth();
+  return <CourseDetails key={courseId + ':' + (user?.id ?? 'guest')} courseId={courseId} />;
+}
+
+function CourseDetails({ courseId }) {
   const navigate = useNavigate();
   const chatOpening = useRef(false);
   const isSubmittingReview = useRef(false);
   const { user, isAuthenticated } = useAuth();
   const { isOnline } = useOnlinePresence(user?.id);
-  const [reviews, setReviews] = useState(() => getCourseReviews(courseId));
+  const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [reviewMedia, setReviewMedia] = useState(null);
@@ -72,142 +78,137 @@ export function CourseDetailPage() {
   const [likesTarget, setLikesTarget] = useState(null);
   const [message, setMessage] = useState('Chào thầy/cô, em muốn trao đổi thêm để sắp xếp lịch học phù hợp ạ.');
   const [showMessage, setShowMessage] = useState(false);
-  const [course, setCourse] = useState(() => getCourse(courseId));
+  const [course, setCourse] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [courseAttempt, setCourseAttempt] = useState(0);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState(false);
+  const [reviewsAttempt, setReviewsAttempt] = useState(0);
+  const retryReviews = () => {
+    setReviewsLoading(true);
+    setReviewsError(false);
+    setReviewsAttempt((value) => value + 1);
+  };
+  const retryCourse = () => {
+    setLoadError(null);
+    setCourseAttempt((value) => value + 1);
+    if (reviewsError) retryReviews();
+  };
+  const [confirmAction, setConfirmAction] = useState(null);
+  const saving = useRef(false);
   useEffect(() => {
-    const refreshReviews = () => setReviews(getCourseReviews(courseId));
-    window.addEventListener('edumatch:course-reviews-updated', refreshReviews);
-    return () => window.removeEventListener('edumatch:course-reviews-updated', refreshReviews);
-  }, [courseId]);
-  const displayReviews = reviews.filter((item, index, self) =>
-    index === self.findIndex((r) => r.id === item.id)
-  );
+    let active = true;
+    courseService.show(courseId).then((data) => {
+      if (active) setCourse(data);
+    }).catch((error) => {
+      if (active) setLoadError(error);
+    });
+    return () => { active = false; };
+  }, [courseId, courseAttempt]);
+
+  useEffect(() => {
+    let active = true;
+    courseService.reviews(courseId).then((data) => {
+      if (active) setReviews(data);
+    }).catch((error) => {
+      if (active) setReviewsError(error.response?.status !== 404);
+    }).finally(() => { if (active) setReviewsLoading(false); });
+    return () => { active = false; };
+  }, [courseId, reviewsAttempt]);
+
+  const displayReviews = reviews;
   const averageRating = displayReviews.length
     ? displayReviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / displayReviews.length
     : 0;
+  if (!course && !loadError) return <CourseDetailLoading />;
+  if (!course && loadError?.response?.status !== 404) return (
+    <section className="learning-page">
+      <div className="learning-container">
+        <RequestNotice title="Không tải được khóa học" description="Vui lòng thử lại sau ít phút." onRetry={retryCourse}>
+          <Link to={ROUTES.HOME}>Về trang chủ</Link>
+        </RequestNotice>
+      </div>
+    </section>
+  );
   if (!course) return <section className="learning-page"><div className="learning-empty"><h1>Không tìm thấy khóa học</h1><p>Khóa học có thể đã được gỡ hoặc đường dẫn không còn hợp lệ.</p><Link to={ROUTES.HOME}>Về trang chủ</Link></div></section>;
-  const isCourseOwner = isAuthenticated && user?.id === course.teacher.id;
-  const ownsReviewContent = (authorId) => user?.id != null && authorId != null && String(authorId) === String(user.id);
-  const hasRatedCourse = isAuthenticated && displayReviews.some((item) => ownsReviewContent(item.authorId));
+  const isCourseOwner = isAuthenticated && user?.id === course.teacher?.id;
+  const hasRatedCourse = displayReviews.some((item) => item.isOwner);
   const teacherRole = normalizeRole(course.teacher?.role, course.teacher?.name, course.teacher?.id, 'teacher');
   const isCenterCourse = teacherRole === 'center';
   const providerIsOnline = isOnline(course.teacher?.id);
   const providerType = isCenterCourse ? 'Trung tâm Đào tạo' : 'giáo viên';
   const publicPhone = Boolean(course.teacher?.isPhonePublic && course.teacher?.phone);
-  const providerTrustCount = getProviderTrustCount(course.teacher.id, course.teacher.heartCount);
+  const providerTrustCount = course.teacher.heartCount;
   const isEnrollmentOpen = course.enrollmentStatus !== 'closed';
-  const updateEnrollmentStatus = () => {
-    const enrollmentStatus = isEnrollmentOpen ? 'closed' : 'open';
-    const updatedCourse = updateCourse(course.id, { enrollmentStatus });
-    if (updatedCourse) setCourse(updatedCourse);
-    toast.success(enrollmentStatus === 'open' ? 'Lớp đã được mở tuyển sinh.' : 'Lớp đã đóng tuyển sinh.');
+  const updateEnrollmentStatus = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    const status = isEnrollmentOpen ? 'closed' : 'open';
+    try {
+      setCourse(await courseService.updateEnrollmentStatus(course.id, status));
+      toast.success(status === 'open' ? 'Lớp đã được mở tuyển sinh.' : 'Lớp đã đóng tuyển sinh.');
+    } catch (error) {
+      toast.error(courseError(error));
+    } finally {
+      saving.current = false;
+    }
   };
-  const review = (event) => {
-    event.preventDefault();
+  const changeReview = async (action, onSuccess, refreshProvider = false) => {
     if (isSubmittingReview.current) return;
-    if (!isAuthenticated) { toast.error('Vui lòng đăng nhập với tài khoản học viên để đánh giá.'); return; }
-    if (hasRatedCourse) { toast.error('Bạn chỉ có thể đánh giá sao một lần cho mỗi khóa học.'); return; }
-    if (!comment.trim() && !reviewMedia) { toast.error('Hãy viết nhận xét hoặc đính kèm ảnh trước khi gửi.'); return; }
     isSubmittingReview.current = true;
     try {
-      const next = { id: `review-${Date.now()}`, courseId, rating, comment: comment.trim(), media: reviewMedia, author: user.name || 'Học viên EduMatch', authorId: user.id, isAnonymous: isAnonymousReview, anonymousCode: isAnonymousReview ? createAnonymousCode() : '', createdAt: new Date().toISOString() };
-      addCourseReview(next);
-      trackProviderAffinity(user.id, course.teacher.id, 'reviewed-course', 5);
-      if (rating === 5) addCourseRatingTrust(user.id, course.teacher.id, course.id);
-      if (course.teacher.id !== user.id) {
-        createNotification({
-          recipientId: course.teacher.id,
-          actorName: isAnonymousReview ? 'Một học viên ẩn danh' : user.name || 'Một học viên',
-          actorAvatar: user.avatar || '',
-          type: 'course_rating',
-          title: `${isAnonymousReview ? 'Một học viên ẩn danh' : user.name || 'Một học viên'} đã đánh giá ${rating} sao cho khóa học của bạn`,
-          description: comment.trim(),
-          link: ROUTES.COURSE_DETAIL(courseId),
-        });
+      await action();
+      onSuccess?.();
+      setReviews(await courseService.reviews(courseId));
+      if (refreshProvider) {
+        const provider = await providerService.show(course.teacher.id);
+        setCourse((current) => ({ ...current, teacher: { ...current.teacher, heartCount: provider.heartCount } }));
       }
-      setReviews(getCourseReviews(courseId));
-      setComment('');
-      setReviewMedia(null);
-      setIsAnonymousReview(false);
-      toast.success('Cảm ơn đánh giá của bạn!');
+    } catch (error) {
+      toast.error(courseError(error));
     } finally {
       isSubmittingReview.current = false;
     }
   };
+  const review = (event) => {
+    event.preventDefault();
+    if (user?.role !== 'student') { toast.error('Vui lòng đăng nhập với tài khoản học viên để đánh giá.'); return; }
+    if (hasRatedCourse) { toast.error('Bạn chỉ có thể đánh giá sao một lần cho mỗi khóa học.'); return; }
+    if (!comment.trim() && !reviewMedia) { toast.error('Hãy viết nhận xét hoặc đính kèm ảnh trước khi gửi.'); return; }
+    changeReview(() => courseService.addReview(courseId, { rating, comment: comment.trim(), media: reviewMedia, isAnonymous: isAnonymousReview }), () => {
+      setComment('');
+      setReviewMedia(null);
+      setIsAnonymousReview(false);
+      toast.success('Cảm ơn đánh giá của bạn!');
+    }, true);
+  };
   const replyToReview = (event, review) => {
     event.preventDefault();
-    if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để trả lời đánh giá.'); return; }
     const text = String(replyDrafts[review.id] || '').trim();
     const media = replyMedia[review.id] || null;
     if (!text && !media) return;
-    const isAnonymousOwnerReply = Boolean(review.isAnonymous && ownsReviewContent(review.authorId));
-    const reply = {
-      id: createConversationId('review-reply'),
-      author: user.name || 'Thành viên EduMatch',
-      authorId: user.id,
-      isAnonymous: isAnonymousOwnerReply,
-      isReviewOwner: isAnonymousOwnerReply,
-      text,
-      media,
-      createdAt: new Date().toISOString(),
-    };
-    addCourseReviewReply(review.id, reply);
-    setReviews(getCourseReviews(courseId));
-    setReplyDrafts((current) => ({ ...current, [review.id]: '' }));
-    setReplyMedia((current) => ({ ...current, [review.id]: null }));
-    if (review.authorId && !ownsReviewContent(review.authorId)) {
-      createNotification({
-        recipientId: review.authorId,
-        actorName: isAnonymousOwnerReply ? 'Học viên ẩn danh' : user.name || 'Một thành viên',
-        actorAvatar: user.avatar || '',
-        type: 'course_comment',
-        title: `${isAnonymousOwnerReply ? 'Học viên ẩn danh' : user.name || 'Một thành viên'} đã trả lời đánh giá của bạn`,
-        description: text,
-        link: ROUTES.COURSE_DETAIL(courseId),
-      });
-    }
-    toast.success('Đã gửi phản hồi.');
+    changeReview(() => courseService.addReply(review.id, { comment: text, media }), () => {
+      setReplyDrafts((current) => ({ ...current, [review.id]: '' }));
+      setReplyMedia((current) => ({ ...current, [review.id]: null }));
+      toast.success('Đã gửi phản hồi.');
+    });
   };
+  const reviewPath = (review, reply) => reply ? '/review-replies/' + reply.id : '/reviews/' + review.id;
   const toggleReviewLike = (review, reply = null) => {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để thích bình luận.'); return; }
-    const target = reply || review;
-    const hadLiked = (target.likes || []).includes(user.id);
-    toggleCourseReviewLike(review.id, user.id, reply?.id);
-    setReviews(getCourseReviews(courseId));
-    if (!hadLiked && target.authorId && target.authorId !== user.id) {
-      createNotification({
-        recipientId: target.authorId,
-        actorName: user.name || 'Một thành viên',
-        actorAvatar: user.avatar || '',
-        type: 'course_comment',
-        title: `${user.name || 'Một thành viên'} đã thích bình luận của bạn`,
-        description: 'Bấm để xem đánh giá khóa học.',
-        link: ROUTES.COURSE_DETAIL(courseId),
-      });
-    }
+    changeReview(() => courseService.likeReview(reviewPath(review, reply), !(reply || review).likes.includes(user.id)));
   };
   const saveReviewContent = (review, reply, text, media) => {
-    const target = reply || review;
-    if (!ownsReviewContent(target.authorId)) return;
-    if (reply && !text && !media) return;
-    updateCourseReview(review.id, (current) => reply
-      ? { ...current, replies: (current.replies || []).map((item) => item.id === reply.id ? { ...item, text, media } : item) }
-      : { ...current, comment: text, media });
-    setReviews(getCourseReviews(courseId));
-    setEditingContent(null);
+    if (!(reply || review).isOwner || (!text && !media)) return;
+    changeReview(() => courseService.editReview(reviewPath(review, reply), { comment: text, media }), () => setEditingContent(null));
   };
-  const [confirmAction, setConfirmAction] = useState(null);
   const removeReviewContent = (review, reply = null) => {
-    const target = reply || review;
-    if (!ownsReviewContent(target.authorId)) return;
+    if (!(reply || review).isOwner) return;
     setConfirmAction({
       title: reply ? 'Xóa phản hồi' : 'Xóa đánh giá',
       message: reply ? 'Bạn có chắc chắn muốn xóa phản hồi này?' : 'Bạn có chắc chắn muốn xóa đánh giá này?',
       confirmText: 'Xóa',
-      onConfirm: () => {
-        if (reply) updateCourseReview(review.id, (current) => ({ ...current, replies: (current.replies || []).filter((item) => item.id !== reply.id) }));
-        else deleteCourseReview(review.id);
-        setReviews(getCourseReviews(courseId));
-      },
+      onConfirm: () => changeReview(() => courseService.removeReview(reviewPath(review, reply)), null, !reply),
     });
   };
   const send = async (event) => {
@@ -216,10 +217,10 @@ export function CourseDetailPage() {
     if (!message.trim() || chatOpening.current) return;
     chatOpening.current = true;
     try {
-      const conversation = await chatService.startDirect(course.teacher.id, message);
+      const { conversation } = await courseService.enroll(course.id, message.trim());
       setShowMessage(false);
       navigate(`${ROUTES.MESSAGES}?conversation=${conversation.id}`);
-    } catch (error) { toast.error(chatError(error)); }
+    } catch (error) { toast.error(courseError(error)); }
     finally { chatOpening.current = false; }
   };
   return <><section className="learning-page"><div className="learning-container course-detail">
@@ -232,16 +233,22 @@ export function CourseDetailPage() {
       {course.learningMode === 'in-person' && <section className="detail-block"><h2>Địa điểm</h2><p>{course.inPersonType === 'home' ? 'Nhận dạy tại ' : 'Lớp học tại '}{course.location}</p></section>}
       <section className="teacher-profile-card"><div className="teacher-profile-card__avatar"><RoleAvatar src={course.teacher.avatar} userId={course.teacher.id} name={course.teacher.name} role={teacherRole} size={23} alt={`Ảnh đại diện của ${course.teacher.name}`} /></div><div className="teacher-profile-card__info"><p>{isCenterCourse ? 'TRUNG TÂM ĐÀO TẠO' : 'GIÁO VIÊN ĐỒNG HÀNH'}</p><Link className="teacher-profile-card__name" to={ROUTES.TEACHER_PROFILE(course.teacher.id)}><h2>{course.teacher.name}</h2></Link><span className={`teacher-profile-card__trust ${providerTrustCount < 3 ? 'is-new' : ''}`}>{providerTrustCount < 3 ? 'Mới trên EduMatch' : <><Heart size={14} fill="currentColor" /> {providerTrustCount} lượt tin tưởng</>}</span><VerifiedBadge userId={course.teacher.id} provider={course.teacher} />{course.teacher.bio && <p className="teacher-profile-card__intro">{course.teacher.bio}</p>}</div><div className="teacher-profile-card__details"><dl className="teacher-profile-card__facts"><div><dt>Lĩnh vực giảng dạy</dt><dd>{course.teacher.teachingField || course.subject || 'Đang cập nhật'}</dd></div>{isCenterCourse ? <div><dt>Năm thành lập</dt><dd>{course.teacher.foundedYear || 'Đang cập nhật'}</dd></div> : <><div><dt>Tuổi</dt><dd>{getAge(course.teacher.dob)} tuổi</dd></div><div><dt>Bằng cấp, chứng chỉ</dt><dd>{course.teacher.qualifications || 'Đang cập nhật'}</dd></div><div><dt>Kinh nghiệm giảng dạy</dt><dd>{course.teacher.experience || 'Đang cập nhật'}</dd></div></>}</dl>{publicPhone && <a className="teacher-profile-card__phone" href={`tel:${course.teacher.phone.replace(/\s/g, '')}`}><Phone size={16} /><span>Số điện thoại liên hệ</span><strong>{course.teacher.phone}</strong></a>}</div></section>
       <section className="review-section"><div className="detail-block__head"><div><h2>Đánh giá khóa học</h2></div>{displayReviews.length > 0 && <div className="review-summary"><Star size={18} fill="currentColor" /><strong>{averageRating.toFixed(1)}</strong><span>/ 5 · {displayReviews.length} đánh giá</span></div>}</div>
-        {!isCourseOwner && !hasRatedCourse && <form className="review-form" onSubmit={review}><div className="star-picker" aria-label="Chọn số sao">{[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} onClick={() => setRating(value)} aria-label={`${value} sao`}><Star size={21} fill={value <= rating ? 'currentColor' : 'none'} /></button>)}</div><textarea value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder="Chia sẻ trải nghiệm của bạn về khóa học..." rows="3" /><div className="review-form__actions"><label className="anonymous-choice"><input type="checkbox" checked={isAnonymousReview} onChange={(event) => setIsAnonymousReview(event.target.checked)} /> Đánh giá ẩn danh</label><ImageAttachment id="review-image" value={reviewMedia} onChange={setReviewMedia} /><button type="submit">Gửi đánh giá</button></div></form>}
+        {reviewsLoading && <div className="learning-skeleton__person">
+          <span className="sr-only" role="status">Đang tải đánh giá</span>
+          <Skeleton width={34} height={34} className="request-skeleton--round" />
+          <div className="learning-skeleton__lines"><Skeleton width="35%" /><Skeleton width="72%" /></div>
+        </div>}
+        {reviewsError && <RequestNotice title="Không tải được đánh giá" onRetry={retryReviews} />}
+        {!reviewsLoading && !reviewsError && (!isAuthenticated || user?.role === 'student') && !hasRatedCourse && <form className="review-form" onSubmit={review}><div className="star-picker" aria-label="Chọn số sao">{[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} onClick={() => setRating(value)} aria-label={`${value} sao`}><Star size={21} fill={value <= rating ? 'currentColor' : 'none'} /></button>)}</div><textarea value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder="Chia sẻ trải nghiệm của bạn về khóa học..." rows="3" /><div className="review-form__actions"><label className="anonymous-choice"><input type="checkbox" checked={isAnonymousReview} onChange={(event) => setIsAnonymousReview(event.target.checked)} /> Đánh giá ẩn danh</label><ImageAttachment id="review-image" value={reviewMedia} onChange={setReviewMedia} /><button type="submit">Gửi đánh giá</button></div></form>}
         <div className="review-list">{displayReviews.map((item) => {
           const isReviewLiked = (item.likes || []).includes(user?.id);
           return <article key={item.id}>
-            <div className="discussion-item__head"><ReviewAuthor authorId={item.authorId} name={item.author} isAnonymous={item.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} /><span className="review-item__rating">{Array.from({ length: item.rating }, (_, index) => <Star key={index} size={13} fill="currentColor" />)}</span>{ownsReviewContent(item.authorId) && <ContentMenu id={`review-${item.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => setEditingContent(`review-${item.id}`)} onDelete={() => removeReviewContent(item)} label="đánh giá" />}</div>
-            {editingContent === `review-${item.id}` && ownsReviewContent(item.authorId) ? <ReviewContentEditor text={item.comment} media={item.media} onCancel={() => setEditingContent(null)} onSave={(text, media) => saveReviewContent(item, null, text, media)} /> : <>{item.comment && <p>{item.comment}</p>}<DiscussionMedia media={item.media} className="review-media" alt="Ảnh đính kèm trong đánh giá" expandable /></>}<time className="review-item__time" dateTime={item.createdAt || undefined}>{formatRelativeTime(item.createdAt)}</time>
-            <div className="review-item__actions"><button type="button" className={isReviewLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item)}><Heart size={14} fill={isReviewLiked ? 'currentColor' : 'none'} /> Thích</button>{item.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ ids: item.likes, label: 'Những người đã thích đánh giá này' })}>{item.likes.length} lượt thích</button>}</div>
+            <div className="discussion-item__head"><ReviewAuthor authorId={item.authorId} name={item.author} isAnonymous={item.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} /><span className="review-item__rating">{Array.from({ length: item.rating }, (_, index) => <Star key={index} size={13} fill="currentColor" />)}</span>{item.isOwner && <ContentMenu id={`review-${item.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => setEditingContent(`review-${item.id}`)} onDelete={() => removeReviewContent(item)} label="đánh giá" />}</div>
+            {editingContent === `review-${item.id}` && item.isOwner ? <ReviewContentEditor text={item.comment} media={item.media} onCancel={() => setEditingContent(null)} onSave={(text, media) => saveReviewContent(item, null, text, media)} /> : <>{item.comment && <p>{item.comment}</p>}<DiscussionMedia media={item.media} className="review-media" alt="Ảnh đính kèm trong đánh giá" expandable /></>}<time className="review-item__time" dateTime={item.createdAt || undefined}>{formatRelativeTime(item.createdAt)}</time>
+            <div className="review-item__actions"><button type="button" className={isReviewLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item)}><Heart size={14} fill={isReviewLiked ? 'currentColor' : 'none'} /> Thích</button>{item.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ people: item.likedBy, label: 'Những người đã thích đánh giá này' })}>{item.likes.length} lượt thích</button>}</div>
             {item.replies?.length > 0 && <div className="review-replies">{item.replies.map((reply) => {
               const isReplyLiked = (reply.likes || []).includes(user?.id);
-              return <div className="review-reply" key={reply.id}><div className="discussion-item__head"><div className="review-reply__identity"><ReviewAuthor authorId={reply.authorId} name={reply.author} isAnonymous={reply.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} />{reply.isReviewOwner && <span>Chủ đánh giá</span>}</div>{ownsReviewContent(reply.authorId) && <ContentMenu id={`review-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => setEditingContent(`review-reply-${reply.id}`)} onDelete={() => removeReviewContent(item, reply)} label="phản hồi" />}</div>{editingContent === `review-reply-${reply.id}` && ownsReviewContent(reply.authorId) ? <ReviewContentEditor text={reply.text} media={reply.media} onCancel={() => setEditingContent(null)} onSave={(text, media) => saveReviewContent(item, reply, text, media)} /> : <>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="review-media" alt="Ảnh đính kèm trong phản hồi" expandable /></>}<time className="review-reply__time" dateTime={reply.createdAt || undefined}>{formatRelativeTime(reply.createdAt)}</time><div className="review-reply__actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item, reply)}><Heart size={13} fill={isReplyLiked ? 'currentColor' : 'none'} /> Thích</button>{reply.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })}>{reply.likes.length} lượt thích</button>}</div></div>;
+              return <div className="review-reply" key={reply.id}><div className="discussion-item__head"><div className="review-reply__identity"><ReviewAuthor authorId={reply.authorId} name={reply.author} isAnonymous={reply.isAnonymous} anonymousLabel={getAnonymousReviewLabel(item)} />{reply.isReviewOwner && <span>Chủ đánh giá</span>}</div>{reply.isOwner && <ContentMenu id={`review-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => setEditingContent(`review-reply-${reply.id}`)} onDelete={() => removeReviewContent(item, reply)} label="phản hồi" />}</div>{editingContent === `review-reply-${reply.id}` && reply.isOwner ? <ReviewContentEditor text={reply.text} media={reply.media} onCancel={() => setEditingContent(null)} onSave={(text, media) => saveReviewContent(item, reply, text, media)} /> : <>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="review-media" alt="Ảnh đính kèm trong phản hồi" expandable /></>}<time className="review-reply__time" dateTime={reply.createdAt || undefined}>{formatRelativeTime(reply.createdAt)}</time><div className="review-reply__actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleReviewLike(item, reply)}><Heart size={13} fill={isReplyLiked ? 'currentColor' : 'none'} /> Thích</button>{reply.likes?.length > 0 && <button type="button" className="review-likes-count" onClick={() => setLikesTarget({ people: reply.likedBy, label: 'Những người đã thích phản hồi này' })}>{reply.likes.length} lượt thích</button>}</div></div>;
             })}</div>}
             {isAuthenticated && <form className="review-reply-form" onSubmit={(event) => replyToReview(event, item)}><textarea value={replyDrafts[item.id] || ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [item.id]: event.target.value }))} onKeyDown={submitOnPlainEnter} placeholder="Viết phản hồi..." aria-label={`Phản hồi đánh giá của ${item.isAnonymous ? 'học viên ẩn danh' : item.author}`} rows="1" /><ImageAttachment id={`review-reply-image-${item.id}`} value={replyMedia[item.id] || null} onChange={(media) => setReplyMedia((current) => ({ ...current, [item.id]: media }))} /><button type="submit" aria-label="Gửi phản hồi" title="Gửi phản hồi"><Send size={15} aria-hidden="true" /></button></form>}
           </article>;

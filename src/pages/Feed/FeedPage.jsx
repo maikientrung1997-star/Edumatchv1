@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BadgeCheck, BookOpen, GraduationCap, Image as ImageIcon, Newspaper, School, Send, Share2, Sparkles, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { createNotification, deletePost, getCourses, getPostMediaItems, getPosts, getProviderAffinity, savePost, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
+import { createNotification, deletePost, getPostMediaItems, getPosts, getProviderAffinity, savePost, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
 import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { useAuth } from '@/hooks/useAuth';
+import { profileService } from '@/services/profileService';
+import { courseError } from '@/services/courseService';
 import { POST_COMMENTS_ANCHOR, ROUTES } from '@/constants/routes';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar, normalizeRole, resolveAvatarSource } from '@/components/common/DefaultRoleAvatar';
@@ -23,16 +25,32 @@ import { formatRelativeTime } from '@/utils/formatDate';
 import { addMediaToProfileAlbum, readProfileAlbums, saveProfileAlbumsToStorage } from '@/utils/profileAlbums';
 import './feed.css';
 
-const getAuthor = (item, providers) => {
+function SponsoredCards({ items = [], emptyMessage }) {
+  if (!items.length) return <div className="sponsored-card"><p>{emptyMessage}</p></div>;
+
+  return items.map(({ id, variant, brand, mark, markColor, title, description, href, linkLabel }) => (
+    <article key={id} className={variant ? 'sponsored-card sponsored-card--' + variant : 'sponsored-card'}>
+      <span className="sponsored-card__tag">Được tài trợ</span>
+      <div className="sponsored-card__brand">
+        {mark ? <span className={markColor ? 'sponsored-card__mark sponsored-card__mark--' + markColor : 'sponsored-card__mark'}>{mark}</span> : <BookOpen size={18} />}
+        <span>{brand}</span>
+      </div>
+      <h2>{title}</h2>
+      <p>{description}</p>
+      <Link to={href}>{linkLabel} <ArrowRight size={15} /></Link>
+    </article>
+  ));
+}
+
+const getAuthor = (item) => {
   const id = item.authorId || item.teacherId || '';
-  const provider = providers.get(id);
-  const name = item.authorName || item.author || provider?.name || 'Thành viên EduMatch';
+  const name = item.authorName || item.author || 'Thành viên EduMatch';
   return {
     id,
     name,
-    role: normalizeRole(item.authorRole || provider?.role, name, id, 'teacher'),
-    avatar: resolveAvatarSource(item.authorAvatar || provider?.avatar || '', id),
-    licenseVerificationStatus: item.authorLicenseVerificationStatus || provider?.licenseVerificationStatus || '',
+    role: normalizeRole(item.authorRole, name, id, 'teacher'),
+    avatar: resolveAvatarSource(item.authorAvatar || '', id),
+    licenseVerificationStatus: item.authorLicenseVerificationStatus || '',
   };
 };
 
@@ -104,7 +122,7 @@ export function FeedPage({ postId = null }) {
   const feedTabsStartRef = useRef(null);
   const feedTabsRef = useRef(null);
   const loadMoreRef = useRef(null);
-  const providers = useMemo(() => new Map(getCourses().map((course) => [course.teacher.id, course.teacher])), []);
+  const albumSaving = useRef(false);
   const ownProfileAlbums = useMemo(() => readProfileAlbums(user?.id, user?.photoAlbums), [user?.id, user?.photoAlbums]);
   const rankedPosts = useMemo(() => {
     const affinity = getProviderAffinity(user?.id);
@@ -130,8 +148,8 @@ export function FeedPage({ postId = null }) {
   const visiblePosts = postId
     ? rankedPosts.filter((post) => post.id === postId)
     : rankedPosts.filter((post) => feedTab === 'students'
-      ? getAuthor(post, providers).role === 'student'
-      : getAuthor(post, providers).role !== 'student');
+      ? getAuthor(post).role === 'student'
+      : getAuthor(post).role !== 'student');
   const renderedPosts = postId ? visiblePosts : visiblePosts.slice(0, visiblePostCount);
   const isProviderAccount = ['teacher', 'center'].includes(user?.role);
   const canPublishInCurrentFeed = !postId && (
@@ -271,7 +289,22 @@ export function FeedPage({ postId = null }) {
       albumName: matchedAlbum?.name || post?.albumName || '',
     });
   };
-  const createFeedAlbum = ({ name, description = '' }) => {
+  const persistAlbums = async (albums) => {
+    if (albumSaving.current) return false;
+    albumSaving.current = true;
+    try {
+      const { user: savedUser } = await profileService.saveAlbums(albums);
+      const savedAlbums = saveProfileAlbumsToStorage(user.id, savedUser.photoAlbums);
+      updateUser({ photoAlbums: savedAlbums });
+      return true;
+    } catch (error) {
+      toast.error(courseError(error, 'Không thể lưu album. Vui lòng thử lại.'));
+      return false;
+    } finally {
+      albumSaving.current = false;
+    }
+  };
+  const createFeedAlbum = async ({ name, description = '' }) => {
     if (!user?.id) return null;
     const album = {
       id: `profile-album-${Date.now()}`,
@@ -280,12 +313,9 @@ export function FeedPage({ postId = null }) {
       media: [],
       createdAt: new Date().toISOString(),
     };
-    const nextAlbums = [...ownProfileAlbums, album];
-    saveProfileAlbumsToStorage(user.id, nextAlbums);
-    updateUser({ photoAlbums: nextAlbums });
-    return album;
+    return await persistAlbums([...ownProfileAlbums, album]) ? album : null;
   };
-  const publishFeedPost = (event) => {
+  const publishFeedPost = async (event) => {
     event.preventDefault();
     if (!requireAuth()) return;
 
@@ -321,14 +351,10 @@ export function FeedPage({ postId = null }) {
       likes: [],
       comments: [],
     };
+    if (selectedAlbum && !await persistAlbums(addMediaToProfileAlbum(ownProfileAlbums, selectedAlbum.id, normalizedPostMedia))) return;
     if (!savePost(post)) {
       toast.error('Không thể lưu ảnh vào bộ nhớ trình duyệt. Vui lòng thử đăng ít ảnh hơn hoặc tải lại trang.');
       return;
-    }
-    if (postAlbumId && normalizedPostMedia.length && ownProfileAlbums.some((album) => album.id === postAlbumId)) {
-      const nextAlbums = addMediaToProfileAlbum(ownProfileAlbums, postAlbumId, normalizedPostMedia);
-      saveProfileAlbumsToStorage(user.id, nextAlbums);
-      updateUser({ photoAlbums: nextAlbums });
     }
     setPosts(getPosts().slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
     setPostDraft('');
@@ -342,8 +368,8 @@ export function FeedPage({ postId = null }) {
     event.preventDefault();
     if (!shareTarget || !requireAuth()) return;
     const { post, mediaId } = shareTarget;
-    const originalPost = getOriginalSharedPost(post, posts, (item) => getAuthor(item, providers));
-    const source = originalPost?.author || getAuthor(post, providers);
+    const originalPost = getOriginalSharedPost(post, posts, getAuthor);
+    const source = originalPost?.author || getAuthor(post);
     const originalMediaItems = getMediaItems(originalPost);
     const selectedMedia = mediaId ? originalMediaItems.find((item) => item.id === mediaId) : null;
     const sharedPost = {
@@ -517,7 +543,7 @@ export function FeedPage({ postId = null }) {
   };
 
   const viewerPost = imageViewer ? posts.find((post) => post.id === imageViewer.post.id) || imageViewer.post : null;
-  const viewerAuthor = imageViewer?.author || (viewerPost ? getAuthor(viewerPost, providers) : null);
+  const viewerAuthor = imageViewer?.author || (viewerPost ? getAuthor(viewerPost) : null);
   const viewerMediaItems = getMediaItems(viewerPost);
   const viewerMedia = viewerMediaItems.length > 1 ? viewerMediaItems[imageViewer?.activeIndex || 0] : null;
   const viewerInteractionTarget = viewerMedia || viewerPost;
@@ -562,7 +588,7 @@ export function FeedPage({ postId = null }) {
     };
   };
   const imageViewerDiscussion = viewerInteractionTarget ? <><div className="post-image-dialog__comments">{viewerInteractionTarget.comments?.length ? <PostCommentList items={viewerInteractionTarget.comments} renderItem={(comment) => {
-      const commentAuthor = getAuthor(comment, providers);
+      const commentAuthor = getAuthor(comment);
       const isReplying = replyTarget?.postId === viewerPost.id && replyTarget?.commentId === comment.id && replyTarget?.mediaId === viewerMedia?.id;
       const isCommentLiked = (comment.likes || []).includes(user?.id);
       return <div className="post-image-dialog__comment" key={comment.id}>
@@ -574,7 +600,7 @@ export function FeedPage({ postId = null }) {
         <DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable />
         <div className="post-image-dialog__comment-actions"><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, null, viewerMedia?.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(viewerPost.id, comment.id, viewerMedia?.id)}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
         <PostCommentList items={comment.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
-          const replyAuthor = getAuthor(reply, providers);
+          const replyAuthor = getAuthor(reply);
           const isReplyLiked = (reply.likes || []).includes(user?.id);
           return <div className="post-image-dialog__comment-reply" key={reply.id}><div className="discussion-item__head">
               {replyAuthor.id ? <Link to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}><strong>{replyAuthor.name}</strong></Link> : <strong>{replyAuthor.name}</strong>}
@@ -586,7 +612,7 @@ export function FeedPage({ postId = null }) {
     }} /> : null}</div><form className="feed-comment-form" onSubmit={(event) => submitComment(event, viewerPost.id, viewerMedia?.id)}><textarea autoFocus={isEditingViewerDiscussion} value={commentDrafts[viewerDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [viewerDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} aria-label={isEditingViewerDiscussion ? 'Chỉnh sửa bình luận' : 'Viết bình luận'} placeholder={isEditingViewerDiscussion ? undefined : 'Viết bình luận...'} rows="1" /><ImageAttachment id={`viewer-comment-image-${viewerDiscussionKey}`} value={commentMedia[viewerDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [viewerDiscussionKey]: media }))} />{isEditingViewerDiscussion && <button type="button" onClick={() => cancelDiscussionEdit(viewerPost.id, viewerMedia?.id)}>Hủy</button>}<button type="submit" aria-label={isEditingViewerDiscussion ? 'Lưu bình luận' : 'Gửi bình luận'}>{isEditingViewerDiscussion ? 'Lưu' : <Send size={17} />}</button></form></> : null;
 
   const detailPost = postId ? renderedPosts[0] : null;
-  const detailAuthor = detailPost ? getAuthor(detailPost, providers) : null;
+  const detailAuthor = detailPost ? getAuthor(detailPost) : null;
   const isEditingPostComment = detailPost && isEditingDiscussion(postId);
   const postDiscussionKey = discussionKey(postId);
   const closePostDetail = () => {
@@ -597,13 +623,13 @@ export function FeedPage({ postId = null }) {
   const postList = (
     <div className="feed-page__list">
       {visiblePosts.length ? renderedPosts.map((post) => {
-        const author = getAuthor(post, providers);
+        const author = getAuthor(post);
         const likes = post.likes || [];
         const comments = post.comments || [];
         const postCommentsUrl = ROUTES.POST_COMMENTS(post.id);
         const isLiked = likes.includes(user?.id);
         const postMediaItems = getMediaItems(post);
-        const originalSharedPost = post.sharedPost ? getOriginalSharedPost(post, posts, (item) => getAuthor(item, providers)) : null;
+        const originalSharedPost = post.sharedPost ? getOriginalSharedPost(post, posts, getAuthor) : null;
         const sourceMediaItems = getMediaItems(originalSharedPost);
         const sharedMediaItems = originalSharedPost?.mediaId ? sourceMediaItems.filter((item) => item.id === originalSharedPost.mediaId) : sourceMediaItems;
         const shareIds = [...new Set(posts.filter((candidate) => candidate.sharedPost?.id === post.id && !candidate.sharedPost?.mediaId).map((candidate) => candidate.authorId || candidate.teacherId).filter(Boolean))];
@@ -632,7 +658,7 @@ export function FeedPage({ postId = null }) {
           {postId && <section id={POST_COMMENTS_ANCHOR} className="community-post__discussion" aria-label="Bình luận">
             {comments.length ? <div className="community-post__comments">
               <PostCommentList items={comments} renderItem={(comment) => {
-                const commentAuthor = getAuthor(comment, providers);
+                const commentAuthor = getAuthor(comment);
                 const isReplying = replyTarget?.postId === post.id && replyTarget?.commentId === comment.id;
                 const isCommentLiked = (comment.likes || []).includes(user?.id);
                 return <div className="feed-comment" key={comment.id}>
@@ -644,7 +670,7 @@ export function FeedPage({ postId = null }) {
                       </div>{comment.text && <p>{comment.text}</p>}<DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable /></div>
                     <div className="feed-comment__meta"><span>{formatRelativeTime(comment.createdAt)}</span><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(post.id, comment.id)}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
                     <PostCommentList items={comment.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
-                      const replyAuthor = getAuthor(reply, providers);
+                      const replyAuthor = getAuthor(reply);
                       const isReplyLiked = (reply.likes || []).includes(user?.id);
                       return <div className="feed-comment__reply" key={reply.id}>
                         <RoleAvatar src={replyAuthor.avatar} userId={replyAuthor.id} name={replyAuthor.name} role={replyAuthor.role} size={14} alt="" />
@@ -696,27 +722,7 @@ export function FeedPage({ postId = null }) {
         <div className="feed-page__layout">
           <aside className="feed-sidebar feed-sidebar--left" aria-label="Nội dung được tài trợ">
             <div className="feed-sidebar__label"><Sparkles size={14} /> GỢI Ý TỪ EDUMATCH</div>
-            <article className="sponsored-card sponsored-card--teacher">
-              <span className="sponsored-card__tag">Được tài trợ</span>
-              <div className="sponsored-card__brand"><BookOpen size={18} /><span>THE OLD SCHOOL</span></div>
-              <h2>Luyện IELTS cá nhân hoá</h2>
-              <p>Lộ trình rõ ràng, lớp học linh hoạt cho mục tiêu IELTS của bạn.</p>
-              <Link to={ROUTES.COURSE_DETAIL('course-english-foundation')}>Khám phá khóa học <ArrowRight size={15} /></Link>
-            </article>
-            <article className="sponsored-card sponsored-card--skills">
-              <span className="sponsored-card__tag">Được tài trợ</span>
-              <div className="sponsored-card__brand"><span className="sponsored-card__mark sponsored-card__mark--violet">S</span><span>SKILLUP ACADEMY</span></div>
-              <h2>Học lập trình từ nền tảng</h2>
-              <p>Lớp thực hành theo dự án, phù hợp cho người mới bắt đầu.</p>
-              <Link to={`${ROUTES.HOME}#giao-vien`}>Tìm người hướng dẫn <ArrowRight size={15} /></Link>
-            </article>
-            <article className="sponsored-card sponsored-card--music">
-              <span className="sponsored-card__tag">Được tài trợ</span>
-              <div className="sponsored-card__brand"><span className="sponsored-card__mark sponsored-card__mark--rose">M</span><span>MELODY STUDIO</span></div>
-              <h2>Piano cho người mới</h2>
-              <p>Học theo nhịp riêng, từ những giai điệu đầu tiên.</p>
-              <Link to={`${ROUTES.HOME}#giao-vien`}>Khám phá giáo viên <ArrowRight size={15} /></Link>
-            </article>
+            <SponsoredCards emptyMessage="Chưa có nội dung tài trợ." />
             <article className="feed-sidebar__note"><BadgeCheck size={17} /><p>Quảng cáo luôn được gắn nhãn rõ ràng để bạn chủ động lựa chọn.</p></article>
           </aside>
           <main className="feed-page__main">
@@ -742,20 +748,7 @@ export function FeedPage({ postId = null }) {
           </main>
           <aside className="feed-sidebar feed-sidebar--right" aria-label="Thông tin đối tác được tài trợ">
             <div className="feed-sidebar__label">ĐỐI TÁC NỔI BẬT</div>
-            <article className="sponsored-card sponsored-card--center">
-              <span className="sponsored-card__tag">Được tài trợ</span>
-              <div className="sponsored-card__brand"><span className="sponsored-card__mark">E</span><span>TRUNG TÂM EDUCARE</span></div>
-              <h2>Không gian học tập hiện đại</h2>
-              <p>Các chương trình phát triển kỹ năng dành cho học viên ở nhiều độ tuổi.</p>
-              <Link to={ROUTES.CENTER_SUPPORT}>Tìm hiểu trung tâm <ArrowRight size={15} /></Link>
-            </article>
-            <article className="sponsored-card sponsored-card--art">
-              <span className="sponsored-card__tag">Được tài trợ</span>
-              <div className="sponsored-card__brand"><span className="sponsored-card__mark sponsored-card__mark--amber">A</span><span>ART HOUSE</span></div>
-              <h2>Mỹ thuật sáng tạo</h2>
-              <p>Khơi mở tư duy hình ảnh qua các lớp học thực hành.</p>
-              <Link to={`${ROUTES.HOME}#khoa-hoc`}>Xem lớp phù hợp <ArrowRight size={15} /></Link>
-            </article>
+            <SponsoredCards emptyMessage="Chưa có đối tác nổi bật." />
             <article className="feed-sidebar__help"><strong>Bạn muốn quảng bá?</strong><p>Giáo viên và trung tâm có thể giới thiệu khóa học phù hợp tới đúng người học.</p><Link to={ROUTES.CENTER_SUPPORT}>Xem hỗ trợ quảng bá <ArrowRight size={14} /></Link></article>
           </aside>
         </div>

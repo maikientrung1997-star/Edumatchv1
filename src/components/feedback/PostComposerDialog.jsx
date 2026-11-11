@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, GripVertical, Send, Trash2, Video, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment } from '@/components/forms/ImageAttachment';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -12,7 +12,7 @@ function useMediaReorder(media, onMediaChange, itemSelector) {
   const fallbackKeysRef = useRef(new WeakMap());
   const nextKeyIdRef = useRef(1);
   const mediaRef = useRef(media);
-  mediaRef.current = media;
+  useLayoutEffect(() => { mediaRef.current = media; }, [media]);
 
   const getMediaKey = (item, index) => {
     if (!item || typeof item !== 'object') return `media-${index}`;

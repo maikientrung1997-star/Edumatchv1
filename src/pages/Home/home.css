@@ -4544,3 +4544,26 @@
 @media (max-width: 360px) {
   .edu-home .mobile-listing-grid .course-card { padding-inline: 8px !important; }
 }
+
+.catalog-skeleton {
+  gap: 14px;
+  pointer-events: none;
+}
+
+.catalog-skeleton__split,
+.catalog-skeleton__identity,
+.catalog-skeleton__facts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalog-skeleton__split { justify-content: space-between; }
+.catalog-skeleton__stack { display: grid; flex: 1; min-width: 0; gap: 8px; }
+.catalog-skeleton__facts { padding-top: 12px; border-top: 1px solid var(--edu-line); }
+.catalog-skeleton__footer { margin-top: auto; }
+.mobile-listing-meta[hidden] { display: none; }
+
+@media (max-width: 767px) {
+  .catalog-skeleton:nth-of-type(3) { display: none; }
+}

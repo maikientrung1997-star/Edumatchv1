@@ -32,6 +32,7 @@ import './header.css';
 const notificationIcon = (type, notification) => {
   if (isApprovedVerificationNotification(notification)) return <PartyPopper size={15} />;
   if (type === 'verification_result') return <ShieldCheck size={15} />;
+  if (type === 'course_enrollment' || type === 'course_rating') return <GraduationCap size={15} />;
   if (type === 'post_like' || type === 'profile_like') return <Heart size={15} />;
   if (type === 'post_comment' || type === 'comment_reply' || type === 'course_comment') return <MessageCircle size={15} />;
   return <Info size={15} />;

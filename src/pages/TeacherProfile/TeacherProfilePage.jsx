@@ -7,14 +7,16 @@ import { STORAGE_KEYS } from '@/constants/storageKeys';
 import { useAuth } from '@/hooks/useAuth';
 import { chatService, chatError } from '@/services/chatService';
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
-import { masterDataService } from '@/services/masterDataService';
+import { courseError, providerService } from '@/services/courseService';
+import { RequestNotice } from '@/components/feedback/RequestState';
+import { ProviderProfileLoading } from '../Courses/LearningLoading';
 import { normalizeAuthUser } from '@/services/authService';
 import { profileService } from '@/services/profileService';
 import { requestError } from '@/utils/formErrors';
 import { formatRelativeTime } from '@/utils/formatDate';
 import { storage } from '@/utils/storage';
 import { hydrateMedia, saveImageMedia, saveVideoMedia } from '@/utils/mediaLibrary';
-import { createNotification, deletePost, getAge, getAlbumMediaInteractions, getCourses, getPostMediaItems, getPosts, getProviderTrustCount, getProviderTrustUserIds, hasProviderTrust, saveAlbumMediaInteraction, savePost, syncTeacherCourseProfile, toggleProviderTrust, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
+import { createNotification, deletePost, getAge, getAlbumMediaInteractions, getPostMediaItems, getPosts, saveAlbumMediaInteraction, savePost, trackProviderAffinity, updatePost, updatePostMediaItem } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
 import { ImageAttachment, MediaPickerButton } from '@/components/forms/ImageAttachment';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -33,7 +35,6 @@ import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
 import '@/components/feedback/expandableImage.css';
 import '@/components/courses/course.css';
 import '../Courses/courses.css';
-import { tutors } from '../Home/homeData';
 
 const SHORT_BIO_MAX_LENGTH = 500;
 const TEACHING_FIELD_MAX_LENGTH = 45;
@@ -113,6 +114,7 @@ const normalizePhotoAlbums = (value) => (Array.isArray(value) ? value : []).map(
     id: String(item?.id || `media-${mediaIndex}`),
     src: typeof item === 'string' ? item : item?.src || '',
     storageKey: typeof item === 'object' ? item?.storageKey || '' : '',
+    key: typeof item === 'object' ? item?.key || '' : '',
     type: typeof item === 'object' && item?.type === 'video' ? 'video' : 'image',
     description: typeof item === 'object' ? String(item?.description || item?.caption || '').trim() : '',
     likes: typeof item === 'object' && Array.isArray(item?.likes) ? item.likes : [],
@@ -164,6 +166,7 @@ export function TeacherProfilePage() {
   const { user, isAuthenticated, updateUser } = useAuth();
   const chatOpening = useRef(false);
   const [serverProfile, setServerProfile] = useState(null);
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const [posts, setPosts] = useState(() => getPosts(teacherId).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
   const [postText, setPostText] = useState('');
   const [media, setMedia] = useState([]);
@@ -209,7 +212,9 @@ export function TeacherProfilePage() {
   const [albumDraft, setAlbumDraft] = useState({ name: '', description: '', media: [] });
   const [albumAdditionDraft, setAlbumAdditionDraft] = useState({ albumId: '', description: '', media: [] });
   const [isPreparingAlbumImages, setIsPreparingAlbumImages] = useState(false);
-  const [, setTrustRefresh] = useState(0);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const trustPending = useRef(false);
+  const albumSaving = useRef(false);
   const [visiblePostCount, setVisiblePostCount] = useState(PROFILE_POSTS_BATCH_SIZE);
   const [showAllProfileCourses, setShowAllProfileCourses] = useState(false);
   const [expandedProfileCourseIds, setExpandedProfileCourseIds] = useState({});
@@ -219,26 +224,9 @@ export function TeacherProfilePage() {
   const coverImageInputRef = useRef(null);
   const albumDraftDragIndexRef = useRef(null);
   const loadMorePostsRef = useRef(null);
-  const courses = getCourses().filter((course) => String(course.teacher?.id) === String(teacherId));
+  const isServerProfile = /^[1-9]\d*$/.test(String(teacherId));
+  const courses = String(serverProfile?.requestedId) === String(teacherId) ? serverProfile.courses || [] : [];
   const ownsProfile = user?.id != null && String(user.id) === String(teacherId);
-  const sampleTutor = tutors.find((tutor) => tutor.id === teacherId);
-  const sampleProfile = sampleTutor ? {
-    id: sampleTutor.id,
-    name: [sampleTutor.title, sampleTutor.name].filter(Boolean).join(' '),
-    role: 'teacher',
-    avatar: sampleTutor.image,
-    experience: typeof sampleTutor.experience === 'number' ? `${sampleTutor.experience} năm kinh nghiệm` : sampleTutor.experience,
-    teachingField: sampleTutor.teachingField || sampleTutor.subject || '',
-    qualifications: sampleTutor.qualifications || 'Đang cập nhật',
-    bio: [sampleTutor.description, sampleTutor.bio].filter(Boolean).join(' '),
-    heartCount: sampleTutor.heartCount,
-    phone: sampleTutor.phone || '',
-    isPhonePublic: Boolean(sampleTutor.isPhonePublic),
-    detailedProfile: sampleTutor.detailedProfile || '',
-    profilePortfolioImages: sampleTutor.profilePortfolioImages || [],
-    verificationStatus: sampleTutor.verificationStatus || sampleTutor.licenseVerificationStatus || '',
-    licenseVerificationStatus: sampleTutor.licenseVerificationStatus || '',
-  } : null;
   const allPosts = getPosts();
   const postProfile = allPosts.find((post) => String(post.authorId ?? '') === String(teacherId) || String(post.teacherId ?? '') === String(teacherId));
   const postFallbackProfile = postProfile ? {
@@ -256,7 +244,7 @@ export function TeacherProfilePage() {
     role: courses[0].teacher.role || postFallbackProfile?.role || 'teacher',
     avatar: courses[0].teacher.avatar || postFallbackProfile?.avatar || '',
   } : null;
-  const localFallbackProfile = courseTeacherProfile || sampleProfile || postFallbackProfile;
+  const localFallbackProfile = courseTeacherProfile || postFallbackProfile;
   const resolvedServerProfile = String(serverProfile?.requestedId) === String(teacherId)
     && !serverProfile?.notFound
     && Boolean(serverProfile?.name || serverProfile?.id != null)
@@ -293,9 +281,8 @@ export function TeacherProfilePage() {
   const isPublicPhone = Boolean(profile?.isPhonePublic ?? profile?.show_phone ?? profile?.center?.show_phone ?? profile?.teacher_profile?.show_phone);
   const publicPhone = isEducationProviderProfile && isPublicPhone && profilePhone;
   const targetProfileId = profile?.id ?? teacherId;
-  const trustCount = getProviderTrustCount(targetProfileId, profile?.heartCount);
-  const trustUserIds = getProviderTrustUserIds(targetProfileId);
-  const trustedByCurrentUser = hasProviderTrust(user?.id, targetProfileId);
+  const trustCount = Number(resolvedServerProfile?.heartCount ?? profile?.heartCount ?? 0);
+  const trustedByCurrentUser = Boolean(resolvedServerProfile?.trustedByCurrentUser);
   const hasDetailedProfile = Boolean(profile?.detailedProfile?.trim() || profile?.profilePortfolioImages?.length);
   const profileCapability = cleanUnlimitedProfileText(profile?.detailedProfile || profile?.bio);
   const profileIntro = profileCapability || (isCenterProfile ? 'Trung tâm đang hoàn thiện hồ sơ năng lực.' : isTeacherProfile ? 'Giáo viên đang hoàn thiện hồ sơ năng lực.' : 'Học viên đang hoàn thiện phần giới thiệu.');
@@ -327,9 +314,10 @@ export function TeacherProfilePage() {
   const displayedProfileCourses = showAllProfileCourses ? courses : courses.slice(0, 2);
   const storedProfileAlbums = readStoredPhotoAlbums(profile?.id || teacherId);
   const remoteProfileAlbums = normalizePhotoAlbums(profile?.photoAlbums);
-  const visibleProfileAlbums = profileAlbums.profileId === String(profile?.id || teacherId) && profileAlbums.albums.length
+  const visibleProfileAlbums = !ownsProfile && resolvedServerProfile ? remoteProfileAlbums
+    : profileAlbums.profileId === String(profile?.id || teacherId) && profileAlbums.albums.length
     ? profileAlbums.albums
-    : storedProfileAlbums.length ? storedProfileAlbums : remoteProfileAlbums;
+    : remoteProfileAlbums.length ? remoteProfileAlbums : storedProfileAlbums;
   const profileAlbumMedia = (() => {
     const albumInteractions = getAlbumMediaInteractions();
     const hydrateInteractions = (item) => {
@@ -432,51 +420,24 @@ export function TeacherProfilePage() {
 
   useEffect(() => {
     const profileId = profile?.id || teacherId;
-    const storedAlbums = readStoredPhotoAlbums(profileId);
-    const sourceAlbums = storedAlbums.length ? storedAlbums : normalizePhotoAlbums(profile?.photoAlbums);
-    const legacyAlbumItems = sourceAlbums.flatMap((album) => album.media.map((item, index) => ({ albumId: album.id, index, item })))
-      .filter(({ item }) => item.type === 'image' && !item.storageKey && String(item.src || '').startsWith('data:image/'));
+    const serverAlbums = normalizePhotoAlbums(profile?.photoAlbums);
+    if (serverAlbums.length) return;
+    const albums = readStoredPhotoAlbums(profileId);
+    if (!albums.some((album) => album.media.some((item) => item.storageKey))) return;
+    let active = true;
+    Promise.all(albums.map(async (album) => ({
+      ...album,
+      media: await Promise.all(album.media.map(async (item) => {
+        if (!item.storageKey) return item;
+        const { src } = await hydrateMedia(item.storageKey);
+        return src ? { ...item, src } : item;
+      })),
+    }))).then((hydrated) => {
+      if (active) setProfileAlbums({ profileId: String(profileId), albums: hydrated });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [profile?.id, profile?.photoAlbums, teacherId]);
 
-    if (legacyAlbumItems.length) {
-      void Promise.all(legacyAlbumItems.map(async ({ albumId, index, item }) => {
-        const blob = await (await fetch(item.src)).blob();
-        const stored = await saveImageMedia(blob);
-        return { albumId, index, stored };
-      })).then((migrations) => {
-        const migratedLookup = new Map(migrations.map((item) => [`${item.albumId}:${item.index}`, item.stored]));
-        const migratedAlbums = sourceAlbums.map((album) => ({
-          ...album,
-          media: album.media.map((item, index) => {
-            const stored = migratedLookup.get(`${album.id}:${index}`);
-            return stored ? { ...item, ...stored } : item;
-          }),
-        }));
-        saveStoredPhotoAlbums(profileId, migratedAlbums);
-        setProfileAlbums({ profileId: String(profileId), albums: migratedAlbums });
-        if (ownsProfile) updateUser({ photoAlbums: migratedAlbums });
-      }).catch(() => {
-        // Keep legacy media visible when the browser cannot migrate it yet.
-      });
-    }
-    if (!sourceAlbums.some((album) => album.media.some((item) => item.storageKey))) return undefined;
-
-    let isCancelled = false;
-    const hydrateAlbums = async () => {
-      const hydratedAlbums = await Promise.all(sourceAlbums.map(async (album) => ({
-        ...album,
-        media: await Promise.all(album.media.map(async (item) => {
-          if (!item.storageKey) return item;
-          const { src } = await hydrateMedia(item.storageKey);
-          return src ? { ...item, src } : item;
-        })),
-      })));
-      if (!isCancelled) setProfileAlbums({ profileId: String(profileId), albums: hydratedAlbums });
-    };
-    hydrateAlbums().catch(() => {
-      // An unavailable local video should not stop the rest of the album loading.
-    });
-    return () => { isCancelled = true; };
-  }, [ownsProfile, targetProfileId, teacherId, updateUser]);
 
   useEffect(() => {
     if (user?.id && profile?.id && user.id !== profile.id) trackProviderAffinity(user.id, profile.id, 'viewed-profile', 1);
@@ -513,15 +474,24 @@ export function TeacherProfilePage() {
   }, [posts.length, visiblePostCount]);
 
   useEffect(() => {
-    if (!/^[1-9]\d*$/.test(String(teacherId)) || ownsProfile) return;
+    if (!isServerProfile) return;
     let active = true;
-    masterDataService.provider(teacherId).then((result) => {
-      if (active) setServerProfile(hydratePublicProfileVisuals(result, teacherId));
-    }).catch(() => { if (active) setServerProfile({ requestedId: teacherId, notFound: true }); });
+    providerService.show(teacherId).then((result) => {
+      if (active) setServerProfile({ ...result, ...hydratePublicProfileVisuals(result, teacherId) });
+    }).catch((error) => { if (active) setServerProfile({ requestedId: teacherId, notFound: true, loadFailed: error.response?.status !== 404 }); });
     return () => { active = false; };
-  }, [teacherId, ownsProfile]);
+  }, [teacherId, isServerProfile, user?.id, profileAttempt]);
 
-  if (!profile && /^[1-9]\d*$/.test(String(teacherId)) && String(serverProfile?.requestedId) !== String(teacherId)) return <section className="learning-page"><p role="status">Đang tải hồ sơ công khai...</p></section>;
+  if (!profile && isServerProfile && String(serverProfile?.requestedId) !== String(teacherId)) return <ProviderProfileLoading />;
+  if (!profile && serverProfile?.loadFailed) return (
+    <section className="learning-page">
+      <div className="learning-container">
+        <RequestNotice title="Không tải được hồ sơ công khai" onRetry={() => { setServerProfile(null); setProfileAttempt((value) => value + 1); }}>
+          <Link to={ROUTES.HOME}>Về trang chủ</Link>
+        </RequestNotice>
+      </div>
+    </section>
+  );
   if (!profile) return <section className="learning-page"><div className="learning-empty"><h1>Chưa có hồ sơ công khai</h1><p>Hồ sơ sẽ xuất hiện sau khi người dùng hoàn thiện thông tin hoặc công khai khóa học đầu tiên.</p><Link to={ROUTES.HOME}>Về trang chủ</Link></div></section>;
 
   const closeProfileAlbums = () => {
@@ -591,7 +561,7 @@ export function TeacherProfilePage() {
       if (field === 'avatar') {
         const avatarVersion = `${file.name}-${file.size}-${file.lastModified}`;
         updateUser({ avatar: image, avatarVersion });
-        if (['teacher', 'center'].includes(user?.role)) syncTeacherCourseProfile(user.id, { avatar: image });
+
         try {
           const res = await profileService.uploadAvatar(file);
           if (res?.user) {
@@ -599,7 +569,7 @@ export function TeacherProfilePage() {
             // not replace the image the user has just selected with that URL.
             const { avatar: _serverAvatar, ...serverProfile } = res.user;
             updateUser({ ...serverProfile, avatar: image, avatarVersion });
-            if (['teacher', 'center'].includes(user?.role)) syncTeacherCourseProfile(user.id, { avatar: image });
+
           }
         } catch (error) {
           // The local image is already persisted, so upload failure must not
@@ -693,7 +663,7 @@ export function TeacherProfilePage() {
         isPhonePublic: Boolean(updates.isPhonePublic),
       };
       updateUser(syncedUpdates);
-      if (['teacher', 'center'].includes(user?.role)) syncTeacherCourseProfile(user.id, syncedUpdates);
+
       setActiveProfileTextField(null);
       setIsEditingProfile(false);
       toast.success('Thông tin hồ sơ đã được cập nhật.');
@@ -728,32 +698,41 @@ export function TeacherProfilePage() {
     }))).then((images) => setPortfolioImagesDraft((current) => [...current, ...images].slice(0, MAX_PORTFOLIO_IMAGES)));
     event.target.value = '';
   };
-  const saveDetailedProfile = (event) => {
+  const saveDetailedProfile = async (event) => {
     event.preventDefault();
-    updateUser({
-      detailedProfile: detailedProfileDraft.trim(),
-      profilePortfolioImages: portfolioImagesDraft,
-    });
-    setIsEditingDetailedProfile(false);
-    toast.success('Hồ sơ năng lực đã được cập nhật.');
+    try {
+      const { user: savedUser } = await profileService.savePortfolio(detailedProfileDraft.trim(), portfolioImagesDraft);
+      updateUser(savedUser);
+      setIsEditingDetailedProfile(false);
+      toast.success('Hồ sơ năng lực đã được cập nhật.');
+    } catch (error) {
+      toast.error(courseError(error, 'Không thể lưu hồ sơ năng lực. Vui lòng thử lại.'));
+    }
   };
-  const saveProfileAlbums = (nextAlbums) => {
-    const normalizedAlbums = normalizePhotoAlbums(nextAlbums);
-    setProfileAlbums({ profileId: String(profile.id), albums: normalizedAlbums });
-    saveStoredPhotoAlbums(profile.id, normalizedAlbums);
-
-    if (!ownsProfile) return;
-    updateUser({ photoAlbums: normalizedAlbums });
-    profileService.update({ photo_albums: normalizedAlbums }).then((response) => {
-      const savedAlbums = normalizePhotoAlbums(response?.user?.photoAlbums || response?.user?.photo_albums);
-      if (savedAlbums.length) {
-        setProfileAlbums({ profileId: String(profile.id), albums: savedAlbums });
-        saveStoredPhotoAlbums(profile.id, savedAlbums);
-        updateUser({ photoAlbums: savedAlbums });
-      }
-    }).catch(() => {
-      // Keep the album available locally while older API versions add this field.
-    });
+  const saveProfileAlbums = async (nextAlbums, persist = ownsProfile) => {
+    const id = String(profile.id);
+    const updateAlbums = (albums) => {
+      const normalized = normalizePhotoAlbums(albums);
+      setProfileAlbums({ profileId: id, albums: normalized });
+      saveStoredPhotoAlbums(id, normalized);
+      return normalized;
+    };
+    if (!persist) {
+      updateAlbums(nextAlbums);
+      return true;
+    }
+    if (albumSaving.current) return false;
+    albumSaving.current = true;
+    try {
+      const { user: savedUser } = await profileService.saveAlbums(normalizePhotoAlbums(nextAlbums));
+      updateUser({ photoAlbums: updateAlbums(savedUser.photoAlbums) });
+      return true;
+    } catch (error) {
+      toast.error(courseError(error, 'Không thể lưu album. Vui lòng thử lại.'));
+      return false;
+    } finally {
+      albumSaving.current = false;
+    }
   };
   const addAlbumMedia = async (event, setDraft) => {
     const files = Array.from(event.target.files || []);
@@ -848,7 +827,7 @@ export function TeacherProfilePage() {
     }
     albumDraftDragIndexRef.current = null;
   };
-  const createProfileAlbum = (event) => {
+  const createProfileAlbum = async (event) => {
     event.preventDefault();
     const name = albumDraft.name.trim();
     if (!name) {
@@ -871,8 +850,8 @@ export function TeacherProfilePage() {
       })),
       createdAt: new Date().toISOString(),
     };
-    if (!publishProfilePost(description, album.media, { id: album.id, name: album.name })) return;
-    saveProfileAlbums([...visibleProfileAlbums, album]);
+    if (!await saveProfileAlbums([...visibleProfileAlbums, album])) return;
+    publishProfilePost(description, album.media, { id: album.id, name: album.name });
     setAlbumDraft({ name: '', description: '', media: [] });
     setIsCreatingProfileAlbum(false);
     toast.success(`Đã tạo album “${name}”.`);
@@ -904,7 +883,7 @@ export function TeacherProfilePage() {
     refreshProfilePosts();
     return true;
   };
-  const addMediaToProfileAlbum = (event) => {
+  const addMediaToProfileAlbum = async (event) => {
     event.preventDefault();
     const album = visibleProfileAlbums.find((item) => item.id === albumAdditionDraft.albumId);
     if (!album) return;
@@ -918,16 +897,16 @@ export function TeacherProfilePage() {
       description: albumAdditionDraft.media.length === 1 ? description : (item.description || ''),
     }));
     const nextAlbum = { ...album, media: [...album.media, ...media] };
-    if (!publishProfilePost(description, media, { id: album.id, name: album.name })) return;
-    saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id ? nextAlbum : item));
+    if (!await saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id ? nextAlbum : item))) return;
+    publishProfilePost(description, media, { id: album.id, name: album.name });
     setAlbumAdditionDraft({ albumId: '', description: '', media: [] });
     setIsAddingAlbumMedia(false);
     toast.success(`Đã thêm tệp vào album “${album.name}”.`);
   };
-  const saveAlbumDescription = () => {
+  const saveAlbumDescription = async () => {
     if (!isCustomProfileAlbum) return;
     const description = albumDraft.description.trim();
-    saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === activeProfileAlbum.id ? { ...album, description } : album));
+    if (!await saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === activeProfileAlbum.id ? { ...album, description } : album))) return;
     setIsEditingAlbumDescription(false);
     toast.success('Đã cập nhật mô tả album.');
   };
@@ -938,8 +917,8 @@ export function TeacherProfilePage() {
       title: 'Xóa album',
       message: `Xóa album “${albumToDelete.name}”? Các bài đăng đã công khai vẫn được giữ.`,
       confirmText: 'Xóa album',
-      onConfirm: () => {
-        saveProfileAlbums(visibleProfileAlbums.filter((album) => album.id !== albumToDelete.id));
+      onConfirm: async () => {
+        if (!await saveProfileAlbums(visibleProfileAlbums.filter((album) => album.id !== albumToDelete.id))) return;
         setActiveProfileAlbumFilterId('all-media');
         if (hasLinkedAlbum) navigate(ROUTES.TEACHER_PROFILE(teacherId), { replace: true });
         setIsEditingAlbumDescription(false);
@@ -951,16 +930,16 @@ export function TeacherProfilePage() {
   const refreshProfilePosts = () => {
     setPosts(getPosts(teacherId).slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)));
   };
-  const updateViewedMediaDescription = (mediaItem, description) => {
+  const updateViewedMediaDescription = async (mediaItem, description) => {
     if (!mediaItem || !viewerPost || !ownsContent(viewerPost.authorId || viewerPost.teacherId)) return;
 
     const nextDescription = String(description || '').trim();
     const updateMedia = (item) => isSameAlbumMedia(item, mediaItem) ? { ...item, description: nextDescription } : item;
 
     if (imageViewer?.albumId) {
-      saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === imageViewer.albumId
+      if (!await saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === imageViewer.albumId
         ? { ...album, media: album.media.map(updateMedia) }
-        : album));
+        : album))) return;
     }
 
     if (!viewerPost.isAlbumMediaFallback) {
@@ -984,13 +963,13 @@ export function TeacherProfilePage() {
     } : current);
     toast.success('Đã cập nhật chú thích.');
   };
-  const deleteViewedMedia = (mediaItem) => {
+  const deleteViewedMedia = async (mediaItem) => {
     if (!mediaItem || !viewerPost || !ownsContent(viewerPost.authorId || viewerPost.teacherId)) return;
 
     if (imageViewer?.albumId) {
-      saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === imageViewer.albumId
+      if (!await saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === imageViewer.albumId
         ? { ...album, media: album.media.filter((item) => !isSameAlbumMedia(item, mediaItem)) }
-        : album));
+        : album))) return;
     }
 
     if (!viewerPost.isAlbumMediaFallback) {
@@ -1062,7 +1041,7 @@ export function TeacherProfilePage() {
       };
       saveProfileAlbums(visibleProfileAlbums.map((item) => item.id === album.id
         ? { ...item, media: item.media.map((media) => isSameAlbumMedia(media, activeItem) ? nextItem : media) }
-        : item));
+        : item), false);
       setImageViewer((current) => current ? {
         ...current,
         post: current.activeIndex === activeIndex ? nextFallbackPost : current.post,
@@ -1075,24 +1054,24 @@ export function TeacherProfilePage() {
     else updatePost(postId, updater);
     refreshProfilePosts();
   };
-  const handlePublish = (event) => {
+  const handlePublish = async (event) => {
     event.preventDefault();
     if (!postText.trim() && !media.length) { toast.error('Hãy viết nội dung hoặc chọn ảnh/video để đăng.'); return; }
     const selectedAlbum = media.length && visibleProfileAlbums.find((album) => album.id === postAlbumId);
-    if (!publishProfilePost(postText, media, selectedAlbum ? { id: selectedAlbum.id, name: selectedAlbum.name } : null)) return;
     if (selectedAlbum) {
       const cleanPostText = postText.trim();
       const albumMedia = media.map((item) => ({
         ...item,
         description: media.length === 1 ? cleanPostText : (item.description || ''),
       }));
-      saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === selectedAlbum.id
-        ? { ...album, media: [...album.media, ...albumMedia] }
-        : album));
+      if (!await saveProfileAlbums(visibleProfileAlbums.map((album) => album.id === selectedAlbum.id
+        ? { ...album, media: [...album.media, ...albumMedia.filter((item) => !album.media.some((existing) => existing.id === item.id))] }
+        : album))) return;
     }
+    if (!publishProfilePost(postText, media, selectedAlbum ? { id: selectedAlbum.id, name: selectedAlbum.name } : null)) return;
     setPostText(''); setMedia([]); setPostAlbumId(''); setIsPostComposerOpen(false); toast.success('Bài viết đã được đăng.');
   };
-  const createProfileAlbumFromComposer = ({ name, description = '' }) => {
+  const createProfileAlbumFromComposer = async ({ name, description = '' }) => {
     if (!ownsProfile) return null;
     const album = {
       id: createPostId('profile-album'),
@@ -1101,8 +1080,7 @@ export function TeacherProfilePage() {
       media: [],
       createdAt: new Date().toISOString(),
     };
-    saveProfileAlbums([...visibleProfileAlbums, album]);
-    return album;
+    return await saveProfileAlbums([...visibleProfileAlbums, album]) ? album : null;
   };
   const like = (postId, mediaId = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để tương tác.'); return; }
@@ -1318,7 +1296,7 @@ export function TeacherProfilePage() {
           ),
         };
       });
-      saveProfileAlbums(nextAlbums);
+      saveProfileAlbums(nextAlbums, false);
     }
 
     if (post && !post.isAlbumMediaFallback) {
@@ -1741,7 +1719,6 @@ export function TeacherProfilePage() {
     cancelProfilePostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
-  const [confirmAction, setConfirmAction] = useState(null);
   const removeProfilePost = (post) => {
     if (!ownsContent(post.authorId || post.teacherId)) return;
     setConfirmAction({
@@ -1764,15 +1741,29 @@ export function TeacherProfilePage() {
     } catch (error) { toast.error(chatError(error)); }
     finally { chatOpening.current = false; }
   };
-  const trustProfile = () => {
-    if (!isAuthenticated || !user?.id) { toast.error('Vui lòng đăng nhập để tin tưởng hồ sơ này.'); navigate(ROUTES.LOGIN); return; }
-    const added = toggleProviderTrust(user.id, targetProfileId);
-    if (added) {
-      trackProviderAffinity(user.id, targetProfileId, 'saved-profile', 4);
-      createNotification({ recipientId: targetProfileId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một thành viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(targetProfileId) });
+  const trustProfile = async () => {
+    if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng hồ sơ này.'); navigate(ROUTES.LOGIN); return; }
+    if (user?.role !== 'student' || !isServerProfile) { toast.error('Tính năng tin tưởng dành cho học viên và hồ sơ đã liên kết.'); return; }
+    if (trustPending.current) return;
+    trustPending.current = true;
+    try {
+      const result = await providerService.trust(targetProfileId, !trustedByCurrentUser);
+      setServerProfile((current) => String(current?.requestedId) === String(teacherId) ? { ...current, ...result } : current);
+      if (result.trustedByCurrentUser) trackProviderAffinity(user.id, targetProfileId, 'saved-profile', 4);
+      toast.success(result.trustedByCurrentUser ? 'Đã thêm vào danh sách tin tưởng.' : 'Đã bỏ tin tưởng hồ sơ này.');
+    } catch (error) {
+      toast.error(courseError(error));
+    } finally {
+      trustPending.current = false;
     }
-    setTrustRefresh((value) => value + 1);
-    toast.success(added ? 'Đã thêm vào danh sách tin tưởng.' : 'Đã bỏ tin tưởng hồ sơ này.');
+  };
+  const showTrustUsers = async () => {
+    try {
+      const people = isServerProfile ? await providerService.trustUsers(targetProfileId) : [];
+      setLikesTarget({ people, title: 'Lượt tin tưởng', label: 'Những thành viên đã tin tưởng hồ sơ này', emptyText: 'Danh sách thành viên tin tưởng đang được cập nhật.' });
+    } catch (error) {
+      toast.error(courseError(error));
+    }
   };
 
   const coverStyle = profile.coverImage ? { backgroundImage: `url(${profile.coverImage})` } : undefined;
@@ -1787,7 +1778,7 @@ export function TeacherProfilePage() {
   return <div onClickCapture={openCommentImage} className={hasSubmittedVerification ? 'has-submitted-verification' : ''}><section className="learning-page teacher-public-page"><div className="learning-container">
     <header className={`teacher-cover ${profile.coverImage ? 'has-custom-cover' : ''}`} style={coverStyle}>
       <div className="teacher-cover__avatar"><ProfileAvatar src={profile.avatar} userId={profile.id} name={profile.name} alt={`Ảnh đại diện của ${profile.name}`} role={profile.role} size={35} />{ownsProfile && <button type="button" className={`profile-avatar-upload ${profileImageUploadField === 'avatar' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'avatar' ? 'Đang tải ảnh đại diện' : 'Cập nhật ảnh đại diện'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('avatar')}>{profileImageUploadField === 'avatar' ? <LoaderCircle className="profile-upload-spinner" size={15} /> : <Camera size={15} />}</button>}<input ref={avatarImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'avatar')} /></div>
-      <div><span>HỒ SƠ {profileType}</span><h1>{profile.name}</h1>{subtitle && <p>{subtitle}</p>}<div className="teacher-cover__status-list">{isEducationProviderProfile && (trustCount < 3 && !trustedByCurrentUser ? <small className="teacher-cover__trust-count is-new">Mới trên EduMatch</small> : <button type="button" className="teacher-cover__trust-count" onClick={() => setLikesTarget({ ids: trustUserIds, title: 'Lượt tin tưởng', label: 'Những thành viên đã tin tưởng hồ sơ này', emptyText: 'Danh sách thành viên tin tưởng đang được cập nhật.' })}><Heart size={13} fill="currentColor" /> {trustCount} lượt tin tưởng</button>)}<VerifiedBadge userId={profile.id} provider={profile} /></div></div>
+      <div><span>HỒ SƠ {profileType}</span><h1>{profile.name}</h1>{subtitle && <p>{subtitle}</p>}<div className="teacher-cover__status-list">{isEducationProviderProfile && (trustCount < 3 && !trustedByCurrentUser ? <small className="teacher-cover__trust-count is-new">Mới trên EduMatch</small> : <button type="button" className="teacher-cover__trust-count" onClick={showTrustUsers}><Heart size={13} fill="currentColor" /> {trustCount} lượt tin tưởng</button>)}<VerifiedBadge userId={profile.id} provider={profile} /></div></div>
       {ownsProfile && <><button type="button" className={`profile-cover-upload teacher-cover__cover-upload ${profileImageUploadField === 'coverImage' ? 'is-uploading' : ''}`} title={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} aria-label={profileImageUploadField === 'coverImage' ? 'Đang tải ảnh bìa' : 'Cập nhật ảnh bìa'} disabled={Boolean(profileImageUploadField)} onClick={() => setProfileImageSourceField('coverImage')}>{profileImageUploadField === 'coverImage' ? <LoaderCircle className="profile-upload-spinner" size={17} /> : <ImagePlus size={17} />}</button><input ref={coverImageInputRef} className="profile-image-upload-input" type="file" accept="image/*" disabled={Boolean(profileImageUploadField)} onChange={(event) => chooseProfileImage(event, 'coverImage')} /></>}
     </header>
     <div className="teacher-public-grid"><aside className="teacher-bio"><h2>{isEducationProviderProfile ? 'Thông tin' : 'Thông Tin Cá Nhân'}</h2>{isEducationProviderProfile && <div className="teacher-bio__overview"><h3>Hồ sơ năng lực</h3>{ownsProfile && <button type="button" className="teacher-bio__edit-link" onClick={openProfileEditor}>Chỉnh sửa</button>}</div>}<p className="teacher-bio__summary">{shortProfileIntro}</p>{isEducationProviderProfile && <><h3>Lĩnh vực giảng dạy</h3><p className="teacher-bio__summary">{profile.teachingField || 'Đang cập nhật'}</p></>}{isCenterProfile && <><h3>Năm thành lập</h3><p className="teacher-bio__summary">{profile.foundedYear || 'Đang cập nhật'}</p></>}{isTeacherProfile && <><h3>Kinh nghiệm</h3><p className="teacher-bio__summary">{profileExperience || 'Đang cập nhật'}</p><h3>Bằng cấp, chứng chỉ</h3><p className="teacher-bio__summary">{profileQualifications || 'Đang cập nhật'}</p></>}<button type="button" className="teacher-bio__view-all" onClick={() => setIsViewingProfileSummary(true)}>Xem tất cả</button>{publicPhone && <><h3>Điện thoại liên hệ</h3><a className="teacher-bio__phone" href={`tel:${profilePhone.replace(/\s/g, '')}`}><Phone size={14} /> {profilePhone}</a></>}{ownsProfile && canCreateCourse && <div className="teacher-bio__actions">{isCenterProfile && <Link className="teacher-bio__verify" to={ROUTES.VERIFICATION}><FileCheck2 size={15} /> Hồ sơ xác minh</Link>}<Link className="teacher-bio__add-course" to={ROUTES.CREATE_COURSE}><Plus size={16} /> Thêm khóa học</Link></div>}{isEducationProviderProfile && courses.length > 0 && <section className="teacher-bio__courses" aria-labelledby="profile-open-courses"><div className="teacher-bio__courses-heading"><div><BookOpen size={16} aria-hidden="true" /><h3 id="profile-open-courses">Khóa học đang mở</h3></div><span>{courses.length}</span></div><div className="teacher-bio__course-list">{displayedProfileCourses.map((course) => { const isExpanded = Boolean(expandedProfileCourseIds[course.id]); return <div className={`teacher-bio__course-item ${isExpanded ? 'is-expanded' : ''}`} key={course.id}><Link className="teacher-bio__course-link" to={ROUTES.COURSE_DETAIL(course.id)}><span>{course.title}</span></Link><button type="button" className="teacher-bio__course-expand" aria-expanded={isExpanded} aria-label={`${isExpanded ? 'Thu gọn' : 'Xem đầy đủ'} tên khóa học`} onClick={() => setExpandedProfileCourseIds((current) => ({ ...current, [course.id]: !current[course.id] }))}><ChevronDown size={16} aria-hidden="true" /></button></div>; })}</div>{courses.length > 2 && <button type="button" className="teacher-bio__courses-toggle" onClick={() => setShowAllProfileCourses((current) => !current)}>{showAllProfileCourses ? 'Thu gọn' : `Xem tất cả ${courses.length} khóa học`}</button>}</section>}</aside>

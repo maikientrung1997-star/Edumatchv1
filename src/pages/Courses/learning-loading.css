@@ -1,0 +1,32 @@
+.learning-skeleton {
+  display: grid;
+  gap: 16px;
+}
+
+.learning-skeleton__lines {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  flex: 1;
+}
+
+.course-stat-grid.learning-skeleton__stats {
+  margin: 3px 0;
+}
+
+.learning-skeleton__person {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--edu-line);
+}
+
+.learning-skeleton__cover {
+  gap: 18px;
+  min-height: 178px;
+}
+
+.learning-skeleton__cover .learning-skeleton__lines {
+  max-width: 360px;
+}

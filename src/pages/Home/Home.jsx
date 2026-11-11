@@ -27,7 +27,9 @@ import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/feedback/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { chatService, chatError } from '@/services/chatService';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { courseError, courseService, providerService } from '@/services/courseService';
+import { RequestNotice } from '@/components/feedback/RequestState';
+import { CatalogLoading } from './CatalogLoading';
 import { ROUTES } from '@/constants/routes';
 import { CourseCard } from '@/components/courses/CourseCard';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
@@ -35,12 +37,12 @@ import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { useMasterData } from '@/hooks/useMasterData';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
 import { AdministrativePicker } from '@/components/forms/AdministrativePicker';
-import { createNotification, getCourseRating, getCourses, getProviderTrustCount, hasProviderTrust, toggleProviderTrust, trackProviderAffinity } from '@/features/learning/marketplace';
+import { trackProviderAffinity } from '@/features/learning/marketplace';
 import toast from 'react-hot-toast';
 import heroImage from '@/assets/tutoring-hero.webp';
 import heroImageMobile from '@/assets/tutoring-hero-720.webp';
 import communityTeacherStrip from '@/assets/vietnamese-teachers-avatar-strip.png';
-import { subjects as subjectStyles, tutors } from './homeData';
+import { subjects as subjectStyles } from './homeData';
 import { useDiscoveryFeed, useDiscoveryNavigation } from './useDiscoveryFeed';
 import './home.css';
 import '@/components/courses/course.css';
@@ -49,13 +51,6 @@ import './discovery.css';
 const initialFilters = { subject: '', mode: '', province: '', ward: '', provider: '', description: '' };
 const initialCourseFilters = { subject: '', mode: '', province: '', ward: '', description: '' };
 const communityTeacherPositions = ['0% center', '50% center', '100% center'];
-const sampleCenterOrder = [
-  'center-old-school',
-  'center-horizon-learning',
-  'center-educare',
-  'center-bright-path',
-  'center-melody-studio',
-];
 const normalize = (text) =>
   text
     .normalize('NFD')
@@ -82,12 +77,7 @@ const matchesDescription = (candidate, description, gender = '') => {
     : Math.max(1, Math.ceil(tokens.length * 0.35));
   return matchingTerms >= requiredMatches;
 };
-const inferredGender = (provider) => {
-  const match = tutors.find((tutor) => normalize(`${tutor.name} ${tutor.title}`).includes(normalize(provider?.name || '')));
-  if (match?.title === 'Cô') return 'female';
-  if (match?.title === 'Thầy') return 'male';
-  return provider?.gender || '';
-};
+const inferredGender = (provider) => provider?.gender || '';
 const courseModeLabel = { 'in-person': 'truc tiep', online: 'truc tuyen', recorded: 'video quay san' };
 const scrollTo = (element, block = 'start') =>
   element?.scrollIntoView({
@@ -188,7 +178,7 @@ function DescriptionFilterField({ value, onChange, name = 'description' }) {
 }
 
 function TutorCard({ tutor, saved, onSave, onOpen }) {
-  const trustCount = getProviderTrustCount(tutor.id, tutor.heartCount);
+  const trustCount = tutor.heartCount;
   return (
     <article className="tutor-card">
       <div className="tutor-top">
@@ -295,12 +285,38 @@ function useMobileResults(total, queryKey, enabled) {
   return { count, sentinelRef, showMore };
 }
 
+const listCourses = (isActive) => courseService.list({}, isActive);
+const emptyList = [];
+
+function useCatalogList(load, userId) {
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState(null);
+  const key = (userId ?? 'guest') + ':' + attempt;
+
+  useEffect(() => {
+    let active = true;
+    load(() => active)
+      .then((items) => { if (active) setResult({ key, items, status: 'ready' }); })
+      .catch(() => { if (active) setResult({ key, items: emptyList, status: 'error' }); });
+    return () => { active = false; };
+  }, [key, load]);
+
+  const current = result?.key === key ? result : null;
+  return {
+    items: current?.items ?? emptyList,
+    status: current?.status ?? 'loading',
+    retry: () => setAttempt((value) => value + 1),
+    update: (updateItems) => setResult((previous) => previous?.key === key
+      ? { ...previous, items: updateItems(previous.items) }
+      : previous),
+  };
+}
+
 export const Home = () => {
   const isMobile = useIsMobile(768);
   const isPhone = useIsMobile(767);
   const catalog = useMasterData();
-  const catalogSubjects = catalog.subjects.length ? catalog.subjects : subjectStyles;
-  const subjects = catalogSubjects.map((subject) => ({ ...subject,
+  const subjects = catalog.subjects.map((subject) => ({ ...subject,
     icon: subjectStyles.find((item) => item.name === subject.name)?.icon || BookOpen,
     color: subjectStyles.find((item) => item.name === subject.name)?.color || 'green' }));
   const [params, setParams] = useSearchParams();
@@ -348,7 +364,29 @@ export const Home = () => {
   const [appliedFilters, setAppliedFilters] = useState(initialFilters);
   const [courseFilters, setCourseFilters] = useState(initialCourseFilters);
   const [appliedCourseFilters, setAppliedCourseFilters] = useState(initialCourseFilters);
-  const [savedIds, setSavedIds] = useLocalStorage('edumatch:saved-tutors', []);
+  const { items: courses, status: coursesStatus, retry: retryCourses } = useCatalogList(listCourses, user?.id);
+  const { items: providers, status: providersStatus, retry: retryProviders, update: setProviders } = useCatalogList(providerService.list, user?.id);
+  const trustPending = useRef(new Set());
+
+  const courseErrorNotice = coursesStatus === 'error' && <RequestNotice title="Không tải được danh sách khóa học" onRetry={retryCourses} />;
+  const providerErrorNotice = providersStatus === 'error' && <RequestNotice title="Không tải được hồ sơ người dạy" onRetry={retryProviders} />;
+
+  const savedCount = providers.filter((provider) => provider.trustedByCurrentUser && isAuthenticated).length;
+  const trustProvider = async (provider) => {
+    if (user?.role !== 'student') { toast.error('Vui lòng đăng nhập với tài khoản học viên để tin tưởng hồ sơ.'); return; }
+    if (trustPending.current.has(provider.id)) return;
+    trustPending.current.add(provider.id);
+    try {
+      const result = await providerService.trust(provider.id, !provider.trustedByCurrentUser);
+      setProviders((current) => current.map((item) => item.id === provider.id ? { ...item, ...result } : item));
+      setProfile((current) => current?.id === provider.id ? { ...current, ...result } : current);
+      if (result.trustedByCurrentUser) trackProviderAffinity(user.id, provider.id, 'saved-profile', 4);
+    } catch (error) {
+      toast.error(courseError(error));
+    } finally {
+      trustPending.current.delete(provider.id);
+    }
+  };
   const [savedOnly, setSavedOnly] = useState(false);
   const [trustFirst, setTrustFirst] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -361,16 +399,15 @@ export const Home = () => {
   const [tutorPage, setTutorPage] = useState(1);
   const [showOtherSubjectSearch, setShowOtherSubjectSearch] = useState(false);
   const [otherCourseQuery, setOtherCourseQuery] = useState('');
-const [profile, setProfile] = useState(null);
-const isCenterProfile = profile?.providerType === 'center';
-const profileTrustCount = profile ? getProviderTrustCount(profile.id, profile.heartCount) : 0;
-const profileCourses = profile
-  ? getCourses().filter(
-      (course) =>
-        (course.teacher?.id === profile.id || course.teacher?.id === `teacher-${profile.id}`)
-    )
-  : [];
+  const [profile, setProfile] = useState(null);
+  const isCenterProfile = profile?.providerType === 'center';
+  const profileTrustCount = profile?.heartCount ?? 0;
+  const profileCourses = profile
+    ? courses.filter((course) => course.teacher.id === profile.id && course.enrollmentStatus === 'open')
+    : [];
   const [consultationComplete, setConsultationComplete] = useState(false);
+  const consultationPending = useRef(false);
+  const [consultationSaving, setConsultationSaving] = useState(false);
   const [consultation, setConsultation] = useState({ name: '', phone: '', subject: '', note: '' });
   const resultsRef = useRef(null);
   const filterRef = useRef(null);
@@ -410,8 +447,8 @@ const profileCourses = profile
   const activeCourseFilters = hasDescriptionQuery ? { ...appliedCourseFilters, description: descriptionQuery } : appliedCourseFilters;
   const visibleTutorFilters = hasDescriptionQuery ? { ...filters, description: descriptionQuery } : filters;
   const activeTutorFilters = hasDescriptionQuery ? { ...appliedFilters, description: descriptionQuery } : appliedFilters;
-  const rankedCourses = getCourses()
-    .map((course) => ({ ...course, ranking: getCourseRating(course.id) }))
+  const rankedCourses = courses
+    .map((course) => ({ ...course, ranking: { average: course.rating, total: course.reviewCount } }))
     .filter((course) => {
       const courseMode = course.learningMode === 'online'
         ? 'online'
@@ -454,8 +491,8 @@ const profileCourses = profile
   const visibleCourses = showAllCourses
     ? rankedCourses.slice((coursePage - 1) * coursePageSize, coursePage * coursePageSize)
     : rankedCourses.slice(0, 6);
-  const sponsoredCourses = getCourses()
-    .map((course) => ({ ...course, ranking: getCourseRating(course.id) }))
+  const sponsoredCourses = courses.filter((course) => course.isSponsored)
+    .map((course) => ({ ...course, ranking: { average: course.rating, total: course.reviewCount } }))
     .sort((first, second) => second.ranking.total - first.ranking.total
       || second.ranking.average - first.ranking.average
       || new Date(second.createdAt || 0) - new Date(first.createdAt || 0));
@@ -476,117 +513,8 @@ const profileCourses = profile
   if (sponsoredSort === 'newest') {
     discoverySponsoredCourses.sort((first, second) => new Date(second.createdAt || 0) - new Date(first.createdAt || 0));
   }
-  const searchableTutors = (() => {
-    const providers = new Map();
-
-    getCourses().forEach((course) => {
-      const provider = course.teacher;
-      const key = provider.id;
-      const rating = getCourseRating(course.id);
-      const mode = course.learningMode === 'online' ? 'online' : course.learningMode === 'recorded' ? 'recorded' : 'offline';
-      const current = providers.get(key) || {
-        id: key,
-        name: provider.name,
-        role: provider.role || (provider.providerType === 'center' ? 'center' : 'teacher'),
-        title: provider.role === 'center' ? '' : 'GV.',
-        providerType: provider.role === 'center' ? 'center' : 'teacher',
-        ratingSum: 0,
-        reviews: 0,
-        heartCount: Number(provider.heartCount || 0),
-        subjects: [],
-        courseTitles: [],
-        modes: new Set(),
-        locations: [],
-        province: '',
-        ward: '',
-        image: provider.avatar || '',
-        phone: provider.phone || '',
-        isPhonePublic: Boolean(provider.isPhonePublic),
-        licenseVerificationStatus: provider.licenseVerificationStatus || '',
-        verificationStatus: provider.verificationStatus || provider.licenseVerificationStatus || '',
-        courseId: course.id,
-        experience: provider.experience || 'Đang cập nhật',
-        foundedYear: provider.foundedYear || '',
-        teachingField: provider.teachingField || provider.teaching_field || '',
-        price: course.price,
-        description: provider.bio || course.description,
-        bio: provider.bio || '',
-        methods: ['Lộ trình học theo khóa', 'Chủ động trao đổi lịch học'],
-      };
-      if (provider.licenseVerificationStatus) current.licenseVerificationStatus = current.licenseVerificationStatus || provider.licenseVerificationStatus;
-      if (provider.verificationStatus) current.verificationStatus = current.verificationStatus || provider.verificationStatus;
-      if (provider.role) current.role = current.role || provider.role;
-      current.subjects.push(course.subject || '');
-      current.courseTitles.push(course.title || '');
-      current.modes.add(mode);
-      current.locations.push(course.location || '');
-      current.province ||= course.province || '';
-      current.ward ||= course.ward || course.district || '';
-      current.ratingSum += rating.average * rating.total;
-      current.reviews += rating.total;
-      current.price = Math.min(Number(current.price || 0) || Infinity, Number(course.price || 0) || Infinity);
-      providers.set(key, current);
-    });
-
-    const courseProviders = [...providers.values()].map((provider) => ({
-      ...provider,
-      subject: [...new Set(provider.subjects.filter(Boolean))].join(' · ') || 'Đang cập nhật',
-      searchableCourses: [...new Set(provider.courseTitles.filter(Boolean))].join(' · '),
-      mode: provider.modes.size === 1 ? [...provider.modes][0] : 'both',
-      location: provider.locations.filter(Boolean).join(' · '),
-      rating: provider.reviews ? provider.ratingSum / provider.reviews : 0,
-      price: Number.isFinite(provider.price) ? provider.price : 0,
-    }));
-
-    const currentProvider = ['teacher', 'center'].includes(user?.role)
-      ? {
-          id: user.id,
-          name: user.name || 'Hồ sơ EduMatch',
-          role: user.role,
-          title: user.role === 'center' ? '' : 'GV.',
-          providerType: user.role,
-          rating: 0,
-          reviews: 0,
-          heartCount: Number(user.heartCount || 0),
-          subject: user.teachingField || 'Đang cập nhật',
-          teachingField: user.teachingField || '',
-          searchableCourses: '',
-          mode: user.learningMode || 'both',
-          location: user.location || user.address || '',
-          province: user.province || '',
-          ward: user.ward || '',
-          image: user.avatar || '',
-          phone: user.phone || '',
-          isPhonePublic: Boolean(user.isPhonePublic),
-          licenseVerificationStatus: user.licenseVerificationStatus || '',
-          verificationStatus: user.licenseVerificationStatus || '',
-          experience: user.experience || 'Đang cập nhật',
-          foundedYear: user.foundedYear || '',
-          price: 0,
-          description: user.detailedProfile || user.bio || '',
-          bio: user.detailedProfile || user.bio || '',
-          methods: [],
-        }
-      : null;
-
-    return [
-      ...tutors.map((tutor) => ({
-        ...tutor,
-        role: tutor.role || 'teacher',
-        providerType: 'teacher',
-        heartCount: Number(tutor.heartCount || 0),
-        verificationStatus: tutor.verificationStatus || tutor.licenseVerificationStatus || '',
-        licenseVerificationStatus: tutor.licenseVerificationStatus || '',
-      })),
-      ...courseProviders,
-      ...(currentProvider && !courseProviders.some((provider) => String(provider.id) === String(currentProvider.id))
-        ? [currentProvider]
-        : []),
-    ];
-  })();
-
   const filteredTutors = (() => {
-    return searchableTutors.filter((tutor) => {
+    return providers.filter((tutor) => {
         const matchesQuery =
           !query ||
           normalize(`${tutor.title} ${tutor.name} ${tutor.subject} ${tutor.teachingField || ''} ${tutor.searchableCourses || ''} ${tutor.description}`).includes(
@@ -598,37 +526,17 @@ const profileCourses = profile
             normalize(`${tutor.subject} ${tutor.teachingField || ''} ${tutor.searchableCourses || ''} ${tutor.title} ${tutor.description}`).includes(
               normalize(activeTutorFilters.subject)
             )) &&
-          (!activeTutorFilters.mode ||
-            (activeTutorFilters.mode === 'online'
-              ? tutor.mode === 'online' || tutor.mode === 'both'
-              : activeTutorFilters.mode === 'recorded'
-                ? tutor.mode === 'recorded'
-                : tutor.mode === 'offline' || tutor.mode === 'both')) &&
+          (!activeTutorFilters.mode || tutor.modes.includes(activeTutorFilters.mode === 'offline' ? 'in-person' : activeTutorFilters.mode)) &&
           (!activeTutorFilters.province || normalize(`${tutor.province || ''} ${tutor.location || ''}`).includes(normalize(activeTutorFilters.province))) &&
           (!activeTutorFilters.ward || normalize(`${tutor.ward || ''} ${tutor.location || ''}`).includes(normalize(activeTutorFilters.ward))) &&
           (!activeTutorFilters.rating || tutor.rating >= Number(activeTutorFilters.rating)) &&
           (!activeTutorFilters.provider || tutor.providerType === activeTutorFilters.provider) &&
-          matchesDescription(`${tutor.title} ${tutor.name} ${tutor.subject} ${tutor.teachingField || ''} ${tutor.searchableCourses || ''} ${tutor.description} ${tutor.location} ${tutor.mode === 'offline' ? 'truc tiep' : tutor.mode === 'online' ? 'truc tuyen' : ''}`, activeTutorFilters.description, tutor.title === 'Cô' ? 'female' : tutor.title === 'Thầy' ? 'male' : '') &&
-          (!savedOnly || (isAuthenticated ? hasProviderTrust(user.id, tutor.id) : savedIds.includes(tutor.id)))
+          matchesDescription(`${tutor.title} ${tutor.name} ${tutor.subject} ${tutor.teachingField || ''} ${tutor.searchableCourses || ''} ${tutor.description} ${tutor.location} ${tutor.mode === 'offline' ? 'truc tiep' : tutor.mode === 'online' ? 'truc tuyen' : ''}`, activeTutorFilters.description, inferredGender(tutor)) &&
+          (!savedOnly || (isAuthenticated && tutor.trustedByCurrentUser))
         );
     }).sort((first, second) => {
-      const firstSampleCenterIndex = sampleCenterOrder.indexOf(first.id);
-      const secondSampleCenterIndex = sampleCenterOrder.indexOf(second.id);
-      const firstSampleCenterRank = firstSampleCenterIndex === -1 ? Number.MAX_SAFE_INTEGER : firstSampleCenterIndex;
-      const secondSampleCenterRank = secondSampleCenterIndex === -1 ? Number.MAX_SAFE_INTEGER : secondSampleCenterIndex;
-      if (firstSampleCenterRank !== secondSampleCenterRank) {
-        return firstSampleCenterRank - secondSampleCenterRank;
-      }
-      const firstHearts = first.heartCount + (savedIds.includes(first.id) ? 1 : 0);
-      const secondHearts = second.heartCount + (savedIds.includes(second.id) ? 1 : 0);
-      if (trustFirst) {
-        return getProviderTrustCount(second.id, second.heartCount) - getProviderTrustCount(first.id, first.heartCount)
-          || second.reviews - first.reviews
-          || second.rating - first.rating;
-      }
-      return secondHearts - firstHearts
-        || second.reviews - first.reviews
-        || second.rating - first.rating;
+      if (trustFirst) return second.heartCount - first.heartCount || second.reviews - first.reviews || second.rating - first.rating;
+      return second.reviews - first.reviews || second.rating - first.rating || second.heartCount - first.heartCount;
     });
   })();
 
@@ -974,18 +882,20 @@ const profileCourses = profile
             </button>
           </form>
 
-          <div className="mobile-listing-meta mobile-course-count">
+          <div className="mobile-listing-meta mobile-course-count" hidden={coursesStatus !== 'ready'}>
             <span>Hiển thị <strong>{mobileCourseResults.length}</strong> / <strong>{rankedCourses.length}</strong> khóa học</span>
             {!isPhone && <span className="mobile-listing-page-info">Trang {coursePage} / {totalMobileCoursePages}</span>}
           </div>
 
           <div className="mobile-listing-grid">
+            {coursesStatus === 'loading' && <CatalogLoading label="Đang tải khóa học" />}
             {mobileCourseResults.map((course) => (
               <CourseCard key={course.id} course={course} />
             ))}
           </div>
 
-          {rankedCourses.length === 0 && (
+          {courseErrorNotice}
+          {coursesStatus === 'ready' && rankedCourses.length === 0 && (
             <div className="search-empty">
               <Search size={30} />
               <h3>Chưa tìm thấy khóa học phù hợp</h3>
@@ -1079,26 +989,19 @@ const profileCourses = profile
 
           {mobileTutorFilterForm}
 
-          <div className="mobile-listing-meta">
+          <div className="mobile-listing-meta" hidden={providersStatus !== 'ready'}>
             <span>Hiển thị <strong>{mobileTutorResults.length}</strong> / <strong>{filteredTutors.length}</strong> hồ sơ</span>
             {!isPhone && <span className="mobile-listing-page-info">Trang {tutorPage} / {totalMobileTutorPages}</span>}
           </div>
 
           <div className="mobile-listing-grid tutors-grid">
+            {providersStatus === 'loading' && <CatalogLoading providers label="Đang tải hồ sơ người dạy" />}
             {mobileTutorResults.map((tutor) => (
               <TutorCard
                 key={tutor.id}
                 tutor={tutor}
-                saved={isAuthenticated ? hasProviderTrust(user.id, tutor.id) : savedIds.includes(tutor.id)}
-                onSave={() => {
-                  if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng giáo viên hoặc trung tâm.'); return; }
-                  const isTrusted = toggleProviderTrust(user.id, tutor.id);
-                  setSavedIds((current) => isTrusted ? [...new Set([...current, tutor.id])] : current.filter((id) => id !== tutor.id));
-                  if (isTrusted) {
-                    trackProviderAffinity(user.id, tutor.id, 'saved-profile', 4);
-                    createNotification({ recipientId: tutor.id, actorName: user.name || 'Một học viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một học viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(tutor.id) });
-                  }
-                }}
+                saved={isAuthenticated && tutor.trustedByCurrentUser}
+                onSave={() => trustProvider(tutor)}
                 onOpen={() => {
                   if (isAuthenticated) trackProviderAffinity(user.id, tutor.id, 'viewed-profile', 1);
                   setProfile(tutor);
@@ -1107,7 +1010,8 @@ const profileCourses = profile
             ))}
           </div>
 
-          {filteredTutors.length === 0 && (
+          {providerErrorNotice}
+          {providersStatus === 'ready' && filteredTutors.length === 0 && (
             <div className="search-empty">
               <Search size={30} />
               <h3>Chưa tìm thấy hồ sơ phù hợp</h3>
@@ -1428,10 +1332,12 @@ const profileCourses = profile
                 });
               }}
             >
+            {coursesStatus === 'loading' && <CatalogLoading label="Đang tải khóa học" />}
             {(isDiscoveryHome ? rankedCourses.slice(0, homeCourses.count) : isMobile ? (isPhone ? rankedCourses : rankedCourses.slice(0, 4)) : visibleCourses).map((course) => <CourseCard key={course.id} course={course} />)}
           </div>
           {isDiscoveryHome && <DiscoveryMore feed={homeCourses} total={rankedCourses.length} label="khóa học" />}
-          {rankedCourses.length === 0 && (
+          {courseErrorNotice}
+          {coursesStatus === 'ready' && rankedCourses.length === 0 && (
             <div className="search-empty course-search__empty">
               <Search size={30} />
               <h3>Chưa tìm thấy khóa học phù hợp</h3>
@@ -1558,7 +1464,7 @@ const profileCourses = profile
               </form>
             </div>
           )}
-          {!isMobile && (isFiltered || savedIds.length > 0) && (
+          {!isMobile && (isFiltered || savedCount > 0) && (
             <div className="results-toolbar">
               {isFiltered && <span role="status">{`${filteredTutors.length} hồ sơ phù hợp${descriptionQuery ? ` với “${descriptionQuery}”` : query ? ` với “${query}”` : ''}`}</span>}
               <div>
@@ -1568,7 +1474,7 @@ const profileCourses = profile
                   aria-pressed={savedOnly}
                 >
                   <Heart size={14} />
-                  Đã tin tưởng ({savedIds.length})
+                  Đã tin tưởng ({savedCount})
                 </button>
                 {isFiltered && (
                   <button className="text-link" onClick={resetSearch}>
@@ -1586,20 +1492,13 @@ const profileCourses = profile
             event.preventDefault();
             event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
           }}>
+            {providersStatus === 'loading' && <CatalogLoading providers label="Đang tải hồ sơ người dạy" />}
             {(isDiscoveryHome ? filteredTutors.slice(0, homeTutors.count) : isMobile ? (isPhone ? filteredTutors : filteredTutors.slice(0, 4)) : visibleTutors).map((tutor) => (
               <TutorCard
                 key={tutor.id}
                 tutor={tutor}
-                saved={isAuthenticated ? hasProviderTrust(user.id, tutor.id) : savedIds.includes(tutor.id)}
-                onSave={() => {
-                  if (!isAuthenticated) { toast.error('Vui lòng đăng nhập để tin tưởng giáo viên hoặc trung tâm.'); return; }
-                  const isTrusted = toggleProviderTrust(user.id, tutor.id);
-                  setSavedIds((current) => isTrusted ? [...new Set([...current, tutor.id])] : current.filter((id) => id !== tutor.id));
-                  if (isTrusted) {
-                    trackProviderAffinity(user.id, tutor.id, 'saved-profile', 4);
-                    createNotification({ recipientId: tutor.id, actorName: user.name || 'Một học viên', actorAvatar: user.avatar || '', type: 'profile_like', title: `${user.name || 'Một học viên'} đã tin tưởng hồ sơ của bạn`, description: 'Uy tín của bạn được cộng đồng EduMatch ghi nhận.', link: ROUTES.TEACHER_PROFILE(tutor.id) });
-                  }
-                }}
+                saved={isAuthenticated && tutor.trustedByCurrentUser}
+                onSave={() => trustProvider(tutor)}
                 onOpen={() => {
                   if (isAuthenticated) trackProviderAffinity(user.id, tutor.id, 'viewed-profile', 1);
                   setProfile(tutor);
@@ -1619,7 +1518,8 @@ const profileCourses = profile
               </button>
             </div>
           )}
-          {visibleTutors.length === 0 && (
+          {providerErrorNotice}
+          {providersStatus === 'ready' && visibleTutors.length === 0 && (
             <div className="search-empty">
               <Search size={30} />
               <h3>Chưa tìm thấy hồ sơ phù hợp</h3>
@@ -1649,7 +1549,6 @@ const profileCourses = profile
               </div>
             </div>
           )}
-          <p className="sample-note">Hồ sơ giáo viên và trung tâm minh hoạ cho giao diện.</p>
         </section>
 
         {!isSearchResults && <>
@@ -1784,10 +1683,13 @@ const profileCourses = profile
             event.preventDefault();
             event.currentTarget.scrollBy({ left: (event.key === 'ArrowRight' ? 1 : -1) * event.currentTarget.clientWidth * 0.8, behavior: 'smooth' });
           }}>
+            {coursesStatus === 'loading' && <CatalogLoading label="Đang tải khóa học được tài trợ" />}
             {(isDiscoveryHome ? discoverySponsoredCourses.slice(0, homeSponsored.count) : isPhone ? sponsoredCourses : visibleSponsoredCourses).map((course) => <CourseCard key={course.id} course={course} sponsored />)}
           </div>
           {isDiscoveryHome && <DiscoveryMore feed={homeSponsored} total={discoverySponsoredCourses.length} label="khóa học tài trợ" />}
-          {isDiscoveryHome && discoverySponsoredCourses.length === 0 && <div className="search-empty"><Search size={30} /><h3>Chưa tìm thấy khóa học phù hợp</h3><p>Thử điều chỉnh mô tả nhu cầu hoặc hình thức học.</p><Button className="edu-button" onClick={() => { setSponsoredFilters({ description: '', mode: '' }); setAppliedSponsoredFilters({ description: '', mode: '' }); }}>Xóa bộ lọc</Button></div>}
+          {coursesStatus === 'error' && <RequestNotice title="Không tải được khóa học được tài trợ" onRetry={retryCourses} />}
+          {coursesStatus === 'ready' && sponsoredCourses.length === 0 && <div className="search-empty"><h3>Chưa có khóa học được tài trợ</h3></div>}
+          {isDiscoveryHome && coursesStatus === 'ready' && sponsoredCourses.length > 0 && discoverySponsoredCourses.length === 0 && <div className="search-empty"><Search size={30} /><h3>Chưa tìm thấy khóa học phù hợp</h3><p>Thử điều chỉnh mô tả nhu cầu hoặc hình thức học.</p><Button className="edu-button" onClick={() => { setSponsoredFilters({ description: '', mode: '' }); setAppliedSponsoredFilters({ description: '', mode: '' }); }}>Xóa bộ lọc</Button></div>}
           {!isDiscoveryHome && sponsoredCourses.length > 3 && (
             <div className="course-pagination sponsored-pagination" aria-label="Điều hướng khóa học được tài trợ">
               {!showAllSponsored ? (
@@ -1968,8 +1870,7 @@ const profileCourses = profile
             </span>
             <h3>Cảm ơn bạn, {consultation.name}!</h3>
             <p>
-              Bạn đã hoàn tất trải nghiệm biểu mẫu. Thông tin chưa được gửi đi vì giao diện chưa kết
-              nối dịch vụ tư vấn.
+              EduMatch đã nhận yêu cầu tư vấn và sẽ liên hệ với bạn qua số điện thoại đã cung cấp.
             </p>
             <Button className="edu-button" onClick={closeDialog}>
               Tiếp tục khám phá
@@ -1979,9 +1880,20 @@ const profileCourses = profile
         ) : (
           <form
             className="consultation-form"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
-              setConsultationComplete(true);
+              if (consultationPending.current) return;
+              consultationPending.current = true;
+              setConsultationSaving(true);
+              try {
+                await courseService.consult(consultation);
+                setConsultationComplete(true);
+              } catch (error) {
+                toast.error(courseError(error, 'Không thể gửi yêu cầu tư vấn. Vui lòng thử lại.'));
+              } finally {
+                consultationPending.current = false;
+                setConsultationSaving(false);
+              }
             }}
           >
             <a className="consultation-hotline" href="tel:19001345">
@@ -2054,8 +1966,8 @@ const profileCourses = profile
             <p className="dialog-note">
               EduMatch hướng tới một môi trường giáo dục an toàn, minh bạch và hiệu quả. Thông tin tư vấn được dùng để kết nối bạn với lựa chọn học tập phù hợp.
             </p>
-            <Button type="submit" className="edu-button w-full">
-              Hoàn tất biểu mẫu
+            <Button type="submit" className="edu-button w-full" disabled={consultationSaving}>
+              {consultationSaving ? 'Đang gửi...' : 'Hoàn tất biểu mẫu'}
               <ArrowRight size={16} />
             </Button>
           </form>

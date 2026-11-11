@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, MapPin, Monitor, PlusCircle, Video } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
-import { getCourse, saveCourse, updateCourse } from '@/features/learning/marketplace';
+import { courseError, courseService } from '@/services/courseService';
 import { AdministrativePicker } from '@/components/forms/AdministrativePicker';
 import { Modal } from '@/components/feedback/Modal';
+import { RequestNotice } from '@/components/feedback/RequestState';
+import { CourseEditorLoading } from './LearningLoading';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
 import './courses.css';
 
@@ -20,21 +22,36 @@ const COURSE_DESCRIPTION_MAX_LENGTH = 1200;
 const parseVnd = (value) => Number(String(value).replace(/[^\d]/g, ''));
 
 export function CreateCoursePage() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editingCourseId = searchParams.get('edit');
-  const editingCourse = editingCourseId ? getCourse(editingCourseId) : null;
-  const isEditing = Boolean(editingCourse);
-  const [form, setForm] = useState(() => isEditing ? { ...emptyForm, ...editingCourse } : emptyForm);
+  return <CourseEditor key={editingCourseId || 'new'} editingCourseId={editingCourseId} />;
+}
+
+function CourseEditor({ editingCourseId }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isEditing = Boolean(editingCourseId);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [form, setForm] = useState(emptyForm);
+  const saving = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    if (!editingCourseId || !user?.id) return;
+    let active = true;
+    courseService.show(editingCourseId).then((course) => {
+      if (!active) return;
+      setEditingCourse(course);
+      setForm(Object.fromEntries(Object.entries(emptyForm).map(([key, fallback]) => [key, course[key] ?? fallback])));
+    }).catch((error) => {
+      if (active) setLoadError(courseError(error));
+    });
+    return () => { active = false; };
+  }, [editingCourseId, user?.id, loadAttempt]);
   const [errors, setErrors] = useState({});
   const [isDescriptionEditorOpen, setIsDescriptionEditorOpen] = useState(false);
-  const isCenter = user?.role === 'center';
   const isEducationProvider = ['teacher', 'center'].includes(user?.role);
-  const summary = useMemo(() => ({
-    name: user?.name || (isCenter ? 'Trung tâm EduMatch' : 'Giáo viên EduMatch'), role: user?.role, dob: user?.dob, qualifications: user?.qualifications || 'Đang cập nhật',
-    experience: user?.experience || 'Đang cập nhật', bio: user?.bio || 'Đang cập nhật', avatar: user?.avatar || '', phone: user?.phone || '', isPhonePublic: Boolean(user?.isPhonePublic), foundedYear: user?.foundedYear || '', teachingField: user?.teachingField || '', licenseVerificationStatus: user?.licenseVerificationStatus || '',
-  }), [isCenter, user]);
   const update = (event) => {
     const { name, value } = event.target;
     const maxLength = name === 'title'
@@ -55,8 +72,9 @@ export function CreateCoursePage() {
     [name]: value,
     ...(name === 'province' ? { ward: '' } : {}),
   }));
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
+    if (saving.current) return;
     const nextErrors = {};
     ['title', 'description'].forEach((name) => { if (!String(form[name]).trim()) nextErrors[name] = 'Vui lòng điền thông tin này'; });
     if (String(form.title).length > COURSE_TITLE_MAX_LENGTH) nextErrors.title = `Tên khóa học không được vượt quá ${COURSE_TITLE_MAX_LENGTH} ký tự`;
@@ -71,14 +89,36 @@ export function CreateCoursePage() {
     if (form.learningMode === 'in-person' && !form.ward.trim()) nextErrors.ward = 'Vui lòng chọn xã, phường hoặc đặc khu';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const courseData = { ...form, paymentType, price, location: [form.ward, form.province].filter(Boolean).join(', '), teacher: { id: user?.id, ...summary } };
-    const course = isEditing
-      ? updateCourse(editingCourse.id, courseData)
-      : saveCourse({ id: `course-${Date.now()}`, ...courseData, createdAt: new Date().toISOString() });
-    toast.success(isEditing ? 'Thông tin khóa học đã được cập nhật.' : 'Khóa học đã được đăng và mở tuyển sinh.');
-    navigate(ROUTES.COURSE_DETAIL(course.id));
+    const courseData = {
+      ...form, paymentType, price: form.price ? price : null,
+      subjectId: editingCourse?.subjectId ?? null,
+    };
+    saving.current = true;
+    setIsSaving(true);
+    try {
+      const course = isEditing
+        ? await courseService.update(editingCourse.id, courseData)
+        : await courseService.create(courseData);
+      toast.success(isEditing ? 'Thông tin khóa học đã được cập nhật.' : 'Khóa học đã được đăng và mở tuyển sinh.');
+      navigate(ROUTES.COURSE_DETAIL(course.id));
+    } catch (error) {
+      const validation = error.response?.data?.errors || {};
+      setErrors(Object.fromEntries(Object.entries(validation).map(([field, messages]) => [field, messages[0]])));
+      toast.error(courseError(error));
+    } finally {
+      saving.current = false;
+      setIsSaving(false);
+    }
   };
   if (!isEducationProvider) return <section className="learning-page"><div className="learning-empty"><h1>Khu vực dành cho Giáo viên và Trung tâm Đào tạo</h1><p>Bạn cần đăng nhập bằng tài khoản giáo viên hoặc trung tâm để tạo khóa học.</p><Link to={ROUTES.HOME}>Về trang chủ</Link></div></section>;
+  if (isEditing && !editingCourse) {
+    if (!loadError) return <CourseEditorLoading />;
+    return <section className="learning-page"><div className="learning-container">
+      <RequestNotice title="Không mở được khóa học để chỉnh sửa" onRetry={() => { setLoadError(''); setLoadAttempt((value) => value + 1); }}>
+        <Link to={ROUTES.HOME}>Về trang chủ</Link>
+      </RequestNotice>
+    </div></section>;
+  }
   if (isEditing && String(editingCourse.teacher?.id) !== String(user?.id)) return <section className="learning-page"><div className="learning-empty"><h1>Bạn không thể chỉnh sửa khóa học này</h1><p>Chỉ đơn vị đã tạo khóa học mới có quyền cập nhật nội dung.</p><Link to={ROUTES.HOME}>Về trang chủ</Link></div></section>;
   return (
     <section className="learning-page">
@@ -116,7 +156,7 @@ export function CreateCoursePage() {
                 <div className="form-location-field"><AdministrativePicker id="course-ward" label={form.inPersonType === 'classroom' ? 'Xã / Phường / Đặc khu có lớp' : 'Xã / Phường / Đặc khu nhận dạy'} value={form.ward} options={wardOptions} onSelect={selectLocation('ward')} placeholder={form.province ? 'Gõ để tìm xã/phường, rồi chọn' : 'Chọn tỉnh/thành trước'} disabled={!form.province} emptyText="Không tìm thấy xã/phường trong tỉnh/thành đã chọn." />{errors.ward && <small className="field-error">{errors.ward}</small>}</div>
               </div>
             </>}
-            <button className="publish-course" type="submit">{isEditing ? 'Lưu thay đổi' : 'Đăng khóa học'}</button>
+            <button className="publish-course" type="submit" disabled={isSaving}>{isSaving ? 'Đang lưu...' : isEditing ? 'Lưu thay đổi' : 'Đăng khóa học'}</button>
           </aside>
         </form>
         <Modal

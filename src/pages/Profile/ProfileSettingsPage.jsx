@@ -7,7 +7,7 @@ import { ROUTES } from '@/constants/routes';
 import { profileService } from '@/services/profileService';
 import { fieldErrors, requestError } from '@/utils/formErrors';
 import { getTodayDate } from '@/pages/Register/registerData';
-import { getPostMediaItems, getPosts, syncTeacherCourseProfile } from '@/features/learning/marketplace';
+import { getPostMediaItems, getPosts } from '@/features/learning/marketplace';
 import { Modal } from '@/components/feedback/Modal';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { ProfileImageCropDialog } from '@/components/profile/ProfileImageCropDialog';
@@ -222,9 +222,7 @@ export function ProfileSettingsPage() {
         ...(currentAvatar ? { avatar: currentAvatar, avatarVersion: currentAvatarVersion } : (responseAvatar ? { avatar: responseAvatar } : {})),
       };
       updateUser(profileUpdates);
-      if (['teacher', 'center'].includes(user?.role)) {
-        syncTeacherCourseProfile(user.id, profileUpdates);
-      }
+
       setForm(profileForm({ ...user, ...profileUpdates }));
       toast.success('Đã lưu hồ sơ cá nhân.');
       setMessage('Thông tin của bạn đã được lưu.');
@@ -258,9 +256,7 @@ export function ProfileSettingsPage() {
     setAvatarFile(file);
     setPreview(image);
     updateUser({ avatar: image, avatarVersion });
-    if (['teacher', 'center'].includes(user?.role)) {
-      syncTeacherCourseProfile(user.id, { avatar: image });
-    }
+
     await uploadAvatar(file, image);
     setAvatarCropDraft(null);
   };
@@ -280,9 +276,7 @@ export function ProfileSettingsPage() {
       }
       if (localImage) {
         updateUser({ avatar: localImage, avatarVersion });
-        if (['teacher', 'center'].includes(user?.role)) {
-          syncTeacherCourseProfile(user.id, { avatar: localImage });
-        }
+
       }
 
       try {

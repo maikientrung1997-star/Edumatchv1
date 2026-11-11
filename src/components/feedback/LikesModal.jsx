@@ -5,7 +5,7 @@ import { Modal } from './Modal';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
-import { getCourses, getPosts } from '@/features/learning/marketplace';
+import { getPosts } from '@/features/learning/marketplace';
 import './likes-modal.css';
 
 const addProfile = (directory, id, name, avatar = '', role = 'student') => {
@@ -15,7 +15,6 @@ const addProfile = (directory, id, name, avatar = '', role = 'student') => {
 
 const profileDirectory = (user) => {
   const directory = new Map();
-  getCourses().forEach((course) => addProfile(directory, course.teacher?.id, course.teacher?.name, course.teacher?.avatar, course.teacher?.role));
   getPosts().forEach((post) => {
     addProfile(directory, post.authorId || post.teacherId, post.authorName || post.author || post.teacherName, post.authorAvatar, post.authorRole);
     (post.comments || []).forEach((comment) => {
@@ -30,9 +29,10 @@ const profileDirectory = (user) => {
 export function LikesModal({ target, onClose }) {
   const { user } = useAuth();
   const people = useMemo(() => {
+    if (target?.people) return target.people;
     const directory = profileDirectory(user);
     return (target?.ids || []).map((id) => directory.get(id) || { id, name: 'Thành viên EduMatch', avatar: '' });
-  }, [target?.ids, user]);
+  }, [target?.ids, target?.people, user]);
 
   const icon = target?.kind === 'share' ? <Share2 size={15} aria-hidden="true" /> : <Heart size={15} fill="currentColor" aria-hidden="true" />;
   return <Modal open={Boolean(target)} onClose={onClose} title={target?.title || 'Lượt thích'} description={target?.label || 'Những người đã bày tỏ sự yêu thích'} size="sm">

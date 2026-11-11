@@ -1,5 +1,5 @@
 /* Home discovery uses the existing cards, in a progressively revealed vertical grid. */
-.edu-site .edu-home--discovery section.home-section:is(.course-section, .tutors-section, .sponsored-courses-section),
+.edu-site .edu-home--discovery section.home-section:is(.course-section, .tutors-section, .subjects-section, .sponsored-courses-section),
 .edu-site .edu-home--discovery .bottom-cta,
 .edu-site .edu-home--discovery .discovery-section__header {
   scroll-margin-top: var(--edu-header-height, 76px);

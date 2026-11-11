@@ -26,7 +26,7 @@ import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { DiscussionMedia } from '@/components/feedback/ExpandableImage';
 import { LikesModal } from '@/components/feedback/LikesModal';
 import { PostActions } from '@/components/feedback/PostActions';
-import { PostCommentList } from '@/components/feedback/PostCommentList';
+import { PostCommentList, ReplyTagBadge, ReplyTaggedText } from '@/components/feedback/PostCommentList';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
 import { ReactionCount } from '@/components/feedback/ReactionCount';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
@@ -213,6 +213,7 @@ export function TeacherProfilePage() {
   const [visiblePostCount, setVisiblePostCount] = useState(PROFILE_POSTS_BATCH_SIZE);
   const [showAllProfileCourses, setShowAllProfileCourses] = useState(false);
   const [expandedProfileCourseIds, setExpandedProfileCourseIds] = useState({});
+  const [confirmAction, setConfirmAction] = useState(null);
   const portfolioImagesInputRef = useRef(null);
   const albumImagesInputRef = useRef(null);
   const avatarImageInputRef = useRef(null);
@@ -1455,18 +1456,30 @@ export function TeacherProfilePage() {
     setCommentMedia((current) => ({ ...current, [draftKey]: null }));
   };
 
-  const openViewerReply = (commentId) => {
+  const openViewerReply = (commentId, replyTo = null) => {
     if (!user) { toast.error('Vui lòng đăng nhập để trả lời bình luận.'); return; }
-    setReplyTarget({ postId: viewerPost?.id, commentId, mediaId: viewerMedia?.id });
-    setReplyText('');
-    setReplyMedia(null);
+    const isSameComment = replyTarget?.commentId === commentId;
+    setReplyTarget({
+      postId: viewerPost?.id,
+      commentId,
+      mediaId: viewerMedia?.id,
+      replyToId: replyTo?.id || null,
+      replyToName: replyTo?.name || '',
+    });
+    if (!isSameComment) {
+      setReplyText('');
+      setReplyMedia(null);
+    }
+    requestAnimationFrame(() => {
+      document.getElementById(`viewer-profile-reply-textarea-${commentId}`)?.focus();
+    });
   };
 
   const replyToViewerComment = (event) => {
     event.preventDefault();
     if (!replyTarget || !user) return;
     const text = replyText.trim();
-    if (!text && !replyMedia) return;
+    if (!text && !replyMedia && !replyTarget.replyToName) return;
 
     const parentComment = (viewerInteractionTarget?.comments || []).find((c) => c.id === replyTarget.commentId);
     const reply = {
@@ -1476,15 +1489,18 @@ export function TeacherProfilePage() {
       authorName: user.name || 'Thành viên EduMatch',
       authorRole: user.role || 'student',
       authorAvatar: user.avatar || '',
+      replyToId: replyTarget.replyToId || null,
+      replyToName: replyTarget.replyToName || '',
       text,
       media: replyMedia,
       likes: [],
       createdAt: new Date().toISOString(),
     };
 
-    if (parentComment?.authorId && parentComment.authorId !== user.id) {
+    const recipientId = replyTarget.replyToId || parentComment?.authorId;
+    if (recipientId && recipientId !== user.id) {
       createNotification({
-        recipientId: parentComment.authorId,
+        recipientId,
         actorName: user.name || 'Một thành viên',
         actorAvatar: user.avatar || '',
         type: 'comment_reply',
@@ -1503,7 +1519,6 @@ export function TeacherProfilePage() {
       ),
     }));
 
-    setReplyTarget(null);
     setReplyText('');
     setReplyMedia(null);
   };
@@ -1628,14 +1643,14 @@ export function TeacherProfilePage() {
                 <button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id)}>
                   {isCommentLiked ? 'Đã thích' : 'Thích'}
                 </button>
-                <button type="button" onClick={() => openViewerReply(item.id)}>Trả lời</button>
+                <button type="button" onClick={() => openViewerReply(item.id, { id: item.authorId, name: authorName })}>Trả lời</button>
                 <ReactionCount
                   count={item.likes?.length}
                   label="Xem những người đã thích bình luận này"
                   onClick={() => setLikesTarget({ ids: item.likes, label: 'Những người đã thích bình luận này' })}
                 />
               </div>
-              <PostCommentList items={item.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
+              <PostCommentList items={item.replies || []} variant="replies" expanded={isReplying} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
                 const replyAuthor = reply.authorName || reply.author || 'Thành viên EduMatch';
                 const isReplyLiked = (reply.likes || []).includes(user?.id);
                 return (
@@ -1659,12 +1674,18 @@ export function TeacherProfilePage() {
                         />
                       )}
                     </div>
-                    {reply.text && <p>{reply.text}</p>}
+                    <ReplyTaggedText
+                      replyToName={reply.replyToName}
+                      to={reply.replyToId ? ROUTES.TEACHER_PROFILE(reply.replyToId) : undefined}
+                      onLinkClick={reply.replyToId ? (event) => reloadCurrentProfile(event, reply.replyToId) : undefined}
+                      text={reply.text}
+                    />
                     <DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor}`} />
                     <div className="post-image-dialog__comment-actions">
                       <button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleViewerCommentLike(item.id, reply.id)}>
                         {isReplyLiked ? 'Đã thích' : 'Thích'}
                       </button>
+                      <button type="button" onClick={() => openViewerReply(item.id, { id: reply.authorId, name: replyAuthor })}>Trả lời</button>
                       <ReactionCount
                         count={reply.likes?.length}
                         label="Xem những người đã thích phản hồi này"
@@ -1676,14 +1697,27 @@ export function TeacherProfilePage() {
               }} />
               {isReplying && (
                 <form className="post-comment-form post-image-dialog__reply-form" onSubmit={replyToViewerComment}>
-                  <textarea
-                    autoFocus
-                    value={replyText}
-                    onChange={(event) => setReplyText(event.target.value)}
-                    onKeyDown={submitOnPlainEnter}
-                    placeholder={`Trả lời ${authorName}...`}
-                    rows="2"
-                  />
+                  <div className="reply-composer-box">
+                    <ReplyTagBadge
+                      name={replyTarget?.replyToName}
+                      onRemove={() => setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null)}
+                    />
+                    <textarea
+                      id={`viewer-profile-reply-textarea-${item.id}`}
+                      autoFocus
+                      value={replyText}
+                      onChange={(event) => setReplyText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Backspace' && !replyText && replyTarget?.replyToName) {
+                          setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null);
+                          return;
+                        }
+                        submitOnPlainEnter(event);
+                      }}
+                      placeholder={`Trả lời ${replyTarget?.replyToName || authorName}...`}
+                      rows="2"
+                    />
+                  </div>
                   <ImageAttachment id={`viewer-profile-reply-image-${item.id}`} value={replyMedia} onChange={setReplyMedia} />
                   <button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button>
                 </form>
@@ -1741,7 +1775,6 @@ export function TeacherProfilePage() {
     cancelProfilePostEdit();
     toast.success('Đã cập nhật bài viết.');
   };
-  const [confirmAction, setConfirmAction] = useState(null);
   const removeProfilePost = (post) => {
     if (!ownsContent(post.authorId || post.teacherId)) return;
     setConfirmAction({

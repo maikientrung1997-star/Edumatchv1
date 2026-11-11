@@ -299,10 +299,19 @@ export const Home = () => {
   const isMobile = useIsMobile(768);
   const isPhone = useIsMobile(767);
   const catalog = useMasterData();
-  const catalogSubjects = catalog.subjects.length ? catalog.subjects : subjectStyles;
-  const subjects = catalogSubjects.map((subject) => ({ ...subject,
-    icon: subjectStyles.find((item) => item.name === subject.name)?.icon || BookOpen,
-    color: subjectStyles.find((item) => item.name === subject.name)?.color || 'green' }));
+  const seenSubjectNames = new Set(catalog.subjects.map((subject) => subject.name));
+  const catalogSubjects = [
+    ...catalog.subjects,
+    ...subjectStyles.filter((subject) => !seenSubjectNames.has(subject.name)),
+  ];
+  const subjects = catalogSubjects.map((subject, index) => {
+    const fallbackStyle = subjectStyles.find((item) => item.name === subject.name) || subjectStyles[index % subjectStyles.length];
+    return {
+      ...subject,
+      icon: fallbackStyle?.icon || BookOpen,
+      color: fallbackStyle?.color || 'green',
+    };
+  });
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -376,12 +385,14 @@ const profileCourses = profile
   const filterRef = useRef(null);
   const courseRef = useRef(null);
   const sponsoredRef = useRef(null);
+  const subjectsRef = useRef(null);
   const discoveryHeroRef = useRef(null);
   const discoveryEndRef = useRef(null);
   const discovery = useDiscoveryNavigation(isDiscoveryHome, {
     heroRef: discoveryHeroRef,
     courseRef,
     tutorRef: resultsRef,
+    subjectsRef,
     sponsoredRef,
     endRef: discoveryEndRef,
   });
@@ -653,6 +664,7 @@ const profileCourses = profile
   const homeCourses = useDiscoveryFeed(rankedCourses.length, courseQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc'), discoveryBatchSize);
   const homeTutors = useDiscoveryFeed(filteredTutors.length, tutorQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('giao-vien'), isMobile ? 8 : 12);
   const homeSponsored = useDiscoveryFeed(discoverySponsoredCourses.length, sponsoredQueryKey, canLoadDiscovery && !discovery.pausedSections.includes('khoa-hoc-tai-tro'), discoveryBatchSize);
+  const homeSubjects = useDiscoveryFeed(subjects.length, `subjects:${subjects.length}`, canLoadDiscovery && !discovery.pausedSections.includes('mon-hoc'), isMobile ? 12 : 18);
   const { administrativeProvinces, wardOptions, error: areaError } = useAdministrativeOptions(filters.province);
   const { administrativeProvinces: courseProvinces, wardOptions: courseWardOptions, error: courseAreaError } = useAdministrativeOptions(courseFilters.province);
   const registerForTutor = async (tutor) => {
@@ -1653,23 +1665,28 @@ const profileCourses = profile
         </section>
 
         {!isSearchResults && <>
-        <section id="mon-hoc" className="home-section" aria-labelledby="subjects-heading">
+        <section id="mon-hoc" className="home-section subjects-section" ref={subjectsRef} aria-labelledby="subjects-heading">
+          <DiscoveryHeader enabled={isDiscoveryHome} active={discovery.activeSection === 'mon-hoc'} queryKey="subjects">
           <SectionHeading
             title={
               <span id="subjects-heading">
                 Khám phá <span className="accent-text">môn học</span>
               </span>
             }
+            description={isDiscoveryHome ? 'Chọn một môn học để xem các khóa học và người đồng hành phù hợp.' : undefined}
           >
-            <button className="text-link" onClick={() => setShowAllSubjects((current) => !current)}>
-              {showAllSubjects ? 'Thu gọn môn học' : 'Khám phá các môn học'}
-              <ArrowRight size={16} />
-            </button>
+            {!isDiscoveryHome && (
+              <button className="text-link" onClick={() => setShowAllSubjects((current) => !current)}>
+                {showAllSubjects ? 'Thu gọn môn học' : 'Khám phá các môn học'}
+                <ArrowRight size={16} />
+              </button>
+            )}
           </SectionHeading>
-          <p className="subject-discovery-label">Môn học nổi bật</p>
+          </DiscoveryHeader>
+          {!isDiscoveryHome && <p className="subject-discovery-label">Môn học nổi bật</p>}
           <div className="subjects-grid">
             {subjects
-              .slice(0, showAllSubjects ? subjects.length : 12)
+              .slice(0, isDiscoveryHome ? homeSubjects.count : showAllSubjects ? subjects.length : 12)
               .map(({ name, icon: Icon, icon_url, color }) => (
                 <button
                   key={name}
@@ -1683,6 +1700,7 @@ const profileCourses = profile
                   <span>{name}</span>
                 </button>
               ))}
+            {(!isDiscoveryHome || homeSubjects.count >= subjects.length) && (
             <button
               ref={otherSubjectTriggerRef}
               className={`subject-tile subject-other ${showOtherSubjectSearch ? 'selected' : ''}`}
@@ -1692,7 +1710,9 @@ const profileCourses = profile
               <span className="subject-icon"><Search size={26} strokeWidth={1.8} /></span>
               <span>Khác</span>
             </button>
+            )}
           </div>
+          {isDiscoveryHome && <DiscoveryMore feed={homeSubjects} total={subjects.length} label="môn học" />}
           {showOtherSubjectSearch && (
             <div ref={otherSubjectSearchRef} className="other-course-search" role="search" aria-label="Tìm khóa học khác">
               <div className="other-course-search__top">

@@ -725,7 +725,6 @@
   margin-top: 11px;
 }
 .feed-reply-form {
-  max-width: 510px;
   color: var(--edu-muted);
 }
 .feed-reply-form textarea,
@@ -998,6 +997,19 @@
 
 .post-detail-panel__composer button[type='submit'] {
   height: 44px;
+}
+
+/* Ô trả lời trong trang chi tiết dùng cùng kích thước với ô bình luận chính */
+.post-detail-panel .feed-reply-form .reply-composer-box.reply-composer-box {
+  min-height: 44px;
+  padding-left: 10px;
+  border-radius: 18px;
+}
+
+.post-detail-panel .feed-reply-form > button[type='submit'] {
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
 }
 
 .post-detail-panel__empty {

@@ -33,7 +33,7 @@ export function useDiscoveryFeed(total, queryKey, enabled, batchSize) {
   return { count, sentinelRef, showMore };
 }
 
-export function useDiscoveryNavigation(enabled, { heroRef, courseRef, tutorRef, sponsoredRef, endRef }) {
+export function useDiscoveryNavigation(enabled, { heroRef, courseRef, tutorRef, subjectsRef, sponsoredRef, endRef }) {
   const [navigation, setNavigation] = useState({ activeSection: null, direction: 1, hasDestination: false });
   const [isMoving, setIsMoving] = useState(false);
   const [pausedSections, setPausedSections] = useState([]);
@@ -41,7 +41,7 @@ export function useDiscoveryNavigation(enabled, { heroRef, courseRef, tutorRef, 
 
   useEffect(() => {
     if (!enabled) return;
-    const sections = [heroRef.current, courseRef.current, tutorRef.current, sponsoredRef.current, endRef.current].filter(Boolean);
+    const sections = [heroRef.current, courseRef.current, tutorRef.current, subjectsRef?.current, sponsoredRef.current, endRef.current].filter(Boolean);
     const header = document.querySelector('.edu-header');
     let frame;
     let idleTimer;
@@ -132,7 +132,7 @@ export function useDiscoveryNavigation(enabled, { heroRef, courseRef, tutorRef, 
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [enabled, heroRef, courseRef, tutorRef, sponsoredRef, endRef]);
+  }, [enabled, heroRef, courseRef, tutorRef, subjectsRef, sponsoredRef, endRef]);
 
   return {
     activeSection: enabled ? navigation.activeSection : null,

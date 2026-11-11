@@ -15,7 +15,7 @@ import { LikesModal } from '@/components/feedback/LikesModal';
 import { Modal } from '@/components/feedback/Modal';
 import { InlinePostEditor, PostComposerDialog, PostComposerTrigger } from '@/components/feedback/PostComposerDialog';
 import { PostActions } from '@/components/feedback/PostActions';
-import { PostCommentList } from '@/components/feedback/PostCommentList';
+import { PostCommentList, ReplyTagBadge, ReplyTaggedText } from '@/components/feedback/PostCommentList';
 import { PostImageDialog } from '@/components/feedback/PostImageDialog';
 import { ReactionCount } from '@/components/feedback/ReactionCount';
 import { submitOnPlainEnter } from '@/utils/submitOnPlainEnter';
@@ -481,24 +481,58 @@ export function FeedPage({ postId = null }) {
     setCommentMedia((current) => ({ ...current, [draftKey]: null }));
   };
 
-  const openReply = (postId, commentId, mediaId = null) => {
+  const openReply = (postId, commentId, mediaId = null, replyTo = null) => {
     if (!requireAuth()) return;
-    setReplyTarget({ postId, commentId, mediaId });
-    setReplyText('');
-    setReplyMedia(null);
+    const isSameComment = replyTarget?.postId === postId && replyTarget?.commentId === commentId && replyTarget?.mediaId === mediaId;
+    setReplyTarget({
+      postId,
+      commentId,
+      mediaId,
+      replyToId: replyTo?.id || null,
+      replyToName: replyTo?.name || '',
+    });
+    if (!isSameComment) {
+      setReplyText('');
+      setReplyMedia(null);
+    }
+    requestAnimationFrame(() => {
+      document.getElementById(`reply-textarea-${postId}-${commentId}-${mediaId || 'post'}`)?.focus();
+    });
   };
 
   const submitReply = (event) => {
     event.preventDefault();
     if (!replyTarget || !requireAuth()) return;
     const text = replyText.trim();
-    if (!text && !replyMedia) return;
-    const reply = { id: `reply-${Date.now()}`, authorId: user.id, authorName: user.name || 'Thành viên EduMatch', authorRole: user.role || 'student', authorAvatar: user.avatar || '', text, media: replyMedia, createdAt: new Date().toISOString(), likes: [] };
+    if (!text && !replyMedia && !replyTarget.replyToName) return;
+    const reply = {
+      id: `reply-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      authorId: user.id,
+      authorName: user.name || 'Thành viên EduMatch',
+      authorRole: user.role || 'student',
+      authorAvatar: user.avatar || '',
+      replyToId: replyTarget.replyToId || null,
+      replyToName: replyTarget.replyToName || '',
+      text,
+      media: replyMedia,
+      createdAt: new Date().toISOString(),
+      likes: [],
+    };
     const post = getPosts().find((item) => item.id === replyTarget.postId);
     const parentComment = getInteractionTarget(post, replyTarget.mediaId)?.comments?.find((comment) => comment.id === replyTarget.commentId);
-    if (parentComment?.authorId && parentComment.authorId !== user.id) createNotification({ recipientId: parentComment.authorId, actorName: user.name || 'Một thành viên', actorAvatar: user.avatar || '', type: 'comment_reply', title: `${user.name || 'Một thành viên'} đã trả lời bình luận của bạn`, description: text, link: ROUTES.POST_DETAIL(replyTarget.postId) });
+    const recipientId = replyTarget.replyToId || parentComment?.authorId;
+    if (recipientId && recipientId !== user.id) {
+      createNotification({
+        recipientId,
+        actorName: user.name || 'Một thành viên',
+        actorAvatar: user.avatar || '',
+        type: 'comment_reply',
+        title: `${user.name || 'Một thành viên'} đã trả lời bình luận của bạn`,
+        description: text,
+        link: ROUTES.POST_DETAIL(replyTarget.postId),
+      });
+    }
     saveTargetInteraction(replyTarget.postId, replyTarget.mediaId, (current) => ({ ...current, comments: (current.comments || []).map((comment) => comment.id === replyTarget.commentId ? { ...comment, replies: [...(comment.replies || []), reply] } : comment) }));
-    setReplyTarget(null);
     setReplyText('');
     setReplyMedia(null);
   };
@@ -572,16 +606,16 @@ export function FeedPage({ postId = null }) {
         </div>
         {comment.text && <p>{comment.text}</p>}
         <DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable />
-        <div className="post-image-dialog__comment-actions"><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, null, viewerMedia?.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(viewerPost.id, comment.id, viewerMedia?.id)}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
-        <PostCommentList items={comment.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
+        <div className="post-image-dialog__comment-actions"><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, null, viewerMedia?.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(viewerPost.id, comment.id, viewerMedia?.id, { id: commentAuthor.id, name: commentAuthor.name })}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
+        <PostCommentList items={comment.replies || []} variant="replies" expanded={isReplying} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
           const replyAuthor = getAuthor(reply, providers);
           const isReplyLiked = (reply.likes || []).includes(user?.id);
           return <div className="post-image-dialog__comment-reply" key={reply.id}><div className="discussion-item__head">
               {replyAuthor.id ? <Link to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}><strong>{replyAuthor.name}</strong></Link> : <strong>{replyAuthor.name}</strong>}
               {owns(reply.authorId) && <ContentMenu id={`viewer-reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} onDelete={() => removeDiscussion(viewerPost.id, comment.id, reply.id, viewerMedia?.id)} label="phản hồi" />}
-            </div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /><div className="post-image-dialog__comment-actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, reply.id, viewerMedia?.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>;
+            </div><ReplyTaggedText replyToName={reply.replyToName} to={reply.replyToId ? ROUTES.TEACHER_PROFILE(reply.replyToId) : undefined} text={reply.text} /><DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /><div className="post-image-dialog__comment-actions"><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(viewerPost.id, comment.id, reply.id, viewerMedia?.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(viewerPost.id, comment.id, viewerMedia?.id, { id: replyAuthor.id, name: replyAuthor.name })}>Trả lời</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>;
         }} />
-        {isReplying && <form className="feed-reply-form post-image-dialog__reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="2" /><ImageAttachment id={`viewer-reply-image-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
+        {isReplying && <form className="feed-reply-form post-image-dialog__reply-form" onSubmit={submitReply}><div className="reply-composer-box"><ReplyTagBadge name={replyTarget?.replyToName} onRemove={() => setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null)} /><textarea id={`reply-textarea-${viewerPost.id}-${comment.id}-${viewerMedia?.id || 'post'}`} autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Backspace' && !replyText && replyTarget?.replyToName) { setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null); return; } submitOnPlainEnter(event); }} placeholder={`Trả lời ${replyTarget?.replyToName || commentAuthor.name}...`} rows="2" /></div><ImageAttachment id={`viewer-reply-image-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
       </div>;
     }} /> : null}</div><form className="feed-comment-form" onSubmit={(event) => submitComment(event, viewerPost.id, viewerMedia?.id)}><textarea autoFocus={isEditingViewerDiscussion} value={commentDrafts[viewerDiscussionKey] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [viewerDiscussionKey]: event.target.value }))} onKeyDown={submitOnPlainEnter} aria-label={isEditingViewerDiscussion ? 'Chỉnh sửa bình luận' : 'Viết bình luận'} placeholder={isEditingViewerDiscussion ? undefined : 'Viết bình luận...'} rows="1" /><ImageAttachment id={`viewer-comment-image-${viewerDiscussionKey}`} value={commentMedia[viewerDiscussionKey] || null} onChange={(media) => setCommentMedia((current) => ({ ...current, [viewerDiscussionKey]: media }))} />{isEditingViewerDiscussion && <button type="button" onClick={() => cancelDiscussionEdit(viewerPost.id, viewerMedia?.id)}>Hủy</button>}<button type="submit" aria-label={isEditingViewerDiscussion ? 'Lưu bình luận' : 'Gửi bình luận'}>{isEditingViewerDiscussion ? 'Lưu' : <Send size={17} />}</button></form></> : null;
 
@@ -642,8 +676,8 @@ export function FeedPage({ postId = null }) {
                         {commentAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(commentAuthor.id)}>{commentAuthor.name}</Link> : <strong>{commentAuthor.name}</strong>}
                         {owns(comment.authorId) && <ContentMenu id={`comment-${comment.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(post.id, comment.id)} onDelete={() => removeDiscussion(post.id, comment.id)} label="bình luận" />}
                       </div>{comment.text && <p>{comment.text}</p>}<DiscussionMedia media={comment.media} className="discussion-image" alt={`Ảnh đính kèm từ ${commentAuthor.name}`} expandable /></div>
-                    <div className="feed-comment__meta"><span>{formatRelativeTime(comment.createdAt)}</span><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(post.id, comment.id)}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
-                    <PostCommentList items={comment.replies || []} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
+                    <div className="feed-comment__meta"><span>{formatRelativeTime(comment.createdAt)}</span><button type="button" className={isCommentLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id)}>{isCommentLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(post.id, comment.id, null, { id: commentAuthor.id, name: commentAuthor.name })}>Trả lời</button><ReactionCount count={comment.likes?.length} label="Xem những người đã thích bình luận này" onClick={() => setLikesTarget({ ids: comment.likes, label: 'Những người đã thích bình luận này' })} /></div>
+                    <PostCommentList items={comment.replies || []} variant="replies" expanded={isReplying} moreLabel="Xem thêm phản hồi" renderItem={(reply) => {
                       const replyAuthor = getAuthor(reply, providers);
                       const isReplyLiked = (reply.likes || []).includes(user?.id);
                       return <div className="feed-comment__reply" key={reply.id}>
@@ -651,10 +685,10 @@ export function FeedPage({ postId = null }) {
                         <div className="feed-comment__body"><div className="feed-comment__bubble"><div className="discussion-item__head">
                             {replyAuthor.id ? <Link className="feed-comment__author" to={ROUTES.TEACHER_PROFILE(replyAuthor.id)}>{replyAuthor.name}</Link> : <strong>{replyAuthor.name}</strong>}
                             {owns(reply.authorId) && <ContentMenu id={`reply-${reply.id}`} openId={openContentMenu} onToggle={setOpenContentMenu} onEdit={() => editDiscussion(post.id, comment.id, reply.id)} onDelete={() => removeDiscussion(post.id, comment.id, reply.id)} label="phản hồi" />}
-                          </div>{reply.text && <p>{reply.text}</p>}<DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /></div><div className="feed-comment__meta feed-comment__meta--reply"><span>{formatRelativeTime(reply.createdAt)}</span><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>
+                          </div><ReplyTaggedText replyToName={reply.replyToName} to={reply.replyToId ? ROUTES.TEACHER_PROFILE(reply.replyToId) : undefined} text={reply.text} /><DiscussionMedia media={reply.media} className="discussion-image" alt={`Ảnh đính kèm từ ${replyAuthor.name}`} expandable /></div><div className="feed-comment__meta feed-comment__meta--reply"><span>{formatRelativeTime(reply.createdAt)}</span><button type="button" className={isReplyLiked ? 'is-liked' : ''} onClick={() => toggleCommentLike(post.id, comment.id, reply.id)}>{isReplyLiked ? 'Đã thích' : 'Thích'}</button><button type="button" onClick={() => openReply(post.id, comment.id, null, { id: replyAuthor.id, name: replyAuthor.name })}>Trả lời</button><ReactionCount count={reply.likes?.length} label="Xem những người đã thích phản hồi này" onClick={() => setLikesTarget({ ids: reply.likes, label: 'Những người đã thích phản hồi này' })} /></div></div>
                       </div>;
                     }} />
-                    {isReplying && <form className="feed-reply-form" onSubmit={submitReply}><textarea autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={submitOnPlainEnter} placeholder={`Trả lời ${commentAuthor.name}...`} rows="1" /><ImageAttachment id={`reply-image-${post.id}-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
+                    {isReplying && <form className="feed-reply-form" onSubmit={submitReply}><div className="reply-composer-box"><ReplyTagBadge name={replyTarget?.replyToName} onRemove={() => setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null)} /><textarea id={`reply-textarea-${post.id}-${comment.id}-post`} autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Backspace' && !replyText && replyTarget?.replyToName) { setReplyTarget((current) => current ? { ...current, replyToId: null, replyToName: '' } : null); return; } submitOnPlainEnter(event); }} placeholder={`Trả lời ${replyTarget?.replyToName || commentAuthor.name}...`} rows="1" /></div><ImageAttachment id={`reply-image-${post.id}-${comment.id}`} value={replyMedia} onChange={setReplyMedia} /><button type="submit" aria-label="Gửi phản hồi"><Send size={17} /></button></form>}
                   </div>
                 </div>;
               }} />

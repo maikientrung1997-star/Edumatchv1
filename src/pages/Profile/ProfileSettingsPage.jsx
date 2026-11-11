@@ -4,6 +4,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ROUTES } from '@/constants/routes';
+import { STORAGE_KEYS } from '@/constants/storageKeys';
+import { storage } from '@/utils/storage';
 import { profileService } from '@/services/profileService';
 import { fieldErrors, requestError } from '@/utils/formErrors';
 import { getTodayDate } from '@/pages/Register/registerData';
@@ -16,6 +18,16 @@ import '@/components/auth/account.css';
 import './profileSettings.css';
 
 const TEACHING_FIELD_MAX_LENGTH = 45;
+
+const readSavedPhonePublic = (userId) => {
+  if (userId == null) return undefined;
+  const persisted = storage.get(STORAGE_KEYS.PROFILE_VISUALS, {})?.[String(userId)]?.isPhonePublic;
+  if (typeof persisted === 'boolean') return persisted;
+  const cachedUser = storage.get(STORAGE_KEYS.USER_INFO, null);
+  return cachedUser && String(cachedUser.id) === String(userId) && typeof cachedUser.isPhonePublic === 'boolean'
+    ? cachedUser.isPhonePublic
+    : undefined;
+};
 
 const readImageAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -51,6 +63,9 @@ const profileForm = (user) => ({
   date_of_birth: user.dob || '',
   bio: user.detailedProfile || user.bio || '',
   teaching_field: user.teachingField || '',
+  qualifications: user.qualifications || '',
+  experience: user.experience || '',
+  is_phone_public: Boolean(user.isPhonePublic ?? user.show_phone),
   province_id: user.student_profile?.province_id || '',
   district_id: user.student_profile?.district_id || '',
   ward_id: user.student_profile?.ward_id || '',
@@ -77,9 +92,12 @@ export function ProfileSettingsPage() {
   const [avatarCropDraft, setAvatarCropDraft] = useState(null);
   const [isAvatarSourceOpen, setIsAvatarSourceOpen] = useState(false);
   const [isAvatarAlbumOpen, setIsAvatarAlbumOpen] = useState(false);
-  const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
+  // Ô văn bản dài (hồ sơ năng lực, bằng cấp, kinh nghiệm): bấm vào sẽ mở khung soạn lớn.
+  const [activeTextEditor, setActiveTextEditor] = useState(null);
   const avatarInput = useRef(null);
   const isStudent = user.role === 'student';
+  const isTeacher = user.role === 'teacher';
+  const canSharePhone = ['teacher', 'center'].includes(user.role);
   const hasSubmittedVerification = Boolean(user?.role === 'center' && user?.verificationStatus && user.verificationStatus !== 'unverified');
   const avatarAlbumItems = getPosts()
     .filter((post) => String(post.authorId || post.teacherId) === String(user.id))
@@ -97,8 +115,14 @@ export function ProfileSettingsPage() {
       try {
         const response = await profileService.get();
         if (active) {
-          updateUser(response.user);
-          setForm(profileForm(response.user));
+          // Máy chủ có thể không trả về trạng thái công khai số điện thoại. Khi đó giữ lựa chọn
+          // đã lưu của tài khoản (giống lúc đăng nhập), không tự đặt lại thành "không công khai".
+          const savedPhonePublic = readSavedPhonePublic(response.user?.id);
+          const loadedUser = !response.user?.phoneVisibilityProvided && typeof savedPhonePublic === 'boolean'
+            ? { ...response.user, isPhonePublic: savedPhonePublic }
+            : response.user;
+          updateUser(loadedUser);
+          setForm(profileForm(loadedUser));
           setMessage('');
         }
       } catch (error) {
@@ -208,6 +232,21 @@ export function ProfileSettingsPage() {
       };
       for (const key of ['province_id', 'district_id', 'ward_id'])
         payload[key] = form[key] ? Number(form[key]) : null;
+      if (isTeacher) {
+        // Cùng định dạng với khung sửa hồ sơ ở trang giáo viên (TeacherProfilePage).
+        payload.qualifications = form.qualifications.trim();
+        payload.headline = payload.qualifications;
+        payload.experience = form.experience.trim();
+        payload.experience_years = Math.min(60, Math.max(0, Number.parseInt(payload.experience, 10) || 0));
+      } else {
+        delete payload.qualifications;
+        delete payload.experience;
+      }
+      delete payload.is_phone_public;
+      if (canSharePhone) {
+        payload.show_phone = form.is_phone_public;
+        payload.isPhonePublic = form.is_phone_public;
+      }
       const response = await profileService.update(payload);
       const currentAvatar = user?.avatar;
       const currentAvatarVersion = user?.avatarVersion;
@@ -218,6 +257,11 @@ export function ProfileSettingsPage() {
         bio: otherUserData.bio || payload.bio,
         detailedProfile: otherUserData.detailedProfile || payload.bio,
         teachingField: 'teachingField' in otherUserData ? otherUserData.teachingField : payload.teaching_field,
+        ...(canSharePhone ? { isPhonePublic: form.is_phone_public } : {}),
+        ...(isTeacher ? {
+          qualifications: otherUserData.qualifications || payload.qualifications,
+          experience: otherUserData.experience || payload.experience,
+        } : {}),
         ...(payload.date_of_birth ? { dob: otherUserData.dob || payload.date_of_birth } : {}),
         ...(currentAvatar ? { avatar: currentAvatar, avatarVersion: currentAvatarVersion } : (responseAvatar ? { avatar: responseAvatar } : {})),
       };
@@ -234,6 +278,35 @@ export function ProfileSettingsPage() {
     } finally {
       setBusy(false);
     }
+  };
+  const longTextFields = {
+    bio: { label: isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực', placeholder: 'Chia sẻ nội dung bạn muốn cộng đồng biết...' },
+    qualifications: { label: 'Bằng cấp, chứng chỉ', placeholder: 'Bằng cấp/chứng chỉ' },
+    experience: { label: 'Kinh nghiệm giảng dạy', placeholder: 'Kinh nghiệm giảng dạy' },
+  };
+  const activeEditorConfig = activeTextEditor ? longTextFields[activeTextEditor] : null;
+  const longTextField = (name, errorKeys, rows) => {
+    const { label, placeholder } = longTextFields[name];
+    const error = errorKeys.map((key) => errors[key]).find(Boolean);
+    const openEditor = (event) => { event.currentTarget.blur(); setActiveTextEditor(name); };
+    return (
+      <label className="account-field">
+        <span>{label}</span>
+        <textarea
+          aria-label={label}
+          name={name}
+          value={form[name]}
+          placeholder={placeholder}
+          readOnly
+          onFocus={openEditor}
+          onClick={openEditor}
+          rows={rows}
+          className="profile-bio-preview"
+          aria-invalid={Boolean(error)}
+        />
+        {error && <small className="account-error">{error}</small>}
+      </label>
+    );
   };
   const chooseAvatar = async (event) => {
     const file = event.target.files?.[0];
@@ -451,6 +524,17 @@ export function ProfileSettingsPage() {
                     <input value={user.phone || ''} readOnly />
                   </label>
                 </div>
+                {canSharePhone && (
+                  <label className="profile-phone-visibility" title="Hiển thị số điện thoại trên hồ sơ, tìm kiếm và khóa học">
+                    <input
+                      type="checkbox"
+                      name="is_phone_public"
+                      checked={form.is_phone_public}
+                      onChange={(event) => setForm((current) => ({ ...current, is_phone_public: event.target.checked }))}
+                    />
+                    <span>Công khai số điện thoại</span>
+                  </label>
+                )}
                 {user.role !== 'center' && (
                   <label className="account-field">
                     <span>Ngày sinh</span>
@@ -493,20 +577,9 @@ export function ProfileSettingsPage() {
                   <small className={`profile-field-count ${form.teaching_field.length >= TEACHING_FIELD_MAX_LENGTH ? 'is-limit' : ''}`}>{form.teaching_field.length}/{TEACHING_FIELD_MAX_LENGTH} ký tự</small>
                   {errors.teaching_field && <small className="account-error">{errors.teaching_field}</small>}
                 </label>}
-                <label className="account-field">
-                  <span>{isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}</span>
-                  <textarea
-                    aria-label={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'}
-                    name="bio"
-                    value={form.bio}
-                    readOnly
-                    onFocus={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
-                    onClick={(event) => { event.currentTarget.blur(); setIsBioEditorOpen(true); }}
-                    rows={5}
-                    className="profile-bio-preview"
-                  />
-                  {errors.bio && <small className="account-error">{errors.bio}</small>}
-                </label>
+                {isTeacher && longTextField('qualifications', ['qualifications', 'headline'], 3)}
+                {isTeacher && longTextField('experience', ['experience', 'experience_years'], 3)}
+                {longTextField('bio', ['bio'], 5)}
               </fieldset>
               <div className="account-actions">
                 <button className="account-primary" type="submit" disabled={busy}>
@@ -517,8 +590,8 @@ export function ProfileSettingsPage() {
           )}
         </section>
       </div>
-      <Modal open={isBioEditorOpen} onClose={() => setIsBioEditorOpen(false)} title={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'} size="xl" className="profile-bio-editor" footer={<button type="button" className="profile-bio-editor__done" onClick={() => setIsBioEditorOpen(false)}>Xong</button>}>
-        <textarea autoFocus name="bio" value={form.bio} onChange={change} rows="18" placeholder="Chia sẻ nội dung bạn muốn cộng đồng biết..." aria-label={isStudent ? 'Thông tin cá nhân' : 'Hồ sơ năng lực'} />
+      <Modal open={Boolean(activeEditorConfig)} onClose={() => setActiveTextEditor(null)} title={activeEditorConfig?.label || ''} size="xl" className="profile-bio-editor" footer={<button type="button" className="profile-bio-editor__done" onClick={() => setActiveTextEditor(null)}>Xong</button>}>
+        {activeEditorConfig && <textarea autoFocus name={activeTextEditor} value={form[activeTextEditor]} onChange={change} rows="18" placeholder={activeEditorConfig.placeholder} aria-label={activeEditorConfig.label} />}
       </Modal>
       <Modal open={isAvatarAlbumOpen} onClose={() => setIsAvatarAlbumOpen(false)} title="Chọn ảnh đại diện từ album" description="Chọn một ảnh bạn đã đăng trên bảng tin hoặc trang cá nhân." size="lg" className="profile-avatar-album">
         {avatarAlbumItems.length ? <div className="profile-avatar-album__grid">{avatarAlbumItems.map((image, index) => <button type="button" key={`${image.id || image.src}-${index}`} onClick={() => chooseAvatarFromAlbum(image)}><img src={image.src} alt={`Ảnh trong album ${index + 1}`} /></button>)}</div> : <p className="profile-avatar-album__empty">Bạn chưa có ảnh nào trong album. Hãy tải ảnh lên để làm ảnh đại diện.</p>}

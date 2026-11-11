@@ -200,6 +200,27 @@
   resize: vertical;
 }
 .profile-bio-editor__done { min-width: 96px; }
+/* Lựa chọn công khai số điện thoại: một dòng gọn ngay dưới ô số điện thoại */
+.profile-phone-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-top: -6px;
+  color: var(--color-ink);
+  font-size: var(--text-control);
+  font-weight: 500;
+  line-height: var(--text-control--line-height);
+  cursor: pointer;
+}
+.profile-phone-visibility input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
 .profile-avatar-album__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

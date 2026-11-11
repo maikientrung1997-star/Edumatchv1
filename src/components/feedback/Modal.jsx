@@ -105,6 +105,12 @@ export const Modal = ({
 
   if (!isModalOpen) return null;
 
+  // Trên điện thoại, chạm nút khi bàn phím đang mở sẽ làm ô nhập mất focus, bàn phím đóng và
+  // khung co giãn lại, khiến nút dịch chỗ và phải chạm lần hai. Giữ focus để một lần chạm là đủ.
+  const keepFocusOnButtonPress = (event) => {
+    if (event.target instanceof Element && event.target.closest('button')) event.preventDefault();
+  };
+
   return (
     <div ref={overlayRef} className={cn('em-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4', overlayClassName)}>
       {/* Overlay Backdrop */}
@@ -145,6 +151,7 @@ export const Modal = ({
           <button
             type="button"
             onClick={onClose}
+            onMouseDown={keepFocusOnButtonPress}
             aria-label={backButton ? 'Quay lại' : 'Đóng hộp thoại'}
             className="em-modal-close p-1.5 text-faint hover:text-ink rounded-control hover:bg-soft transition-colors"
           >
@@ -158,7 +165,7 @@ export const Modal = ({
 
         {/* Footer Actions */}
         {footer && (
-          <div className="em-modal-footer px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface">
+          <div className="em-modal-footer px-6 py-3.5 border-t border-line bg-soft/50 flex items-center justify-end gap-2.5 rounded-b-surface" onMouseDown={keepFocusOnButtonPress}>
             {footer}
           </div>
         )}

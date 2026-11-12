@@ -9,6 +9,8 @@ export const masterDataService = {
   provinces: async () => (await sharedGet('/administrative-areas/provinces', {}, { ttlMs: MASTER_DATA_TTL })).data,
   districts: async (id) => (await sharedGet(`/administrative-areas/districts/${id}`, {}, { ttlMs: MASTER_DATA_TTL })).data,
   wards: async (id) => (await sharedGet(`/administrative-areas/wards/${id}`, {}, { ttlMs: MASTER_DATA_TTL })).data,
+  // Mọi giáo viên / trung tâm đang hoạt động (kể cả chưa đăng khóa học) để tìm hồ sơ theo tên
+  providers: async () => (await sharedGet('/providers', {}, { ttlMs: 60 * 1000 })).data || [],
   provider: async (id) => {
     const res = await sharedGet(`/providers/${id}`);
     return res?.data !== undefined ? res.data : res;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ImagePlus, Images, Upload } from 'lucide-react';
+import { ImagePlus, Images, Upload } from 'lucide-react';
 import { Modal } from '@/components/feedback/Modal';
 import './profileImageSourceDialog.css';
 
@@ -16,13 +16,16 @@ export function ProfileImageSourceDialog({ open, variant, media = [], onClose, o
   const isAvatar = variant === 'avatar';
 
   const title = isAvatar ? 'Thay ảnh đại diện' : 'Thay ảnh bìa';
+  const isLibrary = screen !== 'choice';
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      // Ở màn chọn ảnh có sẵn, nút mũi tên trên tiêu đề quay về màn chọn nguồn ảnh (chỉ một nút Quay lại)
+      onClose={isLibrary ? () => setScreen('choice') : onClose}
+      backButton={isLibrary}
       title={title}
-      description={screen === 'choice' ? 'Chọn nguồn ảnh, sau đó điều chỉnh vùng hiển thị.' : 'Chọn một ảnh đã có để điều chỉnh vùng hiển thị.'}
+      description={isLibrary ? 'Chọn một ảnh đã có để điều chỉnh vùng hiển thị.' : undefined}
       size="lg"
       className="profile-image-source-dialog"
     >
@@ -39,7 +42,6 @@ export function ProfileImageSourceDialog({ open, variant, media = [], onClose, o
         </div>
       ) : (
         <div className="profile-image-source-dialog__library">
-          <button type="button" className="profile-image-source-dialog__back" onClick={() => setScreen('choice')}><ChevronLeft size={18} /> Quay lại</button>
           {images.length ? (
             <div className="profile-image-source-dialog__grid">
               {images.map((item, index) => (

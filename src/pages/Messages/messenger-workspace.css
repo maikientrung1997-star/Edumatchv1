@@ -115,19 +115,6 @@ html:has(.em-messenger) {
   font-weight: var(--text-micro--font-weight);
   letter-spacing: 0.08em;
 }
-.em-count {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  background: var(--color-tag);
-  border-radius: var(--radius-pill);
-  color: var(--color-primary);
-  font-size: var(--text-control);
-  font-weight: 700;
-}
 .em-search-row {
   display: flex;
   gap: 8px;

@@ -195,7 +195,6 @@ export function ProfileImageCropDialog({ draft, onClose, onSave }) {
       open={isOpen}
       onClose={saving ? undefined : onClose}
       title={title}
-      description="Kéo ảnh để chọn vùng hiển thị, hoặc dùng phím mũi tên để điều chỉnh."
       size="xl"
       className="profile-image-crop-dialog"
       footer={(

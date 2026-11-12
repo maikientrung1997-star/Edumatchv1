@@ -673,7 +673,8 @@ export function MessengerWorkspace() {
 
   const [convTags, setConvTags] = useState(() => getAllUserConversationTags(user?.id));
   const [tagLibrary, setTagLibrary] = useState(() => getMessageTags(user?.id));
-  const [selectedTagId, setSelectedTagId] = useState('');
+  // Lọc nhiều thẻ cùng lúc: hội thoại có ít nhất một trong các thẻ đã chọn
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
 
   useEffect(() => {
     const syncTags = () => {
@@ -741,12 +742,23 @@ export function MessengerWorkspace() {
     finally { setLoadingMore(false); }
   };
   const needle = q.toLocaleLowerCase('vi');
+  // Bỏ qua thẻ đã bị xóa khỏi thư viện
+  const activeTagIds = selectedTagIds.filter((id) => tagLibrary.some((tag) => tag.id === id));
+  const typeLabels = { direct: 'Cá nhân', group: 'Nhóm học tập' };
+  const filterLabel = [
+    filter ? typeLabels[filter] : '',
+    activeTagIds.length === 1 ? tagLibrary.find((tag) => tag.id === activeTagIds[0])?.name : activeTagIds.length > 1 ? `${activeTagIds.length} thẻ` : '',
+  ].filter(Boolean).join(' · ') || 'Lọc theo';
+  const hasActiveFilter = Boolean(filter || activeTagIds.length);
+  const toggleTagFilter = (tagId) => setSelectedTagIds((current) => (
+    current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]
+  ));
   const visible = chat.conversations.filter((item) => {
     if (unread && item.unread_count <= 0) return false;
     if (filter && item.type !== filter) return false;
-    if (selectedTagId) {
+    if (activeTagIds.length) {
       const itemTags = convTags[String(item.id)] || [];
-      if (!itemTags.some((t) => t.id === selectedTagId)) return false;
+      if (!itemTags.some((t) => activeTagIds.includes(t.id))) return false;
     }
     if (needle) {
       const matchName = item.name?.toLocaleLowerCase('vi').includes(needle);
@@ -766,44 +778,55 @@ export function MessengerWorkspace() {
     <aside className="em-inbox" aria-label="Danh sách hội thoại">
       <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div>
         {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
-        <h1>Tin nhắn</h1></div><span className="em-count">{chat.loaded ? chat.counts.total : <span className="em-count-loading" aria-label="Đang tải số hội thoại"/>}</span><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
+        <h1>Tin nhắn</h1></div><ChatIcon label="Tạo nhóm học tập" onClick={() => setGroupOpen(true)}><Plus size={17}/></ChatIcon></div>
       <div className="em-search-row"><label className="em-search"><Search size={17}/><input aria-label="Tìm kiếm người dùng" placeholder="Tên, email hoặc số điện thoại..." value={query} onChange={(event) => setQuery(event.target.value)} maxLength={150}/></label>
         <div className="em-filter" ref={filterRef}>
-          <button type="button" aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}>
+          <button type="button" className={hasActiveFilter ? 'is-active' : ''} aria-expanded={filterOpen} onClick={() => setFilterOpen((value) => !value)}>
             <ListFilter size={17}/>
-            <span>{selectedTagId ? `Thẻ: ${tagLibrary.find((t) => t.id === selectedTagId)?.name || 'Đã chọn'}` : 'Lọc theo'}</span>
+            <span className="em-filter__label">{filterLabel}</span>
           </button>
           {filterOpen && (
-            <div className="em-filter__menu">
+            <div className="em-filter__menu" role="menu" aria-label="Lọc hội thoại">
+              <div className="em-filter__separator em-filter__separator--first">Loại hội thoại</div>
               {[['','Tất cả hội thoại'],['direct','Cá nhân'],['group','Nhóm học tập']].map(([value,label]) => (
                 <button
                   type="button"
                   key={value}
-                  aria-pressed={!selectedTagId && filter===value}
-                  onClick={() => { setFilter(value); setSelectedTagId(''); setFilterOpen(false); }}
+                  role="menuitemradio"
+                  aria-checked={filter === value}
+                  className={`em-filter__option ${filter === value ? 'is-active' : ''}`}
+                  onClick={() => setFilter(value)}
                 >
-                  {label}
+                  <span>{label}</span>
+                  {filter === value && <Check size={15} aria-hidden="true"/>}
                 </button>
               ))}
               {tagLibrary.length > 0 && (
                 <>
                   <div className="em-filter__separator">Lọc theo thẻ</div>
-                  {tagLibrary.map((tag) => (
-                    <button
-                      type="button"
-                      key={tag.id}
-                      className={`em-filter__tag-item ${selectedTagId === tag.id ? 'is-active' : ''}`}
-                      aria-pressed={selectedTagId === tag.id}
-                      onClick={() => {
-                        setSelectedTagId(selectedTagId === tag.id ? '' : tag.id);
-                        setFilterOpen(false);
-                      }}
-                    >
-                      <span className="em-tag-dot" style={{ backgroundColor: tag.color }} />
-                      <span>{tag.name}</span>
-                    </button>
-                  ))}
+                  {tagLibrary.map((tag) => {
+                    const checked = activeTagIds.includes(tag.id);
+                    return (
+                      <button
+                        type="button"
+                        key={tag.id}
+                        role="menuitemcheckbox"
+                        aria-checked={checked}
+                        className={`em-filter__option em-filter__tag-item ${checked ? 'is-active' : ''}`}
+                        onClick={() => toggleTagFilter(tag.id)}
+                      >
+                        <span className={`em-filter__check ${checked ? 'is-checked' : ''}`} aria-hidden="true">{checked && <Check size={11} strokeWidth={3}/>}</span>
+                        <span className="em-tag-dot" style={{ backgroundColor: tag.color }} />
+                        <span>{tag.name}</span>
+                      </button>
+                    );
+                  })}
                 </>
+              )}
+              {hasActiveFilter && (
+                <button type="button" className="em-filter__clear" onClick={() => { setFilter(''); setSelectedTagIds([]); }}>
+                  Xóa bộ lọc
+                </button>
               )}
             </div>
           )}

@@ -33,6 +33,7 @@ import { CourseCard } from '@/components/courses/CourseCard';
 import { RoleAvatar } from '@/components/common/DefaultRoleAvatar';
 import { VerifiedBadge } from '@/components/common/VerifiedBadge';
 import { useMasterData } from '@/hooks/useMasterData';
+import { masterDataService } from '@/services/masterDataService';
 import { useAdministrativeOptions } from '@/hooks/useAdministrativeOptions';
 import { AdministrativePicker } from '@/components/forms/AdministrativePicker';
 import { createNotification, getCourseRating, getCourses, getProviderTrustCount, hasProviderTrust, toggleProviderTrust, trackProviderAffinity } from '@/features/learning/marketplace';
@@ -358,6 +359,15 @@ export const Home = () => {
   const [courseFilters, setCourseFilters] = useState(initialCourseFilters);
   const [appliedCourseFilters, setAppliedCourseFilters] = useState(initialCourseFilters);
   const [savedIds, setSavedIds] = useLocalStorage('edumatch:saved-tutors', []);
+  // Hồ sơ giáo viên / trung tâm từ server, gồm cả người chưa đăng khóa học nào
+  const [publicProviders, setPublicProviders] = useState([]);
+  useEffect(() => {
+    let active = true;
+    masterDataService.providers()
+      .then((items) => { if (active) setPublicProviders(Array.isArray(items) ? items : []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [savedOnly, setSavedOnly] = useState(false);
   const [trustFirst, setTrustFirst] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -580,6 +590,45 @@ const profileCourses = profile
         }
       : null;
 
+    const knownProviderIds = new Set([
+      ...courseProviders.map((provider) => String(provider.id)),
+      ...(currentProvider ? [String(currentProvider.id)] : []),
+    ]);
+    const accountProviders = publicProviders
+      .filter((provider) => provider?.id && !knownProviderIds.has(String(provider.id)))
+      .map((provider) => {
+        const isCenter = provider.role === 'center';
+        const verification = provider.verification_status === 'unverified' ? '' : (provider.verification_status || '');
+        return {
+          id: provider.id,
+          name: provider.name || 'Hồ sơ EduMatch',
+          role: isCenter ? 'center' : 'teacher',
+          title: isCenter ? '' : 'GV.',
+          providerType: isCenter ? 'center' : 'teacher',
+          rating: 0,
+          reviews: 0,
+          heartCount: 0,
+          subject: provider.teachingField || 'Đang cập nhật',
+          teachingField: provider.teachingField || '',
+          searchableCourses: '',
+          mode: 'both',
+          location: provider.province || '',
+          province: provider.province || '',
+          ward: '',
+          image: provider.avatar || '',
+          phone: provider.phone || '',
+          isPhonePublic: Boolean(provider.isPhonePublic && provider.phone),
+          licenseVerificationStatus: verification,
+          verificationStatus: verification,
+          experience: provider.experience || 'Đang cập nhật',
+          foundedYear: provider.foundedYear || '',
+          price: 0,
+          description: provider.bio || provider.qualifications || '',
+          bio: provider.bio || '',
+          methods: [],
+        };
+      });
+
     return [
       ...tutors.map((tutor) => ({
         ...tutor,
@@ -593,6 +642,7 @@ const profileCourses = profile
       ...(currentProvider && !courseProviders.some((provider) => String(provider.id) === String(currentProvider.id))
         ? [currentProvider]
         : []),
+      ...accountProviders,
     ];
   })();
 

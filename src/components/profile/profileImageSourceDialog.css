@@ -43,17 +43,6 @@
 .profile-image-source-choice strong { font-size: 0.98rem; }
 .profile-image-source-choice small { margin-top: 0.25rem; color: #718488; line-height: 1.45; }
 
-.profile-image-source-dialog__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-bottom: 0.8rem;
-  border: 0;
-  background: transparent;
-  color: #087e70;
-  font-weight: 700;
-}
-
 .profile-image-source-dialog__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

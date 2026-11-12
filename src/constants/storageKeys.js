@@ -17,6 +17,7 @@ export const STORAGE_KEYS = {
   CONVERSATIONS: 'edumatch:conversations',
   MESSAGE_TAGS: 'edumatch:message-tags',
   CONVERSATION_TAGS: 'edumatch:conversation-tags',
+  PINNED_CONVERSATIONS: 'edumatch:pinned-conversations',
   MESSAGE_TEMPLATES: 'edumatch:message-templates',
   CHAT_WIDGET: 'edumatch:chat-widget',
   ONLINE_PRESENCE: 'edumatch:online-presence',

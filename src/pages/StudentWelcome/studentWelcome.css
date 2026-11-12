@@ -142,15 +142,43 @@
   color: var(--edu-faint);
   cursor: not-allowed;
 }
-@media (max-width: 620px) {
+/* Mobile: trang tràn viền, không còn khung thẻ nổi giữa nền */
+@media (max-width: 767px) {
   .student-welcome {
-    padding: 30px 16px;
+    display: block;
+    min-height: calc(100dvh - 64px);
+    padding: 0;
+    background: var(--edu-surface);
   }
   .student-welcome__card {
-    padding: 28px 21px;
-    border-radius: 17px;
+    width: 100%;
+    padding: 24px 16px calc(28px + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .student-welcome__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+  .student-welcome__eyebrow {
+    margin-top: 18px;
+  }
+  .student-welcome h1 {
+    font-size: var(--text-h2);
+    line-height: var(--text-h2--line-height);
+  }
+  .student-welcome__lead {
+    margin-top: 12px;
   }
   .student-welcome__contribution {
-    padding: 18px;
+    margin-top: 22px;
+    padding: 16px;
+    border-radius: var(--radius-surface);
+  }
+  .student-welcome__contribution h2 {
+    font-size: var(--text-h3);
+    line-height: var(--text-h3--line-height);
   }
 }

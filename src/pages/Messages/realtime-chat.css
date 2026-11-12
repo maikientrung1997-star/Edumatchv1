@@ -1297,75 +1297,113 @@
   color: var(--color-ink, #0f172a);
 }
 
-.em-contact-action-btn {
+.em-contact-actions {
   position: absolute;
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 5;
+}
+
+.em-contact-item:hover .em-contact-actions,
+.em-contact-actions:has(:focus-visible) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.em-contact-action-btn {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--color-line, #e2e8f0);
+  border: 1px solid var(--color-line);
   border-radius: 50%;
-  background: var(--color-surface, #ffffff);
-  color: var(--color-muted, #64748b);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s, color 0.12s, transform 0.12s;
-  z-index: 5;
-}
-
-.em-contact-item:hover .em-contact-action-btn,
-.em-contact-action-btn:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+  transition: background-color 0.12s, color 0.12s, transform 0.12s;
 }
 
 .em-contact-action-btn:hover {
-  background: var(--color-tag, #e6f4ea);
-  border-color: var(--color-primary, #0f766e);
-  color: var(--color-primary, #0f766e);
-  transform: translateY(-50%) scale(1.1);
+  background: var(--color-tag);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  transform: scale(1.1);
 }
 
-.em-contact-action-btn.is-unread {
-  color: var(--color-primary, #0f766e);
-  background: var(--color-tag, #e6f4ea);
-  border-color: var(--color-primary, #0f766e);
+.em-contact-action-btn.is-unread,
+.em-contact-action-btn.is-active {
+  color: var(--color-primary);
+  background: var(--color-tag);
+  border-color: var(--color-primary);
+}
+
+/* Desktop: khi di chuột, hai nút ghim / đánh dấu thay chỗ cho giờ nhắn, chữ chừa chỗ để không bị đè */
+@media (min-width: 768px) {
+  .em-contact-item:is(:hover, :has(.em-contact-actions :focus-visible)) > .em-contact {
+    padding-right: 84px;
+  }
+
+  .em-contact-item:is(:hover, :has(.em-contact-actions :focus-visible)) .em-contact__meta {
+    display: none;
+  }
+}
+
+/* Biểu tượng ghim cạnh thời gian trong danh sách hội thoại */
+.em-contact__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.em-contact__pin {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  fill: currentColor;
 }
 
 /* Nút đánh dấu chưa đọc trong phần chi tiết hội thoại */
 .em-details-quick-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .em-details-action-btn {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 9px 14px;
-  border: 1px solid var(--color-line, #e2e8f0);
-  border-radius: 8px;
-  background: var(--color-surface, #ffffff);
-  color: var(--color-ink, #0f172a);
-  font-size: var(--text-body);
+  gap: 6px;
+  min-height: 68px;
+  padding: 10px 6px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-control);
   font-weight: 600;
+  line-height: var(--text-control--line-height);
   cursor: pointer;
-  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
 
-.em-details-action-btn:hover {
-  background: var(--color-soft, #f8fafc);
-  border-color: var(--color-primary, #0f766e);
-  color: var(--color-primary, #0f766e);
+.em-details-action-btn > svg {
+  color: var(--color-primary);
+}
+
+.em-details-action-btn:hover,
+.em-details-action-btn.is-active {
+  background: var(--color-tag);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-line));
+  color: var(--color-primary);
 }
 
 /* -------------------------------------------------------------
@@ -1627,4 +1665,380 @@
 
 .em-avatar-upload-trigger:hover .em-avatar-upload-overlay {
   opacity: 1;
+}
+
+/* -------------------------------------------------------------
+   Header hội thoại: nút chỉ hiện trên desktop / chỉ hiện trên mobile
+   ------------------------------------------------------------- */
+.em-chat__actions > .em-mobile-only {
+  display: none;
+}
+
+.em-pin-btn.is-active {
+  background: var(--color-tag);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-line));
+}
+
+.em-chat__tag-btn {
+  position: relative;
+}
+
+.em-chat__tag-count {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: var(--text-micro--line-height);
+}
+
+@media (max-width: 767px) {
+  .em-chat__actions > .em-desktop-only {
+    display: none;
+  }
+
+  .em-chat__actions > .em-mobile-only {
+    display: inline-flex;
+    color: var(--color-ink);
+  }
+
+  .em-chat__actions > .em-chat__tag-btn.is-active {
+    color: var(--color-primary);
+  }
+
+  /* Trên mobile thẻ được quản lý qua nút thẻ trên header, không chiếm thêm một hàng */
+  .em-messenger .chat-tag-bar-wrap {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------
+   Bảng gắn thẻ hội thoại (mobile, trượt từ dưới lên)
+   ------------------------------------------------------------- */
+.em-tag-sheet .em-modal-body {
+  padding-top: 4px;
+}
+
+/* Trên mobile, Modal mặc định là toàn màn hình (index.css). Bảng thẻ là ngoại lệ:
+   trượt từ dưới lên, chừa phần trên để chạm ra ngoài là đóng. */
+@media (max-width: 767px) {
+  .em-modal-overlay.em-tag-sheet-overlay {
+    align-items: flex-end !important;
+  }
+
+  .em-modal-dialog.em-tag-sheet {
+    height: auto !important;
+    max-height: 82dvh !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  .em-modal-dialog.em-tag-sheet::before {
+    content: '';
+    align-self: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 4px;
+    margin-top: 8px;
+    border-radius: var(--radius-pill);
+    background: var(--color-line);
+  }
+
+  .em-modal-dialog.em-tag-sheet.em-tag-sheet > .em-modal-header {
+    align-items: center;
+    padding: 6px 12px 8px 20px;
+    border-bottom: 0;
+  }
+
+  .em-modal-dialog.em-tag-sheet.em-tag-sheet .em-modal-close {
+    order: 0;
+    margin-left: 0;
+  }
+
+  .em-modal-dialog.em-tag-sheet .em-modal-close__back {
+    display: none !important;
+  }
+
+  .em-modal-dialog.em-tag-sheet .em-modal-close__x {
+    display: block !important;
+  }
+
+  .em-modal-dialog.em-tag-sheet.em-tag-sheet > .em-modal-body {
+    padding: 4px 20px calc(20px + env(safe-area-inset-bottom));
+  }
+}
+
+.em-tag-sheet .em-modal-header h3 {
+  font-size: var(--text-h4);
+  font-weight: 700;
+  line-height: var(--text-h4--line-height);
+}
+
+.em-tag-sheet__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.em-tag-sheet__search:focus-within {
+  border-color: var(--color-primary);
+}
+
+.em-tag-sheet__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-control);
+  line-height: var(--text-control--line-height);
+  outline: none;
+}
+
+.em-tag-sheet__notice {
+  margin: 10px 0 0;
+  color: var(--color-danger);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: var(--text-caption--line-height);
+}
+
+.em-tag-sheet__list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.em-tag-sheet__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.em-tag-sheet__list li + li {
+  border-top: 1px solid var(--color-line);
+}
+
+.em-tag-sheet__row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.em-tag-sheet__check {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-line-strong);
+  border-radius: 50%;
+  color: var(--color-on-primary);
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+.em-tag-sheet__check.is-checked {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+/* Thẻ cùng kiểu với thẻ trong danh sách hội thoại: nền nhạt, chữ theo màu thẻ */
+.em-tag-sheet__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--tag-color) 30%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--tag-color) 10%, var(--color-surface));
+  color: var(--tag-color);
+  font-size: var(--text-control);
+  font-weight: 600;
+  line-height: var(--text-control--line-height);
+  white-space: nowrap;
+}
+
+.em-tag-sheet__pill::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tag-color);
+}
+
+.em-tag-sheet__pill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-tag-sheet__delete {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-faint);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: var(--text-caption--line-height);
+  cursor: pointer;
+}
+
+.em-tag-sheet__delete.is-confirming {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+}
+
+.em-tag-sheet__empty {
+  margin: 14px 0 4px;
+  color: var(--color-muted);
+  font-size: var(--text-control);
+  line-height: var(--text-control--line-height);
+  text-align: center;
+}
+
+.em-tag-sheet__new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 12px;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: var(--text-control);
+  font-weight: 600;
+  line-height: var(--text-control--line-height);
+  cursor: pointer;
+}
+
+.em-tag-sheet__creator {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+}
+
+.em-tag-sheet__name {
+  position: relative;
+  display: block;
+}
+
+.em-tag-sheet__name input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 48px 0 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-control);
+  line-height: var(--text-control--line-height);
+  outline: none;
+}
+
+.em-tag-sheet__name input:focus {
+  border-color: var(--color-primary);
+}
+
+.em-tag-sheet__name small {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--color-faint);
+  font-size: var(--text-caption-xs);
+  line-height: var(--text-caption-xs--line-height);
+}
+
+.em-tag-sheet__name small.is-limit {
+  color: var(--color-danger);
+}
+
+.em-tag-sheet__colors {
+  gap: 8px;
+}
+
+.em-tag-sheet__colors button {
+  width: 22px;
+  height: 22px;
+}
+
+.em-tag-sheet__creator-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.em-tag-sheet__creator-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-control);
+  font-weight: 600;
+  line-height: var(--text-control--line-height);
+  cursor: pointer;
+}
+
+.em-tag-sheet__creator-actions button[type='submit'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.em-tag-sheet__creator-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Danh sách hội thoại trên mobile: không hiện nút ghim / đánh dấu nổi lên khi chạm,
+   các thao tác này nằm trong hội thoại (nút ≡). */
+@media (max-width: 767px) {
+  .em-contact-actions {
+    display: none;
+  }
 }

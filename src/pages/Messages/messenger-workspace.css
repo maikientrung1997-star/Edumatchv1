@@ -1162,9 +1162,6 @@ html:has(.em-messenger) {
     height: 36px;
     border: 0;
   }
-  .em-chat__actions .em-icon:nth-child(2) {
-    display: none;
-  }
   .em-history {
     padding: 15px 14px 18px;
     gap: 16px;

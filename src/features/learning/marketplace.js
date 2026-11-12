@@ -1096,6 +1096,24 @@ export const deleteMessageTag = (userId, tagId) => {
   return next.filter((tag) => tag.userId === userId);
 };
 
+// Hội thoại được ghim: lưu theo từng tài khoản, mục ghim gần nhất đứng đầu.
+export const getPinnedConversationIds = (userId) => {
+  if (!userId) return [];
+  const ids = read(STORAGE_KEYS.PINNED_CONVERSATIONS, {})[String(userId)];
+  return Array.isArray(ids) ? ids.map(String) : [];
+};
+
+export const togglePinnedConversation = (userId, conversationId) => {
+  if (!userId || !conversationId) return [];
+  const id = String(conversationId);
+  const current = getPinnedConversationIds(userId);
+  const next = current.includes(id) ? current.filter((item) => item !== id) : [id, ...current];
+  const all = read(STORAGE_KEYS.PINNED_CONVERSATIONS, {});
+  write(STORAGE_KEYS.PINNED_CONVERSATIONS, { ...all, [String(userId)]: next });
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('edumatch:pinned-conversations-updated'));
+  return next;
+};
+
 export const getMessageTemplates = (userId) =>
   read(STORAGE_KEYS.MESSAGE_TEMPLATES, []).filter((template) => template.userId === userId);
 

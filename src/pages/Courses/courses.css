@@ -3053,6 +3053,13 @@ button.teacher-cover__trust-count:hover { text-decoration: underline; text-under
   border-color: rgb(255 164 179 / 52%);
   color: #ffa8b8 !important;
 }
+/* "Mới trên EduMatch" dùng cùng màu cam như ở trang chủ, không lấy màu hồng đỏ của lượt tin tưởng */
+.teacher-cover.has-custom-cover .teacher-cover__status-list .teacher-cover__trust-count.is-new {
+  border-color: color-mix(in srgb, var(--color-badge-gold) 35%, transparent);
+  background: var(--color-badge-gold-bg);
+  color: var(--color-badge-gold) !important;
+  text-shadow: none;
+}
 .teacher-cover.has-custom-cover .teacher-cover__status-list .center-verification-badge,
 .teacher-cover.has-custom-cover .teacher-cover__status-list .verified-provider-badge {
   border-color: rgb(167 243 221 / 48%);

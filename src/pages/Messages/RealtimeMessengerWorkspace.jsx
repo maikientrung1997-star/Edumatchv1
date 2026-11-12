@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Camera, Check, ChevronLeft, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, MessageCircle, PanelRight, Plus, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Camera, Check, ChevronLeft, Image as ImageIcon, ListFilter, Mail, MailCheck, MailOpen, Menu, MessageCircle, PanelRight, Pin, PinOff, Plus, Search, Tag, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useConversationTags } from '@/hooks/useConversationTags';
 import { useDesktopChat } from '@/hooks/useDesktopChat';
+import { usePinnedConversations } from '@/hooks/usePinnedConversations';
 import { useRealtimeChat } from '@/hooks/useRealtimeChat';
 import { chatService, chatError, chatRole } from '@/services/chatService';
 import { chatTime } from '@/utils/chatState';
 import { Modal } from '@/components/feedback/Modal';
 import { ChatAttachmentView, ChatAvatar, ChatComposer, ChatHistory, ChatIcon, ChatLightbox, PrivateChatNote } from '@/components/messages/ChatPieces';
 import { ChatHeaderLoading, ChatLoading } from '@/components/messages/ChatLoading';
-import { ConversationTagBar } from '@/components/messages/ConversationTagBar';
+import { ConversationTagBar, ConversationTagSheet } from '@/components/messages/ConversationTagBar';
 import { ForwardDialog } from '@/components/messages/ForwardDialog';
 import { setChatWidget } from '@/features/learning/chatWidget';
 import { getAllUserConversationTags, getMessageTags } from '@/features/learning/marketplace';
@@ -348,7 +350,7 @@ function SharedMedia({ conversationId, onPreview, version, getMedia, setMedia })
   </section>;
 }
 
-function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
+function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user, wide, isPinned, onTogglePin }) {
   const thread = useRealtimeChat(conversationId);
   const chat = useChat();
   const { online, presenceReady, conversations } = chat;
@@ -356,6 +358,8 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
   const [replyingTo, setReplyingTo] = useState(null);
   const [forwarding, setForwarding] = useState(null);
   const [avatarUpdating, setAvatarUpdating] = useState(false);
+  const [tagSheetOpen, setTagSheetOpen] = useState(false);
+  const { tags: appliedTags } = useConversationTags(user?.id, conversationId);
   const groupAvatarFileRef = useRef(null);
   const detail = thread.detail;
   const partner = detail?.partner;
@@ -368,6 +372,21 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
   const handleToggleUnreadInChat = () => {
     const nextUnread = !isUnread;
     chat.markUnread(conversationId, nextUnread);
+  };
+
+  // Mobile: đánh dấu chưa đọc rồi quay về danh sách, giống các ứng dụng nhắn tin quen thuộc.
+  const handleMobileUnread = () => {
+    if (isUnread) {
+      chat.markUnread(conversationId, false);
+      return;
+    }
+    chat.markUnread(conversationId, true);
+    onBack();
+  };
+
+  const openTagSheetFromInfo = () => {
+    if (infoOpen) onInfo();
+    setTagSheetOpen(true);
   };
 
   const handleGroupAvatarChange = async (event) => {
@@ -402,7 +421,7 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
           {detail && (
             <button
               type="button"
-              className={`em-icon ${isUnread ? 'is-unread is-active' : ''}`}
+              className={`em-icon em-desktop-only ${isUnread ? 'is-unread is-active' : ''}`}
               aria-label={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
               title={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
               onClick={handleToggleUnreadInChat}
@@ -410,9 +429,42 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
               {isUnread ? <MailCheck size={18} style={{ color: 'var(--color-primary, #0f766e)' }} /> : <Mail size={18}/>}
             </button>
           )}
+          {detail && (
+            <button
+              type="button"
+              className={`em-icon em-desktop-only em-pin-btn ${isPinned ? 'is-active' : ''}`}
+              aria-pressed={isPinned}
+              aria-label={isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+              title={isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+              onClick={onTogglePin}
+            >
+              <Pin size={18} fill={isPinned ? 'currentColor' : 'none'}/>
+            </button>
+          )}
+          {detail && (
+            <button
+              type="button"
+              className={`em-icon em-mobile-only em-chat__tag-btn ${appliedTags.length ? 'is-active' : ''}`}
+              aria-label={appliedTags.length ? `Gắn thẻ hội thoại (đã gắn ${appliedTags.length})` : 'Gắn thẻ hội thoại'}
+              aria-haspopup="dialog"
+              onClick={() => setTagSheetOpen(true)}
+            >
+              <Tag size={21}/>
+              {appliedTags.length > 0 && <span className="em-chat__tag-count" aria-hidden="true">{appliedTags.length}</span>}
+            </button>
+          )}
           <button
             type="button"
-            className={`em-icon em-zalo-panel-btn ${infoOpen ? 'is-active' : ''}`}
+            className="em-icon em-mobile-only em-chat__menu-btn"
+            aria-label="Thông tin hội thoại"
+            aria-expanded={infoOpen}
+            onClick={onInfo}
+          >
+            <Menu size={22}/>
+          </button>
+          <button
+            type="button"
+            className={`em-icon em-desktop-only em-zalo-panel-btn ${infoOpen ? 'is-active' : ''}`}
             aria-label={infoOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại'}
             title={infoOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại'}
             aria-expanded={infoOpen}
@@ -480,6 +532,22 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
             <span>{detail.type === 'group' ? `${detail.member_count} thành viên` : chatRole(partner?.role)}</span>
           </div>
         </div>
+        {!wide && (
+          <div className="em-details-quick-actions">
+            <button type="button" className={`em-details-action-btn ${isUnread ? 'is-active' : ''}`} onClick={handleMobileUnread}>
+              {isUnread ? <MailCheck size={20}/> : <Mail size={20}/>}
+              <span>{isUnread ? 'Đã đọc' : 'Chưa đọc'}</span>
+            </button>
+            <button type="button" className={`em-details-action-btn ${isPinned ? 'is-active' : ''}`} aria-pressed={isPinned} onClick={onTogglePin}>
+              {isPinned ? <PinOff size={20}/> : <Pin size={20}/>}
+              <span>{isPinned ? 'Bỏ ghim' : 'Ghim'}</span>
+            </button>
+            <button type="button" className={`em-details-action-btn ${appliedTags.length ? 'is-active' : ''}`} onClick={openTagSheetFromInfo}>
+              <Tag size={20}/>
+              <span>Gắn thẻ</span>
+            </button>
+          </div>
+        )}
         {partner && (partner.profile_url || partner.id) && (
           <div className="em-profile-actions">
             <Link to={partner.profile_url || ROUTES.TEACHER_PROFILE(partner.id)}>
@@ -525,6 +593,7 @@ function ActiveThread({ conversationId, onBack, infoOpen, onInfo, user }) {
       </div>}
     </aside>
     <ChatLightbox image={preview} onClose={() => setPreview(null)}/>
+    {!wide && <ConversationTagSheet open={tagSheetOpen} onClose={() => setTagSheetOpen(false)} conversationId={conversationId} user={user}/>}
     {forwarding && (
       <ForwardDialog
         message={forwarding}
@@ -563,6 +632,14 @@ export function MessengerWorkspace() {
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const subscribeSize = useCallback((onChange) => {
+    const media = window.matchMedia('(min-width: 768px)'); media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
+  const { pinnedIds, isPinned, togglePin } = usePinnedConversations(user?.id);
+  // Mobile mở bảng thông tin qua nút ≡ mỗi lần cần, không nhớ trạng thái mở như desktop.
+  const [mobileInfoOpen, setMobileInfoOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(() => {
     try {
       return localStorage.getItem('edumatch:messenger:info-open') === 'true';
@@ -572,6 +649,10 @@ export function MessengerWorkspace() {
   });
 
   const handleToggleInfo = () => {
+    if (!wide) {
+      setMobileInfoOpen((current) => !current);
+      return;
+    }
     setInfoOpen((curr) => {
       const next = !curr;
       try {
@@ -586,7 +667,9 @@ export function MessengerWorkspace() {
   const handleBack = () => {
     setParams({});
     setMobileView('list');
+    setMobileInfoOpen(false);
   };
+  const infoVisible = wide ? infoOpen : mobileInfoOpen;
 
   const [convTags, setConvTags] = useState(() => getAllUserConversationTags(user?.id));
   const [tagLibrary, setTagLibrary] = useState(() => getMessageTags(user?.id));
@@ -605,11 +688,6 @@ export function MessengerWorkspace() {
     };
   }, [user?.id]);
 
-  const subscribeSize = useCallback((onChange) => {
-    const media = window.matchMedia('(min-width: 768px)'); media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-  const wide = useSyncExternalStore(subscribeSize, () => window.matchMedia('(min-width: 768px)').matches, () => true);
   const { upsert, conversations, markUnread } = chat;
 
   useEffect(() => {
@@ -677,8 +755,14 @@ export function MessengerWorkspace() {
     }
     return true;
   });
+  // Hội thoại đã ghim luôn ở đầu danh sách (ghim gần nhất đứng trước), phần còn lại giữ thứ tự cũ.
+  const pinRank = (item) => {
+    const index = pinnedIds.indexOf(String(item.id));
+    return index === -1 ? pinnedIds.length : index;
+  };
+  visible.sort((first, second) => pinRank(first) - pinRank(second));
 
-  return <section className={`em-messenger ${mobileView === 'chat' ? 'em-messenger--chat' : ''} ${selectedId && infoOpen ? 'em-messenger--info' : ''}`} aria-label="Tin nhắn EduMatch">
+  return <section className={`em-messenger ${mobileView === 'chat' ? 'em-messenger--chat' : ''} ${selectedId && infoVisible ? 'em-messenger--info' : ''}`} aria-label="Tin nhắn EduMatch">
     <aside className="em-inbox" aria-label="Danh sách hội thoại">
       <div className="em-inbox__heading"><Link to={ROUTES.HOME} className="em-icon em-back" aria-label="Quay lại trang chủ"><ArrowLeft size={20}/></Link><div>
         {/* <span className="em-eyebrow">EDUMATCH CHAT</span> */}
@@ -735,10 +819,11 @@ export function MessengerWorkspace() {
           const tags = convTags[String(conversation.id)] || [];
           const isSelected = selectedId === conversation.id;
           const isUnread = (conversation.unread_count || 0) > 0 || Boolean(conversation.is_manual_unread);
+          const pinned = isPinned(conversation.id);
           return (
             <div
               key={conversation.id}
-              className={`em-contact-item ${isSelected ? 'is-selected' : ''} ${isUnread ? 'is-unread' : ''}`}
+              className={`em-contact-item ${isSelected ? 'is-selected' : ''} ${isUnread ? 'is-unread' : ''} ${pinned ? 'is-pinned' : ''}`}
             >
               <button
                 type="button"
@@ -761,9 +846,26 @@ export function MessengerWorkspace() {
                   )}
                 </span>
                 <span className="em-contact__meta">
-                  <time>{chatTime(conversation.last_message_at)}</time>
+                  <span className="em-contact__time">
+                    {pinned && <Pin size={12} className="em-contact__pin" aria-label="Đã ghim"/>}
+                    <time>{chatTime(conversation.last_message_at)}</time>
+                  </span>
                   {isUnread && <b>{conversation.unread_count > 99 ? '99+' : (conversation.unread_count || 1)}</b>}
                 </span>
+              </button>
+              <div className="em-contact-actions">
+              <button
+                type="button"
+                className={`em-contact-action-btn ${pinned ? 'is-active' : ''}`}
+                title={pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+                aria-label={pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+                aria-pressed={pinned}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(conversation.id);
+                }}
+              >
+                {pinned ? <PinOff size={16} /> : <Pin size={16} />}
               </button>
               <button
                 type="button"
@@ -778,6 +880,7 @@ export function MessengerWorkspace() {
               >
                 {isUnread ? <MailCheck size={16} /> : <Mail size={16} />}
               </button>
+              </div>
             </div>
           );
         })}
@@ -790,9 +893,12 @@ export function MessengerWorkspace() {
         key={`${user?.id}:${selectedId}`}
         conversationId={selectedId}
         onBack={handleBack}
-        infoOpen={infoOpen}
+        infoOpen={infoVisible}
         onInfo={handleToggleInfo}
         user={user}
+        wide={wide}
+        isPinned={isPinned(selectedId)}
+        onTogglePin={() => togglePin(selectedId)}
       />
     ) : (
       <section className="em-chat em-no-selection em-welcome">

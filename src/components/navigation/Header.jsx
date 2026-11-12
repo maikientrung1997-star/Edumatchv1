@@ -559,7 +559,8 @@ export const Header = () => {
               <span>{user?.name}</span>
             </Link>
           )}
-          <Link to={teachingDestination} onClick={closeMobilePanels}>{teachingLabel}</Link>
+          {/* Khách chưa đăng nhập chỉ thấy Đăng nhập / Đăng ký trong menu mobile */}
+          {isAuthenticated && <Link to={teachingDestination} onClick={closeMobilePanels}>{teachingLabel}</Link>}
           {isCenterAccount && <Link to={ROUTES.VERIFICATION} onClick={closeMobilePanels}>Xác minh hồ sơ</Link>}
           {canUseStudentConsultation && (
             <button type="button" onClick={openStudentConsultation}>Tư vấn miễn phí</button>
